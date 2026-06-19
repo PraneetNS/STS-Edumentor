@@ -1,0 +1,135 @@
+"""
+EduMentor Voice -- Kokoro Text-to-Speech Engine
+
+Wraps the Kokoro TTS pipeline for sentence-level synthesis.
+The pipeline is loaded ONCE at startup -- Kokoro auto-downloads its
+model weights from HuggingFace on the first run.
+"""
+
+import io
+import logging
+from typing import Optional
+
+import numpy as np
+import soundfile as sf
+import torch
+
+from config import Config
+
+logger = logging.getLogger(__name__)
+
+
+class KokoroEngine:
+    """
+    Kokoro TTS engine that synthesizes audio for a sentence at a time.
+
+    Kokoro is initialised once and kept in memory. Synthesis is called
+    from a thread-pool executor so it doesn't block the event loop.
+
+    Usage:
+        engine = KokoroEngine()                   # once at startup
+        wav_bytes = engine.synthesize("Hello!")   # called per sentence
+    """
+
+    def __init__(self) -> None:
+        logger.info("Loading Kokoro TTS pipeline (lang='%s') ...", Config.KOKORO_LANG_CODE)
+        try:
+            from kokoro import KPipeline  # noqa: PLC0415
+
+            # Detect device: use CUDA if available, otherwise CPU
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            logger.info("Kokoro using device: %s", device)
+
+            self.pipeline = KPipeline(
+                lang_code=Config.KOKORO_LANG_CODE,
+                device=device,
+            )
+            self.sample_rate = Config.KOKORO_SAMPLE_RATE
+            self.greeting_cache = {}
+
+            # Warm up voice profiles in the background to avoid cold-start latencies later
+            import threading
+            def warmup_voices():
+                logger.info("Warming up Kokoro voice profile in the background...")
+                warmup_text = "Warm up."
+                voice = Config.KOKORO_VOICE
+                try:
+                    # Call pipeline generator to load/cache the voice weights
+                    list(self.pipeline(warmup_text, voice=voice, speed=1.0))
+                    logger.info("Voice '%s' successfully warmed up.", voice)
+                except Exception as e:
+                    logger.warning("Failed to warm up voice '%s': %s", voice, e)
+                logger.info("Kokoro voices warm up complete.")
+
+            threading.Thread(target=warmup_voices, daemon=True).start()
+
+            logger.info("[OK] Kokoro TTS engine ready (voice=%s).", Config.KOKORO_VOICE)
+        except ImportError as exc:
+            msg = (
+                "Kokoro package is not installed or import failed. This usually means "
+                "you are running in the wrong Python environment.\n"
+                "To resolve this, activate the virtual environment and install dependencies:\n"
+                "  cd backend\n"
+                "  .venv310\\Scripts\\activate   # On Windows\n"
+                "  source .venv310/bin/activate  # On Linux/macOS\n"
+                "  pip install -r requirements.txt\n"
+                "Or simply use the root launcher scripts: run_backend.bat or run_backend.sh"
+            )
+            logger.critical(msg)
+            raise RuntimeError(msg) from exc
+
+    def synthesize(self, text: str, speed: float = 1.0, voice: Optional[str] = None) -> bytes:
+        """
+        Synthesize a text string to WAV bytes with dynamic speed and voice.
+
+        This is a synchronous method; call it via asyncio.run_in_executor
+        from the async pipeline to avoid blocking the event loop.
+
+        Args:
+            text: The sentence or text fragment to speak.
+            speed: Speed multiplier.
+            voice: Optional custom voice name. Fallback to Config.KOKORO_VOICE if None.
+
+        Returns:
+            Raw WAV file bytes (PCM 24 kHz mono), ready to send over WebSocket.
+            Returns empty bytes on failure or empty input.
+        """
+        text = text.strip()
+        if not text:
+            return b""
+
+        selected_voice = voice if voice is not None else Config.KOKORO_VOICE
+        try:
+            audio_chunks: list[np.ndarray] = []
+
+            # KPipeline is a generator that yields (graphemes, phonemes, audio)
+            generator = self.pipeline(
+                text,
+                voice=selected_voice,
+                speed=speed,
+            )
+            for _, _, audio in generator:
+                if audio is not None and len(audio) > 0:
+                    audio_chunks.append(audio)
+
+            if not audio_chunks:
+                logger.warning("Kokoro produced no audio for: %r using voice %s", text[:60], selected_voice)
+                return b""
+
+            # Combine all audio chunks into a single array
+            combined = np.concatenate(audio_chunks)
+
+            # Encode to WAV in-memory (no disk I/O)
+            buf = io.BytesIO()
+            sf.write(buf, combined, self.sample_rate, format="WAV", subtype="PCM_16")
+            buf.seek(0)
+            wav_bytes = buf.read()
+
+            logger.debug(
+                "TTS synthesized %d chars -> %d bytes WAV using voice %s", len(text), len(wav_bytes), selected_voice
+            )
+            return wav_bytes
+
+        except Exception as exc:
+            logger.exception("Kokoro synthesis error for %r using voice %s: %s", text[:60], selected_voice, exc)
+            return b""
