@@ -1,0 +1,21 @@
+{
+  "name": "Student",
+  "level": "beginner",
+  "learning_topics": [
+    "Machine Learning",
+    "Data Structures",
+    "Computer Science",
+    "Python",
+    "Web Development",
+    "Career"
+  ],
+  "weak_topics": [
+    "Python",
+    "Machine Learning",
+    "Web Development",
+    "Computer Science",
+    "Data Structures"
+  ],
+  "preferred_style": "examples",
+  "session_count": 19
+}
