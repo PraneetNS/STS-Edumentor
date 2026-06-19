@@ -1,0 +1,21 @@
+# EduMentor Voice
+
+*.gguf
+*.bin
+*.pt
+*.pth
+__pycache__/
+*.pyc
+*.pyo
+.env
+*.egg-info/
+dist/
+build/
+.venv/
+.venv310/
+venv/
+node_modules/
+frontend/dist/
+.DS_Store
+Thumbs.db
+*.log
