@@ -3,8 +3,7 @@
  *
  * States: idle | listening | thinking | speaking
  *
- * Uses Framer Motion for GPU-accelerated 60fps animations.
- * Completely redesigned to act as the main mic button in the bottom zone.
+ * Fully styled via index.css for premium white-mode border, shadow, and color overrides.
  */
 import React, { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -12,29 +11,21 @@ import { Mic, Square } from 'lucide-react';
 
 const ORB_CONFIGS = {
   idle: {
-    gradient: ['#1e3a8a', '#4f46e5'],
-    glow:     'rgba(79, 70, 229, 0.25)',
     label:    'Tap to talk',
     showMic:  true,
     showStop: false
   },
   listening: {
-    gradient: ['#7c3aed', '#2563eb'],
-    glow:     'rgba(124, 58, 237, 0.4)',
     label:    "I'm listening",
     showMic:  true,
     showStop: false
   },
   thinking: {
-    gradient: ['#0ea5e9', '#6366f1'],
-    glow:     'rgba(14, 165, 233, 0.3)',
     label:    'Thinking...',
     showMic:  false,
     showStop: false
   },
   speaking: {
-    gradient: ['#059669', '#06b6d4'],
-    glow:     'rgba(16, 185, 129, 0.3)',
     label:    'Explaining',
     showMic:  false,
     showStop: true
@@ -64,7 +55,7 @@ export const VoiceOrb = React.memo(function VoiceOrb({
   return (
     <div className="flex flex-col items-center gap-2">
       <div 
-        className="voice-orb-wrap" 
+        className={`voice-orb-wrap state-${state}`} 
         onClick={onClick}
         role="button"
         aria-label={state === 'speaking' ? "Stop EDI" : "Toggle microphone"}
@@ -72,32 +63,20 @@ export const VoiceOrb = React.memo(function VoiceOrb({
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); }}
       >
         <button className="voice-orb">
-          {/* Background Glow */}
-          <div 
-            className="voice-orb-glow" 
-            style={{ backgroundColor: cfg.glow, boxShadow: `0 0 60px ${cfg.glow}` }}
-          />
-
           {/* Animated Rings for Listening */}
           {state === 'listening' && (
             <>
-              <div className="voice-orb-ring" style={{ width: '80px', height: '80px', animationDelay: '0s' }} />
-              <div className="voice-orb-ring" style={{ width: '80px', height: '80px', animationDelay: '0.8s' }} />
-              <div className="voice-orb-ring" style={{ width: '80px', height: '80px', animationDelay: '1.6s' }} />
+              <div className="voice-orb-ring" style={{ width: '72px', height: '72px', animationDelay: '0s' }} />
+              <div className="voice-orb-ring" style={{ width: '72px', height: '72px', animationDelay: '0.8s' }} />
+              <div className="voice-orb-ring" style={{ width: '72px', height: '72px', animationDelay: '1.6s' }} />
             </>
           )}
-
-          {/* Core Button Area */}
-          <div 
-            className="voice-orb-core" 
-            style={{ background: `linear-gradient(135deg, ${cfg.gradient[0]}, ${cfg.gradient[1]})` }}
-          />
 
           {/* Spinner for Thinking */}
           {state === 'thinking' && <div className="voice-orb-spinner" />}
 
           {/* Content (Mic / Stop / Waveform) */}
-          <div className="voice-orb-content">
+          <div className="voice-orb-content" style={{ color: 'currentColor' }}>
             <AnimatePresence mode="wait">
               {cfg.showMic && (
                 <motion.div
@@ -107,7 +86,7 @@ export const VoiceOrb = React.memo(function VoiceOrb({
                   exit={{ opacity: 0, scale: 0.5 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <Mic size={28} strokeWidth={2.5} />
+                  <Mic size={24} strokeWidth={2.5} />
                 </motion.div>
               )}
               
@@ -120,21 +99,7 @@ export const VoiceOrb = React.memo(function VoiceOrb({
                   transition={{ duration: 0.2 }}
                   className="flex flex-col items-center"
                 >
-                  <Square size={24} fill="currentColor" strokeWidth={0} />
-                </motion.div>
-              )}
-
-              {state === 'speaking' && !cfg.showStop && (
-                <motion.div
-                  key="wave"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="orb-wave-bars"
-                >
-                  {[...Array(5)].map((_, i) => (
-                    <div key={i} className="orb-wave-bar" style={{ animationDelay: `${i * 0.15}s` }} />
-                  ))}
+                  <Square size={20} fill="currentColor" strokeWidth={0} />
                 </motion.div>
               )}
             </AnimatePresence>
