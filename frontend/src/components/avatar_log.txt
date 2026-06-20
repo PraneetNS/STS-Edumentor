@@ -26,3 +26,4 @@
 // style(avatar): nudge shine offset on eye model - 06/20/2026 17:03:53
 // perf(avatar): dispose geometries dynamically on state changes - 06/20/2026 17:03:53
 // refactor(avatar): enforce strict validation on state inputs - 06/20/2026 17:03:54
+// style(frontend): adjust message container custom scrollbar width - 06/20/2026 17:03:54
