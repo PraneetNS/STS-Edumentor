@@ -199,6 +199,23 @@ export function useConversationStore() {
     });
   }, [activeId]);
 
+  const saveMessageSnapshot = useCallback((msgId, dataUrl) => {
+    setConversations(prev => {
+      const updated = prev.map(conv => {
+        if (conv.id !== activeId) return conv;
+        const msgs = conv.messages.map(m => {
+          if (m.id === msgId) {
+            return { ...m, avatarSnapshot: dataUrl };
+          }
+          return m;
+        });
+        return { ...conv, messages: msgs };
+      });
+      saveToStorage(updated);
+      return updated;
+    });
+  }, [activeId]);
+
   return {
     conversations,
     activeId,
@@ -211,5 +228,6 @@ export function useConversationStore() {
     updateStreamingMessage,
     setStreamingMessageText,
     finishStreamingMessage,
+    saveMessageSnapshot,
   };
 }
