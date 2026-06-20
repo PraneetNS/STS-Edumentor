@@ -25,10 +25,10 @@ export function EduAvatar({
         {/* Ambient glow behind the avatar */}
         <div className="edi-avatar-glow" style={{
           background: 
-            stateClass === 'state-listening' ? 'rgba(124, 58, 237, 0.4)' :
-            stateClass === 'state-thinking' ? 'rgba(6, 182, 212, 0.3)' :
-            stateClass === 'state-speaking' ? 'rgba(34, 197, 94, 0.3)' :
-            'rgba(99, 102, 241, 0.15)'
+            stateClass === 'state-listening' ? 'rgba(14, 163, 113, 0.12)' :
+            stateClass === 'state-thinking' ? 'rgba(84, 87, 229, 0.12)' :
+            stateClass === 'state-speaking' ? 'rgba(14, 163, 113, 0.12)' :
+            'rgba(84, 87, 229, 0.05)'
         }}></div>
 
         {/* The main avatar head */}
