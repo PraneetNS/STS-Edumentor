@@ -9,3 +9,4 @@
 // style(avatar): tune thinking state pupil drift - 06/20/2026 17:03:51
 // perf(avatar): decrease Three.js canvas size footprint - 06/20/2026 17:03:51
 // style(frontend): reduce ambient glow blur radius - 06/20/2026 17:03:51
+// style(frontend): adjust mic button hover scale transition - 06/20/2026 17:03:52
