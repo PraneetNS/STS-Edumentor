@@ -9,7 +9,7 @@ REM  GPU offload: -ngl 9999 offloads all layers to GPU (NVIDIA).
 REM  Reduce -ngl if you see CUDA out-of-memory errors.
 REM ==================================================================
 
-set MODEL=backend\models\edumentor-Q6_K.gguf
+set MODEL=backend\models\EduMentor-Qwen3-Q6_K.gguf
 
 echo [EduMentor] Starting llama.cpp server...
 echo Model: %MODEL%
@@ -18,8 +18,8 @@ echo.
 
 "C:\Users\savan\.docker\bin\inference\llama-server.exe" ^
   -m %MODEL% ^
-  -c 16384 ^
-  -ngl 9999 ^
+  -c 4096 ^
+  -ngl 20 ^
   --host 0.0.0.0 ^
   --port 8080 ^
   --temp 0.6 ^
