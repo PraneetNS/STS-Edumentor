@@ -235,7 +235,8 @@ class AgentController:
         )
 
         # ── Step 11 + 12: Stream LLM + Plan Response ──────────────────────────
-        full_response_parts: List[str] = []
+        full_raw_parts: List[str] = []
+        full_planned_parts: List[str] = []
         output_blocked = False
 
         try:
@@ -248,14 +249,12 @@ class AgentController:
 
                 # ── Step 12: Response planning (clean for TTS) ────────────────
                 planned_token = self._response_planner.process_token(raw_token)
-                if planned_token is None:
-                    continue  # Suppressed by planner (markdown, truncated, etc.)
 
                 # ── Step 13: Output Safety (lightweight — just token-level) ───
-                if self._safety_enabled and full_response_parts:
+                if self._safety_enabled and full_planned_parts:
                     # Check accumulated response every 50 tokens
-                    accumulated = "".join(full_response_parts)
-                    if len(accumulated) % 200 < len(planned_token):
+                    accumulated = "".join(full_planned_parts)
+                    if len(accumulated) % 200 < len(planned_token or ""):
                         out_safety = check_output(accumulated)
                         if not out_safety.allowed:
                             output_blocked = True
@@ -263,11 +262,17 @@ class AgentController:
                                 "OUTPUT_BLOCK session=%s reason=%s",
                                 session_id, out_safety.reason
                             )
-                            yield " I need to stop there. Let me try a different approach."
+                            yield {
+                                "raw": " I need to stop there. Let me try a different approach.",
+                                "planned": " I need to stop there. Let me try a different approach."
+                            }
                             break
 
-                full_response_parts.append(planned_token)
-                yield planned_token
+                full_raw_parts.append(raw_token)
+                if planned_token:
+                    full_planned_parts.append(planned_token)
+                
+                yield {"raw": raw_token, "planned": planned_token or ""}
 
         except asyncio.CancelledError:
             logger.info(
@@ -279,12 +284,12 @@ class AgentController:
         finally:
             # ── Step 14: Save to Memory ───────────────────────────────────────
             if not output_blocked:
-                full_response = "".join(full_response_parts)
-                if full_response and user_text:
+                raw_response = "".join(full_raw_parts)
+                if raw_response and user_text:
                     self._memory.add_turn(
                         session_id     = session_id,
                         user_text      = user_text,
-                        assistant_text = full_response,
+                        assistant_text = raw_response,
                         intent         = intent_result.intent.value,
                         emotion        = emotion_result.emotion.value,
                     )
@@ -292,7 +297,7 @@ class AgentController:
                     # ── Step 15: Update Profile ───────────────────────────────
                     self._profile_manager.update_from_turn(
                         user_text       = user_text,
-                        assistant_text  = full_response,
+                        assistant_text  = raw_response,
                         emotion         = emotion_result.emotion,
                     )
 
@@ -301,7 +306,7 @@ class AgentController:
                 "TURN_END session=%s intent=%s response_chars=%d total_ms=%.0f",
                 session_id,
                 intent_result.intent.value,
-                len("".join(full_response_parts)),
+                len("".join(full_raw_parts)),
                 total_ms,
             )
 
@@ -339,16 +344,16 @@ class AgentController:
         self,
         refusal_text: str,
         session_id: str,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[dict]:
         """
         Stream a safety refusal message as individual word tokens.
 
-        Yields word by word so the existing TTS pipeline works correctly
-        (sentence buffer accumulates naturally).
+        Yields dict with raw and planned fields so the existing TTS pipeline works correctly.
         """
         words = refusal_text.split()
         for i, word in enumerate(words):
             separator = " " if i > 0 else ""
-            yield separator + word
+            token = separator + word
+            yield {"raw": token, "planned": token}
             # Small delay to simulate natural streaming (not required but looks better)
             await asyncio.sleep(0.005)
