@@ -7,3 +7,4 @@
 // style(avatar): adjust listening state hop amplitude - 06/20/2026 17:03:51
 // style(avatar): fine-tune speaking state mouth scaling - 06/20/2026 17:03:51
 // style(avatar): tune thinking state pupil drift - 06/20/2026 17:03:51
+// perf(avatar): decrease Three.js canvas size footprint - 06/20/2026 17:03:51
