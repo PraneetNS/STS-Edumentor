@@ -23,3 +23,4 @@
 // style(avatar): adjust breathing frequency under listening - 06/20/2026 17:03:53
 // style(avatar): fine-tune thinking state tilt angle - 06/20/2026 17:03:53
 // style(avatar): adjust pupil horizontal look limits - 06/20/2026 17:03:53
+// style(avatar): nudge shine offset on eye model - 06/20/2026 17:03:53
