@@ -190,20 +190,22 @@ class ResponsePlanner:
                 self._in_code_block = True
                 # Emit a verbal replacement instead
                 lang_match = re.search(r"```(\w+)", self._buffer)
-                lang = lang_match.group(1) if lang_match else "code"
+                lang = lang_match.group(1).lower() if lang_match else "code"
                 self._buffer = ""
-                return f"Here's an example in {lang}: "
+                # Announce the code/diagram on screen rather than reading it
+                if lang in ("mermaid", "diagram", "dot", "plantuml"):
+                    return "[I have displayed a diagram on the screen.] "
+                else:
+                    return f"[I have shown a {lang} code example on the screen.] "
             else:
                 self._in_code_block = False
                 self._buffer = ""
                 return None
 
-        # While in a code block, pass tokens through lightly cleaned
+        # While in a code block, suppress all tokens for TTS
         if self._in_code_block:
-            cleaned = token  # Pass code through verbatim
-            self._total_chars_sent += len(cleaned)
             self._buffer = ""
-            return cleaned if cleaned.strip() else None
+            return None
 
         # Apply cleaning to the token
         cleaned = self._clean_token(token)
@@ -233,6 +235,14 @@ class ResponsePlanner:
             text,
             flags=re.DOTALL,
         )
+
+        # Remove diagram/roadmap ASCII lines
+        lines = text.split("\n")
+        filtered_lines = []
+        for line in lines:
+            if not is_diagram_or_roadmap(line):
+                filtered_lines.append(line)
+        text = "\n".join(filtered_lines)
 
         # Remove markdown headers (## Header → just the text)
         text = _MARKDOWN_HEADER_RE.sub("", text)
@@ -270,14 +280,10 @@ class ResponsePlanner:
 
     def _verbalize_code(self, code: str) -> str:
         """Replace a code block with a verbal description."""
-        lines = [line for line in code.strip().split("\n") if line.strip()]
-        line_count = len(lines)
-        if line_count <= 2:
-            return f"The code looks like this: {' '.join(lines[:2])}. "
-        return (
-            f"The code has about {line_count} lines. "
-            f"It starts with: {lines[0]}. "
-        )
+        # Check if the code is a mermaid/diagram
+        if any(keyword in code for keyword in ("graph ", "subgraph", "-->", "sequenceDiagram")):
+            return "[I have displayed a diagram on the screen.] "
+        return "[I have shown a code example on the screen.] "
 
     def _convert_numbered_lists(self, text: str) -> str:
         """Convert '1. First' style lists to 'First, ... Second, ... Third, ...'."""
@@ -314,3 +320,19 @@ class ResponsePlanner:
         # Otherwise cut at last word boundary
         last_space = truncated.rfind(" ")
         return truncated[:last_space] + "..."
+
+
+def is_diagram_or_roadmap(text: str) -> bool:
+    """
+    Check if a sentence/line contains diagrams, roadmaps, or flowcharts.
+    """
+    # Check for arrows: ->, -->, =>, ==>, <-, <--
+    if re.search(r"[-=]>", text) or re.search(r"<[-=]", text):
+        return True
+    # Check for ASCII box/tree layout connectors: | or +-- or |--
+    if "|" in text or "+--" in text or "|--" in text:
+        return True
+    # Check for typical workflow step transitions, e.g. [Input] -> [Process]
+    if re.search(r"\[.*\]\s*[-=]+>", text):
+        return True
+    return False
