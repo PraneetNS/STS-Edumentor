@@ -2,3 +2,4 @@
 // style(avatar): adjust body scale coordinates - 06/20/2026 17:03:50
 // style(avatar): nudge wing pivot rotation offsets - 06/20/2026 17:03:50
 // style(avatar): adjust beak scale metrics - 06/20/2026 17:03:51
+// style(avatar): fine-tune blink timing curves - 06/20/2026 17:03:51
