@@ -678,14 +678,28 @@ async def _stream_llm_and_tts(
         nonlocal sentence_buffer
         is_first_chunk = True
         try:
-            async for token in token_stream:
+            async for token_data in token_stream:
                 # Record first LLM token latency
                 if latency_metrics["first_llm_token"] is None:
                     latency_metrics["first_llm_token"] = round(time.time() - start_time, 2)
                 
-                # Forward token to frontend immediately
-                await websocket.send_json({"type": "assistant_text_delta", "text": token})
-                sentence_buffer += token
+                # Unpack raw and planned tokens
+                if isinstance(token_data, dict):
+                    raw_token = token_data.get("raw", "")
+                    planned_token = token_data.get("planned", "")
+                elif isinstance(token_data, tuple):
+                    raw_token, planned_token = token_data
+                else:
+                    raw_token = token_data
+                    planned_token = token_data
+
+                # Forward raw token to frontend immediately
+                if raw_token:
+                    await websocket.send_json({"type": "assistant_text_delta", "text": raw_token})
+                
+                # Accumulate planned token for TTS
+                if planned_token:
+                    sentence_buffer += planned_token
 
                 # Dynamic first-chunk optimization:
                 # For the first chunk, we flush aggressively to minimize Time-to-First-Audio (TTFA).
@@ -703,7 +717,7 @@ async def _stream_llm_and_tts(
                     elif len(stripped) >= 3 and re.search(r"(?<=\S{2})[,;:—\n\r]+['\"`’”\]\)]*(?:\s|$)", stripped):
                         should_flush = True
                     # Flush on space/word boundary if we've accumulated at least 30 characters (fast phrase split)
-                    elif len(stripped) >= 30 and (token.isspace() or any(char in token for char in ".,!?;:-—")):
+                    elif len(stripped) >= 30 and (raw_token and (raw_token.isspace() or any(char in raw_token for char in ".,!?;:-—"))):
                         should_flush = True
                 else:
                     # Standard chunking logic for subsequent sentences
@@ -715,6 +729,13 @@ async def _stream_llm_and_tts(
                     if sentence:
                         sentence_buffer = ""
                         is_first_chunk = False
+                        
+                        # Filter out diagrams, flowcharts, or roadmaps from TTS
+                        from agent.response_planner import is_diagram_or_roadmap
+                        if is_diagram_or_roadmap(sentence):
+                            logger.info("Skipping diagram/roadmap sentence for TTS: %r", sentence[:60])
+                            continue
+                        
                         logger.debug("Enqueuing sentence for TTS: %r", sentence[:60])
                         # This will block if tts_queue is full (size >= 3), implementing backpressure
                         await tts_queue.put(sentence)
@@ -724,8 +745,12 @@ async def _stream_llm_and_tts(
         except Exception as exc:
             logger.exception("LLM token reading error: %s", exc)
         finally:
-            if sentence_buffer.strip():
-                await tts_queue.put(sentence_buffer.strip())
+            final_sentence = sentence_buffer.strip()
+            if final_sentence:
+                from agent.response_planner import is_diagram_or_roadmap
+                if not is_diagram_or_roadmap(final_sentence):
+                    logger.debug("Enqueuing final sentence for TTS: %r", final_sentence[:60])
+                    await tts_queue.put(final_sentence)
             # Enqueue sentinel to signal TTS worker to stop
             await tts_queue.put(None)
 
