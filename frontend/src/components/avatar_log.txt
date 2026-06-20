@@ -19,3 +19,4 @@
 // style(avatar): adjust pupil positions for better depth - 06/20/2026 17:03:52
 // style(avatar): tweak feet color to match beak warm accent - 06/20/2026 17:03:53
 // style(avatar): tune listening state wing lift speed - 06/20/2026 17:03:53
+// style(avatar): tune speaking state sway rotation - 06/20/2026 17:03:53
