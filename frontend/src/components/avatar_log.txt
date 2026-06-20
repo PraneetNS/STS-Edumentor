@@ -1,0 +1,1 @@
+// refactor(avatar): extract material definitions to memo blocks - 06/20/2026 17:03:50
