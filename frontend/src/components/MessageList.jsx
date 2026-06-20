@@ -1,13 +1,12 @@
 /**
  * MessageList — Renders the conversation history with premium glass animations.
- * Now embeds the expressive AvatarFace for EDI's messages.
+ * Now embeds the expressive 3D Mentor Character for EDI's messages.
  */
 import React, { useEffect, useRef, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User } from 'lucide-react';
 import { SpeakingText } from './SpeakingText';
-import { AvatarFace } from './Avatar/AvatarFace';
-import { getEmotionClass } from './Avatar/AvatarAnimations';
+import { MentorCharacter } from './MentorCharacter';
 
 const Message = memo(function Message({ 
   msg, 
@@ -15,15 +14,16 @@ const Message = memo(function Message({
   isSpeakingTextSync,
   analyserNode,
   conversationState,
-  emotion,
-  isPlaying,
-  isActiveMessage
+  isActiveMessage,
+  defaultAvatarUrl,
+  onSnapshot
 }) {
   const isUser = msg.role === 'user';
   const isStreaming = msg.isStreaming;
 
   const labelText = isUser ? 'You' : 'EDI';
-  const emotionClass = isActiveMessage ? getEmotionClass(emotion) : '';
+
+  const avatarUrl = msg.avatarSnapshot || defaultAvatarUrl;
 
   return (
     <motion.div
@@ -37,13 +37,14 @@ const Message = memo(function Message({
       <div className={`msg-avatar ${isUser ? 'user-avatar' : 'ai-avatar'}`}>
         {isUser ? (
           <User size={14} />
+        ) : avatarUrl && !isActiveMessage ? (
+          <img src={avatarUrl} className="mentor-snapshot-img" alt="EDI" />
         ) : (
-          <div className={`compact-face-wrap ${emotionClass}`}>
-            <AvatarFace 
-              compact={true}
-              state={isActiveMessage ? conversationState : 'IDLE'} 
-              isPlaying={isActiveMessage ? isPlaying : false} 
-              analyserNode={isActiveMessage ? analyserNode : null} 
+          <div className="compact-mentor-wrap">
+            <MentorCharacter
+              state={isActiveMessage ? conversationState.toLowerCase() : 'idle'}
+              analyserNode={isActiveMessage ? analyserNode : undefined}
+              onSnapshot={isActiveMessage ? (dataUrl) => onSnapshot && onSnapshot(msg.id, dataUrl) : undefined}
             />
           </div>
         )}
@@ -71,7 +72,7 @@ const Message = memo(function Message({
                   <motion.span
                     key={i}
                     className="inline-block w-1.5 h-1.5 rounded-full"
-                    style={{ background: 'var(--accent-cyan)' }}
+                    style={{ background: 'var(--accent-indigo)' }}
                     animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.2, 0.8] }}
                     transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
                   />
@@ -93,8 +94,8 @@ export const MessageList = memo(function MessageList({
   isSpeakingTextSync,
   analyserNode,
   conversationState,
-  emotion,
-  isPlaying
+  defaultAvatarUrl,
+  onSnapshot
 }) {
   const bottomRef = useRef(null);
 
@@ -123,9 +124,9 @@ export const MessageList = memo(function MessageList({
               isSpeakingTextSync={isSpeakingTextSync}
               analyserNode={analyserNode}
               conversationState={conversationState}
-              emotion={emotion}
-              isPlaying={isPlaying}
               isActiveMessage={msg.id === activeMessageId}
+              defaultAvatarUrl={defaultAvatarUrl}
+              onSnapshot={onSnapshot}
             />
           ))}
         </AnimatePresence>
