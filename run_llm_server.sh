@@ -12,11 +12,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MODEL_PATH="${SCRIPT_DIR}/backend/models/edumentor-Q6_K.gguf"
+MODEL_PATH="${SCRIPT_DIR}/backend/models/EduMentor-Qwen3-Q6_K.gguf"
 
 if [ ! -f "${MODEL_PATH}" ]; then
   echo "ERROR: Model not found at ${MODEL_PATH}"
-  echo "Place your edumentor-Q6_K.gguf file in backend/models/ and retry."
+  echo "Place your EduMentor-Qwen3-Q6_K.gguf file in backend/models/ and retry."
   exit 1
 fi
 
@@ -27,8 +27,8 @@ echo ""
 
 llama-server \
   -m "${MODEL_PATH}" \
-  -c 16384 \
-  -ngl 9999 \
+  -c 4096 \
+  -ngl 20 \
   --host 0.0.0.0 \
   --port 8080 \
   --temp 0.6 \
