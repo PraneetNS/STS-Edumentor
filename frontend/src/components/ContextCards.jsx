@@ -56,7 +56,7 @@ export function ContextCards({ messages = [] }) {
               transition={{ delay: i * 0.1, duration: 0.3 }}
               className="context-card"
             >
-              <Icon className="context-card-icon" style={{ color: 'var(--accent-cyan)' }} />
+              <Icon className="context-card-icon" style={{ color: 'var(--accent-indigo)' }} />
               <span className="context-card-label">{card.label}:</span>
               <span>{card.text}</span>
             </motion.div>
