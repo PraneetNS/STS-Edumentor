@@ -61,7 +61,7 @@ const STATE_CONFIG = {
 function Waveform({ active }) {
   if (!active) return null;
   return (
-    <div className="waveform" style={{ color: 'var(--accent-cyan)' }}>
+    <div className="waveform" style={{ color: 'var(--accent-indigo)' }}>
       {[0,1,2,3,4,5,6].map(i => (
         <motion.div
           key={i}
