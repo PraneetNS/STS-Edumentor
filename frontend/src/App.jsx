@@ -12,7 +12,7 @@ import { LiveTranscript } from './components/LiveTranscript';
 import { VoiceOrb }       from './components/VoiceOrb';
 import { ContextCards }   from './components/ContextCards';
 import { EMOTIONS }       from './components/Avatar/AvatarAnimations';
-import { EduAvatar }      from './components/Avatar/EduAvatar';
+import { MentorCharacter } from './components/MentorCharacter';
 
 import './index.css';
 
@@ -22,6 +22,7 @@ export default function App() {
 
   // ── Conversation state ──────────────────────────────────────────────────
   const {
+    conversations,
     grouped,
     activeId,
     activeConversation,
@@ -32,12 +33,16 @@ export default function App() {
     updateStreamingMessage,
     setStreamingMessageText,
     finishStreamingMessage,
+    saveMessageSnapshot,
   } = useConversationStore();
 
   const messages = activeConversation?.messages ?? [];
 
   // Active message ID ref to update the streaming assistant bubble in real-time
   const activeMsgIdRef = useRef(null);
+
+  // Default static snapshot captured from the live mentor character
+  const [defaultAvatarUrl, setDefaultAvatarUrl] = useState(null);
 
   // Optional: Extracted emotion from LLM (default to NORMAL if none)
   const [emotion, setEmotion] = useState(EMOTIONS.NORMAL);
@@ -125,6 +130,9 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKey);
   }, [toggleRecording, isProcessing]);
 
+  const isMintState = isRecording || isPlaying || conversationState === 'LISTENING' || conversationState === 'SPEAKING';
+  const glowColor = isMintState ? '#10B981' : '#4F46E5';
+
   return (
     <>
       <div className="ambient-bg" aria-hidden="true">
@@ -196,14 +204,7 @@ export default function App() {
                 style={{ gap: '28px' }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <EduAvatar
-                    isRecording={isRecording}
-                    isProcessing={isProcessing}
-                    isPlaying={isPlaying}
-                    conversationState={conversationState}
-                    analyserNode={analyserNode}
-                    emotion={emotion}
-                  />
+                  <div className="mentor-placeholder" />
                 </div>
                 <div style={{
                   display: 'flex',
@@ -218,7 +219,7 @@ export default function App() {
                     letterSpacing: '-0.01em',
                     margin: 0,
                   }}>
-                    Hey, I'm <span style={{ color: '#818cf8' }}>EDI</span>.
+                    Hey, I'm <span style={{ color: '#5457E5' }}>EDI</span>.
                   </p>
                   <p style={{
                     fontSize: '13px',
@@ -242,6 +243,8 @@ export default function App() {
               conversationState={conversationState}
               emotion={emotion}
               isPlaying={isPlaying}
+              defaultAvatarUrl={defaultAvatarUrl}
+              onSnapshot={saveMessageSnapshot}
             />
           </div>
 
@@ -259,6 +262,26 @@ export default function App() {
               </div>
             </div>
           </footer>
+
+          {/* Soft radial glow behind the 3D character */}
+          <div 
+            className={`mentor-glow ${messages.length > 0 ? 'chat-mode' : 'idle-mode'}`} 
+            style={{ backgroundColor: glowColor }}
+          />
+
+          {/* Live 3D Mentor Character (Centered or Footer via CSS transition) */}
+          <div className={`mentor-canvas-wrapper ${messages.length > 0 ? 'chat-mode' : 'idle-mode'}`}>
+            <MentorCharacter
+              state={
+                isRecording ? 'listening' :
+                isProcessing ? 'thinking' :
+                isPlaying ? 'speaking' :
+                'idle'
+              }
+              analyserNode={analyserNode}
+              onSnapshot={!defaultAvatarUrl ? setDefaultAvatarUrl : undefined}
+            />
+          </div>
         </div>
       </motion.div>
     </>
