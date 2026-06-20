@@ -17,3 +17,4 @@
 // style(avatar): adjust tail geometry coordinates - 06/20/2026 17:03:52
 // style(avatar): tune eye white roughness values - 06/20/2026 17:03:52
 // style(avatar): adjust pupil positions for better depth - 06/20/2026 17:03:52
+// style(avatar): tweak feet color to match beak warm accent - 06/20/2026 17:03:53
