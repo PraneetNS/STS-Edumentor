@@ -41,7 +41,7 @@ FastAPI  /ws/voice
 Copy your fine-tuned model to:
 
 ```
-backend/models/edumentor-Q6_K.gguf
+backend/models/EduMentor-Qwen3-Q6_K.gguf
 ```
 
 ### 2. Install Python dependencies
@@ -200,7 +200,7 @@ EduMentor-Voice/
 │   ├── utils/
 │   │   └── audio.py             # PCM conversion + sentence splitting
 │   └── models/
-│       └── edumentor-Q6_K.gguf  # ← place your model here
+│       └── EduMentor-Qwen3-Q6_K.gguf  # ← place your model here
 │
 ├── frontend/
 │   ├── public/
