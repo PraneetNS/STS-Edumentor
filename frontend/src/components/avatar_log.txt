@@ -11,3 +11,4 @@
 // style(frontend): reduce ambient glow blur radius - 06/20/2026 17:03:51
 // style(frontend): adjust mic button hover scale transition - 06/20/2026 17:03:52
 // refactor(frontend): streamline message timeline rendering - 06/20/2026 17:03:52
+// style(frontend): tweak user bubble border color contrast - 06/20/2026 17:03:52
