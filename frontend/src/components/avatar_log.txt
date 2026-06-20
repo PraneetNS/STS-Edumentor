@@ -13,3 +13,4 @@
 // refactor(frontend): streamline message timeline rendering - 06/20/2026 17:03:52
 // style(frontend): tweak user bubble border color contrast - 06/20/2026 17:03:52
 // style(frontend): adjust active status dot breathing pulse - 06/20/2026 17:03:52
+// style(avatar): add transparency option to crown mesh - 06/20/2026 17:03:52
