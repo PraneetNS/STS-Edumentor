@@ -40,13 +40,13 @@ export function AudioReactiveFace({ analyserNode, state, isPlaying }) {
     const targetIntensity = isPlaying ? 2.5 + rms * 10.0 : 1.5;
 
     // Shifting color based on conversational state
-    let emissiveColor = '#00f3ff'; // Default Cyan
+    let emissiveColor = '#5457E5'; // Default Indigo
     if (state === 'listening') {
-      emissiveColor = '#a855f7'; // Purple
+      emissiveColor = '#0EA371'; // Mint
     } else if (state === 'thinking') {
-      emissiveColor = '#38bdf8'; // Sky Blue
+      emissiveColor = '#5457E5'; // Indigo
     } else if (state === 'speaking') {
-      emissiveColor = '#10b981'; // Emerald Green
+      emissiveColor = '#0EA371'; // Mint
     }
 
     // Apply scaling and glow with linear interpolation (smoothing)
@@ -95,7 +95,7 @@ export function AudioReactiveFace({ analyserNode, state, isPlaying }) {
         <sphereGeometry args={[0.08, 16, 16]} />
         <meshStandardMaterial 
           color="#ffffff" 
-          emissive="#00f3ff" 
+          emissive="#5457E5" 
           emissiveIntensity={2.0} 
           roughness={0.1}
           metalness={0.9}
@@ -107,7 +107,7 @@ export function AudioReactiveFace({ analyserNode, state, isPlaying }) {
         <sphereGeometry args={[0.08, 16, 16]} />
         <meshStandardMaterial 
           color="#ffffff" 
-          emissive="#00f3ff" 
+          emissive="#5457E5" 
           emissiveIntensity={2.0} 
           roughness={0.1}
           metalness={0.9}
@@ -119,7 +119,7 @@ export function AudioReactiveFace({ analyserNode, state, isPlaying }) {
         <boxGeometry args={[0.34, 0.08, 0.08]} />
         <meshStandardMaterial 
           color="#ffffff" 
-          emissive="#00f3ff" 
+          emissive="#5457E5" 
           emissiveIntensity={1.5} 
           roughness={0.1}
           metalness={0.9}
