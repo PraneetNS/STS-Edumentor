@@ -54,3 +54,10 @@ def test_unclosed_speak_tag():
     final_events = parser.finalize()
     assert len(final_events) == 0
     assert parser.buffer == ""
+
+def test_empty_input():
+    parser = StreamingDualParser()
+    events = parser.feed("")
+    assert len(events) == 0
+    events = parser.feed(None)
+    assert len(events) == 0
