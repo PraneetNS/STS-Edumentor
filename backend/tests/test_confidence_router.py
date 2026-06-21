@@ -99,3 +99,10 @@ def test_show_tag_no_attributes():
     assert events[0]["show_type"] == ""
     assert events[0]["lang"] == ""
     assert events[0]["content"] == "Generic show content"
+
+def test_followup_tag_cleaning():
+    parser = StreamingDualParser()
+    events = parser.feed("<followup>Should we try <another> tag?</followup>")
+    assert len(events) == 1
+    assert events[0]["type"] == "followup"
+    assert events[0]["content"] == "Should we try  tag?"
