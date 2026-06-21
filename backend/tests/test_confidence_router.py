@@ -81,3 +81,12 @@ def test_tag_nesting_mitigation():
     assert events[0]["type"] == "text"
     # The first complete pair is <speak>First <speak>Second</speak>
     assert events[0]["content"] == "First Second"
+
+def test_show_tag_single_attribute():
+    parser = StreamingDualParser()
+    events = parser.feed('<show type="roadmap">Roadmap content</show>')
+    assert len(events) == 1
+    assert events[0]["type"] == "show"
+    assert events[0]["show_type"] == "roadmap"
+    assert events[0]["lang"] == ""
+    assert events[0]["content"] == "Roadmap content"
