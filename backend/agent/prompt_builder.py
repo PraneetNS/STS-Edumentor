@@ -97,9 +97,9 @@ _INTENT_TEMPLATES: Dict[Intent, str] = {
     ),
     Intent.QUIZ_REQUEST: (
         "Create an engaging quiz question about the recent topic. "
-        "Ask ONE clear, specific question. "
-        "Wait for the student's answer before revealing the correct answer. "
-        "Make it challenging but fair for their level."
+        "Ask ONE clear, specific question inside speak tags. "
+        "You can wrap multiple choice options inside show tags with type=\"checklist\". "
+        "Wait for the student's answer before revealing the correct answer."
     ),
     Intent.REPEAT_LAST: (
         "The student wants you to repeat or re-state your last explanation. "
