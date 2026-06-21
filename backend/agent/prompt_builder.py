@@ -108,9 +108,9 @@ _INTENT_TEMPLATES: Dict[Intent, str] = {
     ),
     Intent.SIMPLIFY: (
         "The student wants a simpler explanation. "
-        "Re-explain the concept using much simpler language and a fresh, concrete analogy. "
-        "Avoid technical terms entirely if possible. "
-        "Think of explaining to someone who has never coded before."
+        "Re-explain the concept inside speak tags using simple language and a fresh analogy. "
+        "You can wrap a simplified visual representation inside show tags with type=\"workflow\". "
+        "Avoid technical terms entirely if possible."
     ),
     Intent.FOLLOW_UP: (
         "The student wants to know more about the previous topic. "
