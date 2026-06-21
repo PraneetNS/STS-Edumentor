@@ -90,3 +90,12 @@ def test_show_tag_single_attribute():
     assert events[0]["show_type"] == "roadmap"
     assert events[0]["lang"] == ""
     assert events[0]["content"] == "Roadmap content"
+
+def test_show_tag_no_attributes():
+    parser = StreamingDualParser()
+    events = parser.feed("<show>Generic show content</show>")
+    assert len(events) == 1
+    assert events[0]["type"] == "show"
+    assert events[0]["show_type"] == ""
+    assert events[0]["lang"] == ""
+    assert events[0]["content"] == "Generic show content"
