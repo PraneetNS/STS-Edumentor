@@ -26,4 +26,36 @@ class StreamingDualParser:
             return []
         self.buffer += chunk
         events: list[dict] = []
+
+        while True:
+            speak_match = SPEAK_RE.search(self.buffer)
+            show_match = SHOW_RE.search(self.buffer)
+            followup_match = FOLLOWUP_RE.search(self.buffer)
+
+            # Find which complete tag starts first in the buffer
+            best_match = None
+            best_start = len(self.buffer)
+            match_type = None
+
+            if speak_match and speak_match.start() < best_start:
+                best_match = speak_match
+                best_start = speak_match.start()
+                match_type = "speak"
+
+            if show_match and show_match.start() < best_start:
+                best_match = show_match
+                best_start = show_match.start()
+                match_type = "show"
+
+            if followup_match and followup_match.start() < best_start:
+                best_match = followup_match
+                best_start = followup_match.start()
+                match_type = "followup"
+
+            if not best_match:
+                break
+
+            # Placeholder to process best_match, then advance buffer
+            break
+
         return events
