@@ -29,3 +29,20 @@ def test_malformed_tag_does_not_leak():
     assert "<followup>" not in combined_speak
     assert "Want to know more" not in combined_speak
     print("PASS — malformed tag did not leak into speak stream")
+
+def test_show_tag_attributes():
+    parser = StreamingDualParser()
+    events = parser.feed('<show type="code" lang="python">print("Hello")</show>')
+    assert len(events) == 1
+    assert events[0]["type"] == "show"
+    assert events[0]["show_type"] == "code"
+    assert events[0]["lang"] == "python"
+    assert events[0]["content"] == 'print("Hello")'
+
+def test_speak_tag_cleaning():
+    parser = StreamingDualParser()
+    # If the text has nested tags or stray angle brackets inside speak, they should be cleaned
+    events = parser.feed("<speak>This is <b>bold</b> text & <stray> bracket.</speak>")
+    assert len(events) == 1
+    assert events[0]["type"] == "text"
+    assert events[0]["content"] == "This is bold text & stray bracket."
