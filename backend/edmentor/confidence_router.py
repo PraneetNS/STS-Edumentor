@@ -17,3 +17,13 @@ class StreamingDualParser:
     """
     def __init__(self) -> None:
         self.buffer: str = ""
+
+    def feed(self, chunk: str) -> list[dict]:
+        """
+        Feed a chunk of streamed text to the parser and parse any complete tags.
+        """
+        if not chunk:
+            return []
+        self.buffer += chunk
+        events: list[dict] = []
+        return events
