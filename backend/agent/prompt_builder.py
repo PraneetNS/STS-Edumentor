@@ -143,8 +143,8 @@ _INTENT_TEMPLATES: Dict[Intent, str] = {
     ),
     Intent.CAREER_GUIDANCE: (
         "The student is asking about career advice in tech. "
-        "Be encouraging and realistic. Provide practical, actionable guidance. "
-        "Tailor your advice to their current skill level."
+        "Provide practical guidance inside speak tags. Tailor advice to their skill level. "
+        "You can wrap career roadmaps or checklists inside show tags (e.g. type=\"roadmap\" or type=\"checklist\")."
     ),
     Intent.UNSAFE: (
         "The student's message cannot be addressed. "
