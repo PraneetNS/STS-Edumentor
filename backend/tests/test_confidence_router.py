@@ -73,3 +73,11 @@ def test_multiple_tags_in_single_chunk():
     assert events[1]["show_type"] == "table"
     assert events[2]["type"] == "followup"
     assert events[2]["content"] == "Followup 1"
+
+def test_tag_nesting_mitigation():
+    parser = StreamingDualParser()
+    events = parser.feed("<speak>First <speak>Second</speak> Third</speak>")
+    assert len(events) == 1
+    assert events[0]["type"] == "text"
+    # The first complete pair is <speak>First <speak>Second</speak>
+    assert events[0]["content"] == "First Second"
