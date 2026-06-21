@@ -82,6 +82,7 @@ class StreamingDualParser:
             if match_type == "speak":
                 content = best_match.group(1)
                 cleaned_content = self._clean_speak_text(content)
+                logger.debug("Matched speak tag, length: %d", len(cleaned_content))
                 events.append({
                     "type": "text",
                     "content": cleaned_content
@@ -91,6 +92,7 @@ class StreamingDualParser:
                 lang = best_match.group(2) or ""
                 content = best_match.group(3)
                 cleaned_content = self._clean_show_text(content)
+                logger.debug("Matched show tag, type: %s, lang: %s", show_type, lang)
                 events.append({
                     "type": "show",
                     "content": cleaned_content,
@@ -100,6 +102,7 @@ class StreamingDualParser:
             elif match_type == "followup":
                 content = best_match.group(1)
                 cleaned_content = self._clean_speak_text(content)
+                logger.debug("Matched followup tag, length: %d", len(cleaned_content))
                 events.append({
                     "type": "followup",
                     "content": cleaned_content
