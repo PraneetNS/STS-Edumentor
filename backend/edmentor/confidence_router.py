@@ -118,6 +118,8 @@ class StreamingDualParser:
         Finalize the parsing. Any remaining unclosed tags in the buffer are discarded
         to prevent raw/malformed tag syntax leakage to the user.
         """
+        if self.buffer:
+            logger.warning("Finalizing StreamingDualParser with unclosed tag content remaining: %s", self.buffer)
         self.buffer = ""
         return []
 
