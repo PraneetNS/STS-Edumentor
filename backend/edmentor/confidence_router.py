@@ -112,3 +112,23 @@ class StreamingDualParser:
         """
         self.buffer = ""
         return []
+
+
+def to_sse(event: dict) -> str:
+    """
+    Format a parser event dict into Server-Sent Events (SSE) format.
+    """
+    import json
+    event_type = event["type"]
+    if event_type == "text":
+        return f"event: text\ndata: {event['content']}\n\n"
+    elif event_type == "show":
+        payload = {
+            "type": event.get("show_type", ""),
+            "lang": event.get("lang", ""),
+            "content": event.get("content", "")
+        }
+        return f"event: show\ndata: {json.dumps(payload)}\n\n"
+    elif event_type == "followup":
+        return f"event: followup\ndata: {event['content']}\n\n"
+    return ""
