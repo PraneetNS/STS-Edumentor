@@ -1,4 +1,7 @@
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Non-greedy matching pattern for <speak>...</speak>
 SPEAK_RE = re.compile(r"<speak>(.*?)</speak>", re.DOTALL)
