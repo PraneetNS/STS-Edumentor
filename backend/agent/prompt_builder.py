@@ -91,9 +91,9 @@ _INTENT_TEMPLATES: Dict[Intent, str] = {
     ),
     Intent.DEBUGGING: (
         "Help the student debug their issue. "
-        "First identify what the error most likely means. "
-        "Then suggest the most common fix. "
-        "Explain WHY the error occurred so they learn, not just how to fix it."
+        "First identify what the error most likely means inside speak tags. "
+        "Wrap the suggested fix or corrected code inside show tags with type=\"code\". "
+        "Explain WHY the error occurred inside speak tags so they learn."
     ),
     Intent.QUIZ_REQUEST: (
         "Create an engaging quiz question about the recent topic. "
