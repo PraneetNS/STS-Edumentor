@@ -18,6 +18,24 @@ class StreamingDualParser:
     def __init__(self) -> None:
         self.buffer: str = ""
 
+    def _clean_speak_text(self, text: str) -> str:
+        """
+        Clean speak/followup content: strip tags and angle brackets.
+        """
+        cleaned = re.sub(r"</?[a-zA-Z][^>]*>", "", text)
+        cleaned = cleaned.replace("<", "").replace(">", "")
+        return cleaned
+
+    def _clean_show_text(self, text: str) -> str:
+        """
+        Clean show content: strip specific tag names but preserve other angle brackets.
+        """
+        cleaned = text
+        for tag in ["<speak>", "</speak>", "<show>", "</show>", "<followup>", "</followup>"]:
+            cleaned = cleaned.replace(tag, "")
+        cleaned = re.sub(r'<show\s+[^>]*>', '', cleaned)
+        return cleaned
+
     def feed(self, chunk: str) -> list[dict]:
         """
         Feed a chunk of streamed text to the parser and parse any complete tags.
