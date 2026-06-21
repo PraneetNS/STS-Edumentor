@@ -106,3 +106,16 @@ def test_followup_tag_cleaning():
     assert len(events) == 1
     assert events[0]["type"] == "followup"
     assert events[0]["content"] == "Should we try  tag?"
+
+def test_to_sse():
+    from edmentor.confidence_router import to_sse
+    
+    e_text = {"type": "text", "content": "Hello"}
+    assert to_sse(e_text) == "event: text\ndata: Hello\n\n"
+    
+    e_show = {"type": "show", "show_type": "code", "lang": "python", "content": "print()"}
+    assert "event: show\ndata: " in to_sse(e_show)
+    assert 'type": "code"' in to_sse(e_show)
+    
+    e_followup = {"type": "followup", "content": "More?"}
+    assert to_sse(e_followup) == "event: followup\ndata: More?\n\n"
