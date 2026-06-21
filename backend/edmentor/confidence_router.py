@@ -104,3 +104,11 @@ class StreamingDualParser:
             self.buffer = self.buffer[best_match.end():]
 
         return events
+
+    def finalize(self) -> list[dict]:
+        """
+        Finalize the parsing. Any remaining unclosed tags in the buffer are discarded
+        to prevent raw/malformed tag syntax leakage to the user.
+        """
+        self.buffer = ""
+        return []
