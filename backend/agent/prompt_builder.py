@@ -34,6 +34,7 @@ logger = logging.getLogger("edumentor.agent.prompt_builder")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Base system prompt (always injected)
+# Contains instructions for dual output mode: <speak>, <show>, and <followup> tags.
 # ─────────────────────────────────────────────────────────────────────────────
 
 _BASE_SYSTEM = (
