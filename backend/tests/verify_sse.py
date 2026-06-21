@@ -1,7 +1,6 @@
 import sys
 import os
 import asyncio
-import json
 
 # Add the parent folder of tests to the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
