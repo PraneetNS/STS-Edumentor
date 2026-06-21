@@ -46,3 +46,11 @@ def test_speak_tag_cleaning():
     assert len(events) == 1
     assert events[0]["type"] == "text"
     assert events[0]["content"] == "This is bold text &  bracket."
+
+def test_unclosed_speak_tag():
+    parser = StreamingDualParser()
+    events = parser.feed("<speak>Incomplete text")
+    assert len(events) == 0
+    final_events = parser.finalize()
+    assert len(final_events) == 0
+    assert parser.buffer == ""
