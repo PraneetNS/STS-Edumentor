@@ -73,7 +73,34 @@ class StreamingDualParser:
             if not best_match:
                 break
 
-            # Placeholder to process best_match, then advance buffer
-            break
+            # Process best match
+            if match_type == "speak":
+                content = best_match.group(1)
+                cleaned_content = self._clean_speak_text(content)
+                events.append({
+                    "type": "text",
+                    "content": cleaned_content
+                })
+            elif match_type == "show":
+                show_type = best_match.group(1) or ""
+                lang = best_match.group(2) or ""
+                content = best_match.group(3)
+                cleaned_content = self._clean_show_text(content)
+                events.append({
+                    "type": "show",
+                    "content": cleaned_content,
+                    "show_type": show_type,
+                    "lang": lang
+                })
+            elif match_type == "followup":
+                content = best_match.group(1)
+                cleaned_content = self._clean_speak_text(content)
+                events.append({
+                    "type": "followup",
+                    "content": cleaned_content
+                })
+
+            # Consume buffer up to the end of the processed match
+            self.buffer = self.buffer[best_match.end():]
 
         return events
