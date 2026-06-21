@@ -141,4 +141,6 @@ def to_sse(event: dict) -> str:
         return f"event: show\ndata: {json.dumps(payload)}\n\n"
     elif event_type == "followup":
         return f"event: followup\ndata: {event['content']}\n\n"
+    else:
+        logger.warning("Attempted to format unknown event type to SSE: %s", event_type)
     return ""
