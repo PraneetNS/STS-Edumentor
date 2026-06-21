@@ -114,8 +114,8 @@ _INTENT_TEMPLATES: Dict[Intent, str] = {
     ),
     Intent.FOLLOW_UP: (
         "The student wants to know more about the previous topic. "
-        "Continue where you left off. Add one more layer of depth or a new dimension. "
-        "Build naturally on what was already discussed."
+        "Continue where you left off inside speak tags. Add one more layer of depth or a new dimension. "
+        "You can wrap structured concepts inside show tags (e.g. type=\"table\" or type=\"roadmap\")."
     ),
     Intent.OFF_TOPIC: (
         "The student asked about something outside of programming and computer science. "
