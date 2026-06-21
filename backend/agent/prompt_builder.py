@@ -81,7 +81,7 @@ _INTENT_TEMPLATES: Dict[Intent, str] = {
     Intent.CONCEPT_EXPLANATION: (
         "Explain the concept clearly. Start with a simple real-world analogy, "
         "then explain how it works technically. End with a brief example. "
-        "Ask one simple comprehension question at the end."
+        "Do not ask questions outside the followup tag."
     ),
     Intent.CODE_HELP: (
         "Help the student write or understand code. "
