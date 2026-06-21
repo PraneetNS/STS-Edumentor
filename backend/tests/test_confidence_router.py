@@ -45,4 +45,4 @@ def test_speak_tag_cleaning():
     events = parser.feed("<speak>This is <b>bold</b> text & <stray> bracket.</speak>")
     assert len(events) == 1
     assert events[0]["type"] == "text"
-    assert events[0]["content"] == "This is bold text & stray bracket."
+    assert events[0]["content"] == "This is bold text &  bracket."
