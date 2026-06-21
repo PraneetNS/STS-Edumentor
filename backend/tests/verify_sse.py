@@ -67,7 +67,10 @@ async def run_verification():
                 print(to_sse(event), end="")
                 
         # Finalize and print any remaining
-        for event in parser.finalize():
+        final_events = parser.finalize()
+        if final_events:
+            print(f"Warning: finalize yielded unexpected events: {final_events}")
+        for event in final_events:
             print(to_sse(event), end="")
             
         print("-" * 40)
