@@ -20,7 +20,8 @@ class StreamingDualParser:
 
     def _clean_speak_text(self, text: str) -> str:
         """
-        Clean speak/followup content: strip tags and angle brackets.
+        Clean speak/followup content. This method strips tags and raw angle brackets
+        to ensure they are never spoken aloud by the TTS engine.
         """
         cleaned = re.sub(r"</?[a-zA-Z][^>]*>", "", text)
         cleaned = cleaned.replace("<", "").replace(">", "")
