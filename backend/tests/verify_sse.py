@@ -49,6 +49,7 @@ async def run_verification():
     print("=" * 60)
     print("           VERIFICATION OF STREAMING DUAL PARSER SSE           ")
     print("=" * 60)
+    print("Starting verification of SSE parsing queries...")
     
     for query_name, raw_response in MOCK_RESPONSES.items():
         print(f"\n--- Testing Query: {query_name.upper()} ---")
