@@ -29,7 +29,8 @@ class StreamingDualParser:
 
     def _clean_show_text(self, text: str) -> str:
         """
-        Clean show content: strip specific tag names but preserve other angle brackets.
+        Clean show content. Strips specific tag names (such as <speak>, <show>, etc.)
+        but preserves comparative angle brackets inside programming code.
         """
         cleaned = text
         for tag in ["<speak>", "</speak>", "<show>", "</show>", "<followup>", "</followup>"]:
