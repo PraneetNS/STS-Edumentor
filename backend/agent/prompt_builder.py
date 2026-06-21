@@ -85,8 +85,8 @@ _INTENT_TEMPLATES: Dict[Intent, str] = {
     ),
     Intent.CODE_HELP: (
         "Help the student write or understand code. "
-        "Describe what the code does in plain language. "
-        "If suggesting code, describe it verbally (no raw code blocks — it will be spoken). "
+        "Describe what the code does inside speak tags. "
+        "Wrap any code blocks inside show tags with type=\"code\" and lang. "
         "Explain the logic step by step."
     ),
     Intent.DEBUGGING: (
