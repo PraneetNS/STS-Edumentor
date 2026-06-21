@@ -12,3 +12,20 @@ def test_basic_parse():
     assert len(events) == 1
     assert events[0]["type"] == "text"
     assert events[0]["content"] == "Hello"
+
+def test_malformed_tag_does_not_leak():
+    parser = StreamingDualParser()
+    chunks = [
+        "<speak>Here is the answer.</speak>",
+        "<followup>Want to know more",  # deliberately unclosed
+    ]
+    speak_out = []
+    for c in chunks:
+        for e in parser.feed(c):
+            if e["type"] == "text":
+                speak_out.append(e["content"])
+    final = parser.finalize()
+    combined_speak = " ".join(speak_out)
+    assert "<followup>" not in combined_speak
+    assert "Want to know more" not in combined_speak
+    print("PASS — malformed tag did not leak into speak stream")
