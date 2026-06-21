@@ -61,3 +61,15 @@ def test_empty_input():
     assert len(events) == 0
     events = parser.feed(None)
     assert len(events) == 0
+
+def test_multiple_tags_in_single_chunk():
+    parser = StreamingDualParser()
+    events = parser.feed("<speak>Speak 1</speak><show type=\"table\">Show 1</show><followup>Followup 1</followup>")
+    assert len(events) == 3
+    assert events[0]["type"] == "text"
+    assert events[0]["content"] == "Speak 1"
+    assert events[1]["type"] == "show"
+    assert events[1]["content"] == "Show 1"
+    assert events[1]["show_type"] == "table"
+    assert events[2]["type"] == "followup"
+    assert events[2]["content"] == "Followup 1"
