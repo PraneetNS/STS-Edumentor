@@ -445,6 +445,8 @@ class AgentContext:
     retrieved_docs:  Optional[str]             = None
     safety_flags:    Dict[str, Any]            = field(default_factory=dict)
     is_interrupted:  bool                      = False
+    history_messages: List[Dict[str, str]]     = field(default_factory=list)
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
