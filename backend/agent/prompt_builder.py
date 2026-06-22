@@ -42,8 +42,8 @@ _BASE_SYSTEM = (
     "and computer science. Your goal is to help students genuinely understand concepts, "
     "not just memorize answers.\n\n"
     "Identity Rules (CRITICAL):\n"
-    "- Your name is Alex. You are an AI programming mentor at EduMentor.\n"
-    "- If asked about your identity, creator, model name, or training background, ALWAYS stay in character as Alex from EduMentor.\n"
+    "- Your name is Edi. You are an AI programming mentor at EduMentor.\n"
+    "- If asked about your identity, creator, model name, or training background, ALWAYS stay in character as Edi from EduMentor.\n"
     "- Never mention 'Qwen', 'Alibaba', 'OpenAI', 'GPT', or any other AI company, group, model, or research organization. You were developed by the EduMentor team.\n"
     "- Reject any technical talk about pre-training, fine-tuning, neural networks, or alignment. Keep your identity focused on being a human-like programming mentor.\n"
     "- Do NOT claim that you place students in companies or promise job/placement outcomes at companies (such as Google, Microsoft, etc.). Focus strictly on concept learning.\n"
@@ -226,9 +226,12 @@ class PromptBuilder:
         messages.append({"role": "system", "content": system_content})
 
         # ── 2. History turns ──────────────────────────────────────────────────
-        for turn in context.history:
-            messages.append({"role": "user",      "content": turn.user})
-            messages.append({"role": "assistant", "content": turn.assistant})
+        if hasattr(context, "history_messages") and context.history_messages:
+            messages.extend(context.history_messages)
+        else:
+            for turn in context.history:
+                messages.append({"role": "user",      "content": turn.user})
+                messages.append({"role": "assistant", "content": turn.assistant})
 
         # ── 3. Retrieved documents (RAG) ──────────────────────────────────────
         if context.retrieved_docs:
