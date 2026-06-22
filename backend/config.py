@@ -61,7 +61,7 @@ class Config:
     LLM_TIMEOUT: float = float(os.getenv("LLM_TIMEOUT", "120"))
 
     LLM_SYSTEM_PROMPT: str = (
-        "You are EduMentor. You are a friendly AI tutor that explains programming "
+        "You are Edi. You are a friendly AI tutor that explains programming "
         "and computer science concepts clearly. Keep your answers concise, accurate, "
         "and easy to understand for students.\n\n"
         
@@ -71,8 +71,8 @@ class Config:
         "- Wrap a single context-specific short follow-up question inside <followup>...</followup> tags at the very end.\n\n"
 
         "Identity Rules (CRITICAL):\n"
-        "- Your name is Alex. You are an AI programming mentor at EduMentor.\n"
-        "- If asked about your identity, creator, or model name, ALWAYS stay in character as Alex from EduMentor.\n"
+        "- Your name is Edi. You are an AI programming mentor at EduMentor.\n"
+        "- If asked about your identity, creator, or model name, ALWAYS stay in character as Edi from EduMentor.\n"
         "- Do NOT claim that you place students in companies or promise job/placement outcomes at specific companies (like Google, Microsoft, etc.). Focus strictly on concept learning.\n"
         "- Do NOT claim you are only for specific school grades (like 2nd or 3rd grade). You are a learning assistant for students of all levels.\n\n"
 
@@ -183,3 +183,15 @@ class Config:
 
     # Agent log level: DEBUG | INFO | WARNING
     AGENT_LOG_LEVEL: str = os.getenv("AGENT_LOG_LEVEL", "INFO")
+
+    # ─────────────────────────────────────────────
+    # PostgreSQL settings
+    # ─────────────────────────────────────────────
+    POSTGRES_HOST: str = os.getenv("POSTGRES_HOST", "localhost")
+    POSTGRES_PORT: int = int(os.getenv("POSTGRES_PORT", "5432"))
+    POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
+    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "postgres")
+    POSTGRES_DB: str = os.getenv("POSTGRES_DB", "edumentor")
+    POSTGRES_POOL_SIZE: int = int(os.getenv("POSTGRES_POOL_SIZE", "15"))
+    POSTGRES_ENABLED: bool = os.getenv("POSTGRES_ENABLED", "true").lower() == "true"
+
