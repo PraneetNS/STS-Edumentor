@@ -18,4 +18,21 @@ node_modules/
 frontend/dist/
 .DS_Store
 Thumbs.db
+# Logs
 *.log
+backend/logs/
+
+# Gemini generated images
+Gemini_Generated_Image_*.png
+
+# Mascot previews and raw assets
+frontend/public/mascot_preview_*
+frontend/public/mascot.png
+frontend/public/mascot.jpg
+
+# Python script helpers
+crop_standing.py
+inspect_circle.py
+
+# Tests
+backend/tests/
