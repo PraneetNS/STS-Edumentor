@@ -11,7 +11,6 @@ import { MessageList }    from './components/MessageList';
 import { LiveTranscript } from './components/LiveTranscript';
 import { VoiceOrb }       from './components/VoiceOrb';
 import { ContextCards }   from './components/ContextCards';
-import { EMOTIONS }       from './components/Avatar/AvatarAnimations';
 import { MentorCharacter } from './components/MentorCharacter';
 
 import './index.css';
@@ -44,9 +43,6 @@ export default function App() {
   // Default static snapshot captured from the live mentor character
   const [defaultAvatarUrl, setDefaultAvatarUrl] = useState(null);
 
-  // Optional: Extracted emotion from LLM (default to NORMAL if none)
-  const [emotion, setEmotion] = useState(EMOTIONS.NORMAL);
-
   // ── Voice pipeline ──────────────────────────────────────────────────────
   const {
     isRecording,
@@ -68,28 +64,23 @@ export default function App() {
     onThinking: () => {
       const msgId = addMessage('assistant', '', { isStreaming: true });
       activeMsgIdRef.current = msgId;
-      setEmotion(EMOTIONS.THINKING);
     },
     onTextUpdate: (fullText) => {
       if (activeMsgIdRef.current) {
         setStreamingMessageText(activeMsgIdRef.current, fullText);
       }
-      if (fullText.includes('great') || fullText.includes('excellent')) setEmotion(EMOTIONS.ENCOURAGING);
-      if (fullText.includes('!') && fullText.length > 50) setEmotion(EMOTIONS.EXCITED);
     },
     onFinished: () => {
       if (activeMsgIdRef.current) {
         finishStreamingMessage(activeMsgIdRef.current);
         activeMsgIdRef.current = null;
       }
-      setEmotion(EMOTIONS.NORMAL);
     },
     onInterrupt: () => {
       if (activeMsgIdRef.current) {
         finishStreamingMessage(activeMsgIdRef.current);
         activeMsgIdRef.current = null;
       }
-      setEmotion(EMOTIONS.NORMAL);
     }
   });
 
@@ -103,11 +94,9 @@ export default function App() {
 
     if (status === 'disconnected' && prev !== 'connecting') {
       addToast('Connection lost. Please check the backend server.', 'warning');
-      setEmotion(EMOTIONS.CONFUSED);
     }
     if (status?.startsWith('error:')) {
       addToast(`Pipeline error: ${status.replace('error: ', '')}`, 'error');
-      setEmotion(EMOTIONS.CONFUSED);
     }
     if (status === 'Mic access denied') {
       addToast('Microphone access denied. Please allow mic access in your browser.', 'error');
@@ -171,7 +160,9 @@ export default function App() {
                 <PanelLeft size={18} />
               </button>
               <div className="header-logo">
-                <div className="header-logo-icon">✦</div>
+                <div className="header-logo-icon" style={{ background: 'transparent', boxShadow: 'none', padding: 0 }}>
+                  <img src="/mascot.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
+                </div>
                 <div>
                   <div className="header-title">
                     {activeConversation?.title === 'New Conversation' ? 'EduMentor' : activeConversation?.title ?? 'EduMentor'}
@@ -182,7 +173,10 @@ export default function App() {
             </div>
 
             {/* Connection Status */}
-            <div className="status-badge">
+            <div className={`status-badge ${
+              status === 'connected' && !isRecording && !isProcessing && !isPlaying ? 'online' :
+              status !== 'connected' ? 'connecting' : ''
+            }`}>
               <div className={`status-dot ${
                 isRecording ? 'recording' :
                 isProcessing ? 'processing' :
@@ -204,7 +198,21 @@ export default function App() {
                 style={{ gap: '28px' }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <div className="mentor-placeholder" />
+                  <motion.div
+                    layoutId="mentor-canvas"
+                    className="mentor-canvas-wrapper idle-mode"
+                  >
+                    <MentorCharacter
+                      state={
+                        isRecording ? 'listening' :
+                        isProcessing ? 'thinking' :
+                        isPlaying ? 'speaking' :
+                        'idle'
+                      }
+                      analyserNode={analyserNode}
+                      onSnapshot={!defaultAvatarUrl ? setDefaultAvatarUrl : undefined}
+                    />
+                  </motion.div>
                 </div>
                 <div style={{
                   display: 'flex',
@@ -241,8 +249,6 @@ export default function App() {
               isSpeakingTextSync={isSpeakingTextSync}
               analyserNode={analyserNode}
               conversationState={conversationState}
-              emotion={emotion}
-              isPlaying={isPlaying}
               defaultAvatarUrl={defaultAvatarUrl}
               onSnapshot={saveMessageSnapshot}
             />
@@ -270,18 +276,23 @@ export default function App() {
           />
 
           {/* Live 3D Mentor Character (Centered or Footer via CSS transition) */}
-          <div className={`mentor-canvas-wrapper ${messages.length > 0 ? 'chat-mode' : 'idle-mode'}`}>
-            <MentorCharacter
-              state={
-                isRecording ? 'listening' :
-                isProcessing ? 'thinking' :
-                isPlaying ? 'speaking' :
-                'idle'
-              }
-              analyserNode={analyserNode}
-              onSnapshot={!defaultAvatarUrl ? setDefaultAvatarUrl : undefined}
-            />
-          </div>
+          {messages.length > 0 && (
+            <motion.div
+              layoutId="mentor-canvas"
+              className="mentor-canvas-wrapper chat-mode"
+            >
+              <MentorCharacter
+                state={
+                  isRecording ? 'listening' :
+                  isProcessing ? 'thinking' :
+                  isPlaying ? 'speaking' :
+                  'idle'
+                }
+                analyserNode={analyserNode}
+                onSnapshot={!defaultAvatarUrl ? setDefaultAvatarUrl : undefined}
+              />
+            </motion.div>
+          )}
         </div>
       </motion.div>
     </>
