@@ -60,7 +60,7 @@ export const StatusBar = memo(function StatusBar({
 
   return (
     <div
-      className="status-badge"
+      className={`status-badge ${status === 'connecting' ? 'connecting' : ''}`}
       aria-label={`Status: ${info.label}`}
       aria-live="polite"
     >
