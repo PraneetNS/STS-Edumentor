@@ -53,6 +53,7 @@ from agent import (
     SessionSummarizer,
     StudentProfileManager,
 )
+from agent.database import DatabaseManager
 
 silero_vad_model = None
 
@@ -99,13 +100,14 @@ llm_engine:        Optional[LLMEngine]            = None
 kokoro_engine:     Optional[KokoroEngine]         = None
 agent_controller:  Optional[AgentController]      = None
 interrupt_manager: Optional[InterruptManager]     = None
+db_manager:        Optional[DatabaseManager]      = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load all ML models and agent components once at startup; release on shutdown."""
     global whisper_engine, llm_engine, kokoro_engine, silero_vad_model
-    global agent_controller, interrupt_manager
+    global agent_controller, interrupt_manager, db_manager
 
     logger.info("=" * 60)
     logger.info("  EduMentor Voice -- Starting up")
@@ -113,6 +115,10 @@ async def lifespan(app: FastAPI):
 
     # Set up agent file logger
     _setup_agent_file_logger()
+
+    # Load database pool
+    db_manager = DatabaseManager()
+    await db_manager.initialize()
 
     # Load core engines sequentially (each may use GPU memory)
     whisper_engine = WhisperEngine()
@@ -154,6 +160,7 @@ async def lifespan(app: FastAPI):
             interrupt_manager   = interrupt_manager,
             intent_enabled      = Config.AGENT_INTENT_CLASSIFY,
             safety_enabled      = Config.AGENT_SAFETY_ENABLED,
+            db_manager          = db_manager,
         )
         logger.info("[OK] Agent Layer ready.")
     else:
@@ -169,6 +176,8 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down engines ...")
     if llm_engine:
         await llm_engine.aclose()
+    if db_manager:
+        await db_manager.close()
     logger.info("Goodbye.")
 
 
@@ -257,6 +266,7 @@ async def voice_endpoint(websocket: WebSocket):
     """
     await websocket.accept()
     logger.info("Client connected: %s", websocket.client)
+    session_id = websocket.query_params.get("session_id") or f"{websocket.client.host}:{websocket.client.port}"
 
     import numpy as np
     loop = asyncio.get_running_loop()
@@ -307,7 +317,6 @@ async def voice_endpoint(websocket: WebSocket):
                     )
                     if live_text:
                         # Apply speech correction normalization
-                        session_id = f"{websocket.client.host}:{websocket.client.port}"
                         normalized_text = speech_normalizer.normalize(live_text, session_id=session_id)
                         latest_live_transcript = normalized_text
                         
@@ -408,7 +417,6 @@ async def voice_endpoint(websocket: WebSocket):
                                     
                                     # Save interrupt state BEFORE cancellation
                                     if agent_controller and pipeline_task and not pipeline_task.done():
-                                        session_id = f"{websocket.client.host}:{websocket.client.port}"
                                         partial    = agent_controller.get_partial_response(session_id)
                                         topic      = agent_controller.get_current_topic(session_id)
                                         interrupt_manager.save_state(
@@ -483,7 +491,6 @@ async def voice_endpoint(websocket: WebSocket):
 
                     # ── Save interrupt state BEFORE cancellation ──────────────
                     if agent_controller and pipeline_task and not pipeline_task.done():
-                        session_id = f"{websocket.client.host}:{websocket.client.port}"
                         partial    = agent_controller.get_partial_response(session_id)
                         topic      = agent_controller.get_current_topic(session_id)
                         interrupt_manager.save_state(
@@ -562,7 +569,8 @@ async def _run_pipeline(
     }
 
     loop = asyncio.get_running_loop()
-    session_id = f"{websocket.client.host}:{websocket.client.port}"
+    session_id = websocket.query_params.get("session_id") or f"{websocket.client.host}:{websocket.client.port}"
+    user_id = websocket.query_params.get("user_id") or session_id
 
     # ── 1. STT ───────────────────────────────────────────────────────────────
     audio_array = int16_bytes_to_float32(raw_pcm)
@@ -637,7 +645,7 @@ async def _run_pipeline(
     # ── 3. LLM streaming + TTS ────────────────────────────────────────────────
     if agent_controller is not None:
         # ── Agent path: full pipeline with intent, memory, safety, emotion ────
-        token_stream = agent_controller.stream(normalized_transcript, session_id, audio_array=audio_array)
+        token_stream = agent_controller.stream(normalized_transcript, session_id, user_id=user_id, audio_array=audio_array)
         await _stream_llm_and_tts(websocket, token_stream, loop, set_state, speed, voice, latency_metrics, start_time)
     else:
         # ── Legacy path: direct LLM call (AGENT_ENABLED=false) ───────────────
