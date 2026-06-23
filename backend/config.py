@@ -31,9 +31,10 @@ class Config:
 
     # ── Voice Activity Detection (VAD) ───────────────────────────────────────
     VAD_ENGINE: str = os.getenv("VAD_ENGINE", "silero")
-    VAD_THRESHOLD: float = float(os.getenv("VAD_THRESHOLD", "0.5"))
+    VAD_THRESHOLD: float = float(os.getenv("VAD_THRESHOLD", "0.35"))
     VAD_SILENCE_TIMEOUT: float = float(os.getenv("VAD_SILENCE_TIMEOUT", "0.8"))
-    MIN_SPEECH_DURATION: float = float(os.getenv("MIN_SPEECH_DURATION", "0.3"))
+    MIN_SPEECH_DURATION: float = float(os.getenv("MIN_SPEECH_DURATION", "0.15"))
+
     LIVE_TRANSCRIPTION_INTERVAL: float = float(os.getenv("LIVE_TRANSCRIPTION_INTERVAL", "0.7"))
 
     WHISPER_PROMPT: str = (
