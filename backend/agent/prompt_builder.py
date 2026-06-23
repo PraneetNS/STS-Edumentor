@@ -282,7 +282,8 @@ class PromptBuilder:
           8. Interruption bridge instruction
         """
         sections: List[str] = [_BASE_SYSTEM]
-        # Determine if this is the very first turn of the conversation
+        # First-turn rules enforce that Edi introduces himself by name
+        # to establish identity at the start of a session, and then suppresses it.
         is_first_turn = True
         if hasattr(context, "history_messages") and context.history_messages:
             if any(m["role"] == "assistant" for m in context.history_messages):
