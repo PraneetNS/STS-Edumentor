@@ -460,7 +460,9 @@ async def voice_endpoint(websocket: WebSocket):
                                     silence_duration = 0.0
                                     await trigger_pipeline(is_vad_trigger=True)
                             else:
-                                speech_duration = 0.0
+                                # Decay speech_duration slowly instead of wiping it out immediately,
+                                # to handle quiet consonants or brief audio dips.
+                                speech_duration = max(0.0, speech_duration - 0.032)
 
             # ── Text control frame ──────────────────────────────────────────
             elif "text" in message and message["text"]:
