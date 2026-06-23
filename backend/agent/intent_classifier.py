@@ -148,7 +148,9 @@ class IntentClassifier:
 
     _QUICK_RULES: list = [
         # (regex_pattern, Intent, needs_history, confidence)
-        (r"^(hi|hello|hey|good morning|good afternoon|good evening|howdy)\b", Intent.GREETING, False, 1.0),
+        (r"^(hi|hello|hey|good morning|good afternoon|good evening|howdy|yo|sup|greetings)\b", Intent.GREETING, False, 1.0),
+        (r"\b(what(?:'s| is) your name|who are you|who are u|tell me your name|your name|who is this|introduce yourself|your identity|tell me about yourself)\b", Intent.GREETING, False, 1.0),
+        (r"\b(how (are (you|u|your)|do you do|is it going|you doing|u doing)|how's it going)\b", Intent.GREETING, False, 1.0),
         (r"^(thank|thanks|thank you|cheers)\b", Intent.THANKS, True, 1.0),
         (r"\b(repeat|say that again|say it again|again please)\b", Intent.REPEAT_LAST, True, 0.95),
         (r"\b(simpl(er|ify|e)|easier|easy version|for a beginner)\b", Intent.SIMPLIFY, True, 0.92),
