@@ -181,13 +181,13 @@ class AgentController:
         processed_response = raw_response
         output_flagged = False
 
-        # Tag leak detection
+        # Tag leak detection (only matches incomplete/cut-off tag fragments)
         tag_leak_pattern = re.compile(
-            r"</?speak[^>]*>|</?show[^>]*>|</?followup[^>]*>|<speak|<show|<followup|<spe\b|<sho\b|<fol\b|<s\b|<f\b",
+            r"<spe\b(?!ak>)|<sho\b(?!w\b)|<fol\b(?!lowup>)|<s\b(?!peak>|how\b)|<f\b(?!ollowup>)",
             re.IGNORECASE
         )
         if tag_leak_pattern.search(raw_response):
-            logger.error("[PARSER BUG] Critical error: Raw tag leak detected in response: %r", raw_response)
+            logger.warning("[SAFETY POST-LLM] Incomplete tag fragment detected: %r", raw_response)
             processed_response = tag_leak_pattern.sub("", processed_response)
 
         # Mentor voice compliance
@@ -350,22 +350,46 @@ class AgentController:
             latency_ms,
         )
 
-        # ── Step 11: Call LLM (Retrieve full raw response) ──────────────────
+        # ── Step 11: Call LLM & Stream tokens in real time ──────────────────
+        from agent.realtime_parser import RealtimeStreamingParser
+        parser = RealtimeStreamingParser()
         full_raw_response_list = []
+        is_blocked = False
+
         try:
             async for raw_token in self._llm.stream_tokens_from_messages(messages):
                 full_raw_response_list.append(raw_token)
+                
+                # Feed the raw token to the realtime parser
+                for event in parser.feed(raw_token):
+                    raw_chunk = event["raw"]
+                    planned_chunk = event["planned"]
+                    
+                    if raw_chunk or planned_chunk:
+                        self._turn_state[session_id]["partial_response"] += raw_chunk
+                        self._interrupt.track_chars_sent(session_id, len(raw_chunk))
+                        cleaned_planned = self._response_planner._clean_token(planned_chunk) if planned_chunk else ""
+                        yield {"raw": raw_chunk, "planned": cleaned_planned}
         except Exception as exc:
             logger.exception("LLM generation error: %s", exc)
-            full_raw_response_list.append(f"[Error: {exc}]")
+            yield {"raw": f"[Error: {exc}]", "planned": ""}
+            
+        # Finalize the parser
+        for event in parser.finalize():
+            raw_chunk = event["raw"]
+            planned_chunk = event["planned"]
+            if raw_chunk or planned_chunk:
+                self._turn_state[session_id]["partial_response"] += raw_chunk
+                self._interrupt.track_chars_sent(session_id, len(raw_chunk))
+                cleaned_planned = self._response_planner._clean_token(planned_chunk) if planned_chunk else ""
+                yield {"raw": raw_chunk, "planned": cleaned_planned}
 
+        # ── Finalization, Safety Guardrails, Logging, and Memory ─────────────
         raw_response = "".join(full_raw_response_list)
         post_processed_response = raw_response
-        is_blocked = False
-
-        # ── Subsystem 2: Post-LLM Guardrail ─────────────────────────────────
-        if self._safety_enabled:
-            try:
+        
+        try:
+            if self._safety_enabled:
                 import inspect
                 func = self._run_post_guardrail
                 if inspect.iscoroutinefunction(func):
@@ -382,156 +406,58 @@ class AgentController:
                     refusal_message = refusal
                 if flagged:
                     output_flagged = True
-            except asyncio.TimeoutError:
-                logger.error("[SAFETY POST-LLM] Timeout (200ms) exceeded. Failing closed.")
-                is_blocked = True
-                flag_reason = "timeout"
-                refusal_message = "I'm not able to help with that particular request. Is there something about programming or computer science I can help you learn?"
+        except asyncio.TimeoutError:
+            logger.warning("[SAFETY POST-LLM] Timeout (200ms) exceeded. Failing closed.")
+            is_blocked = True
+            flag_reason = "timeout"
+            refusal_message = "I'm not able to help with that particular request. Is there something about programming or computer science I can help you learn?"
+        except Exception as safety_exc:
+            logger.error("Post-LLM safety guardrail error: %s", safety_exc)
 
-            if is_blocked:
-                latency_ms = int((time.perf_counter() - start_time) * 1000)
-                asyncio.create_task(
-                    self._db_manager.write_log(
-                        user_id=user_uuid,
-                        session_id=session_uuid,
-                        query_text=processed_text,
-                        response_text=refusal_message,
-                        intent_category=intent_result.intent.value,
-                        input_flagged=False,
-                        output_flagged=True,
-                        flag_reason=flag_reason,
-                        latency_ms=latency_ms
-                    )
-                )
-                log_written = True
-                async for token in self._stream_refusal(refusal_message, session_id):
-                    yield token
-                return
+        if is_blocked and refusal_message:
+            post_processed_response = refusal_message
+            yield {"raw": refusal_message, "planned": refusal_message}
 
-        # ── Parse and Send to TTS and Frontend ──────────────────────────────
-        cleaned_response = post_processed_response.strip()
-        if (cleaned_response.startswith("{") and cleaned_response.endswith("}")) or '"speech":' in cleaned_response:
-            try:
-                import json
-                import re
-                json_match = re.search(r"\{.*?\}", cleaned_response, re.DOTALL)
-                if json_match:
-                    data = json.loads(json_match.group(0))
-                    speech_text = data.get("speech", "")
-                    followup_text = data.get("followup", "")
-                    
-                    reconstructed = ""
-                    if speech_text:
-                        reconstructed += f"<speak>{speech_text}</speak>"
-                    if followup_text and isinstance(followup_text, str) and followup_text.strip().lower() != "null":
-                        reconstructed += f"<followup>{followup_text}</followup>"
-                        
-                    if reconstructed:
-                        post_processed_response = reconstructed
-                        logger.info("Successfully intercepted and parsed JSON LLM response: %r", data)
-            except Exception as json_err:
-                logger.warning("Failed to parse response as JSON: %s", json_err)
-
-        from edmentor.confidence_router import StreamingDualParser
-        parser = StreamingDualParser()
-        events = parser.feed(post_processed_response)
-        events += parser.finalize()
-
-        reconstructed_raw = ""
-        reconstructed_planned_raw = ""
-        for event in events:
-            if event["type"] == "text":
-                reconstructed_raw += event["content"] + "\n\n"
-                reconstructed_planned_raw += event["content"] + " "
-            elif event["type"] == "show":
-                show_type = event.get("show_type", "")
-                lang = event.get("lang", "")
-                content = event.get("content", "")
-                if show_type == "code" or lang:
-                    reconstructed_raw += f"```{lang or 'python'}\n{content}\n```\n\n"
-                else:
-                    reconstructed_raw += f"{content}\n\n"
-            elif event["type"] == "followup":
-                reconstructed_raw += event["content"] + "\n\n"
-                reconstructed_planned_raw += event["content"] + " "
-        
-        reconstructed_raw = reconstructed_raw.strip()
-        reconstructed_planned_raw = reconstructed_planned_raw.strip()
-
-        # Fallback if no events parsed
-        if not events:
-            reconstructed_raw = post_processed_response
-            reconstructed_planned_raw = post_processed_response
-
-        # Clean planned response for Kokoro TTS
-        reconstructed_planned = self._response_planner.plan(
-            reconstructed_planned_raw,
-            intent=intent_result.intent,
-            profile=profile,
-            add_comprehension_check=False
+        # Save memory for local tracking components
+        self._memory.add_turn(
+            session_id     = session_id,
+            user_text      = processed_text,
+            assistant_text = post_processed_response,
+            intent         = intent_result.intent.value,
+            emotion        = emotion_result.emotion.value,
         )
 
-        # Yield chunks of reconstructed raw and planned text
-        chunk_size = 8
-        i = 0
-        j = 0
-        try:
-            while i < len(reconstructed_raw) or j < len(reconstructed_planned):
-                raw_chunk = ""
-                if i < len(reconstructed_raw):
-                    raw_chunk = reconstructed_raw[i:i+chunk_size]
-                    i += chunk_size
-                planned_chunk = ""
-                if j < len(reconstructed_planned):
-                    planned_chunk = reconstructed_planned[j:j+chunk_size]
-                    j += chunk_size
+        self._profile_manager.update_from_turn(
+            user_text       = processed_text,
+            assistant_text  = post_processed_response,
+            emotion         = emotion_result.emotion,
+        )
 
-                self._turn_state[session_id]["partial_response"] += raw_chunk
-                self._interrupt.track_chars_sent(session_id, len(raw_chunk))
-
-                yield {"raw": raw_chunk, "planned": planned_chunk}
-                await asyncio.sleep(0.002)
-        finally:
-            # Save memory for local tracking components
-            self._memory.add_turn(
-                session_id     = session_id,
-                user_text      = processed_text,
-                assistant_text = post_processed_response,
-                intent         = intent_result.intent.value,
-                emotion        = emotion_result.emotion.value,
-            )
-
-            self._profile_manager.update_from_turn(
-                user_text       = processed_text,
-                assistant_text  = post_processed_response,
-                emotion         = emotion_result.emotion,
-            )
-
-            # ── Subsystem 1: Log turns to database ──────────────────────────
-            if not log_written:
-                latency_ms = int((time.perf_counter() - start_time) * 1000)
-                asyncio.create_task(
-                    self._db_manager.write_log(
-                        user_id=user_uuid,
-                        session_id=session_uuid,
-                        query_text=processed_text,
-                        response_text=post_processed_response,
-                        intent_category=intent_result.intent.value,
-                        input_flagged=input_flagged,
-                        output_flagged=output_flagged,
-                        flag_reason=flag_reason,
-                        latency_ms=latency_ms
-                    )
+        # ── Log turns to database ──────────────────────────
+        if not log_written:
+            latency_ms = int((time.perf_counter() - start_time) * 1000)
+            asyncio.create_task(
+                self._db_manager.write_log(
+                    user_id=user_uuid,
+                    session_id=session_uuid,
+                    query_text=processed_text,
+                    response_text=post_processed_response,
+                    intent_category=intent_result.intent.value,
+                    input_flagged=input_flagged,
+                    output_flagged=output_flagged or is_blocked,
+                    flag_reason=flag_reason,
+                    latency_ms=latency_ms
                 )
-
-            total_ms = (time.perf_counter() - start_time) * 1000
-            agent_logger.info(
-                "TURN_END session=%s intent=%s response_chars=%d total_ms=%.0f",
-                session_id,
-                intent_result.intent.value,
-                len(post_processed_response),
-                total_ms,
             )
+
+        total_ms = (time.perf_counter() - start_time) * 1000
+        agent_logger.info(
+            "TURN_END session=%s intent=%s response_chars=%d total_ms=%.0f",
+            session_id,
+            intent_result.intent.value,
+            len(post_processed_response),
+            total_ms,
+        )
 
     # ─────────────────────────────────────────────────────────────────────────
     # Interrupt state access (called from main.py's interrupt handler)
