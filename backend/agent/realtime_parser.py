@@ -20,6 +20,9 @@ class RealtimeStreamingParser:
         """
         Feed a token chunk to the parser and yield parsed events:
         {"raw": text_for_frontend, "planned": text_for_tts}
+
+        Processes incoming text streams incrementally, identifying tags and text blocks,
+        and manages transitions between speak, show, and followup states.
         """
         if not chunk:
             return
