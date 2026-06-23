@@ -69,6 +69,7 @@ class WhisperEngine:
                 min_silence_duration_ms=300,       # Minimum silence gap to split on
                 speech_pad_ms=200,                 # Padding around detected speech
             ),
+            # Using beam size greater than 1 increases vocabulary accuracy and resolves name-mangling
             beam_size=Config.WHISPER_BEAM_SIZE,
             best_of=Config.WHISPER_BEAM_SIZE,
             temperature=0.0,                       # greedy decoding = faster
