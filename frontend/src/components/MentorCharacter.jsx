@@ -8,10 +8,11 @@
 import React, { useEffect } from 'react';
 
 export function MentorCharacter({ state = 'idle', analyserNode, onSnapshot }) {
-  // Pass the mascot image URL as the snapshot so logs and lists render correctly
+  const onSnapshotCalledRef = React.useRef(false);
   useEffect(() => {
-    if (onSnapshot) {
+    if (onSnapshot && !onSnapshotCalledRef.current) {
       onSnapshot('/mascot_standing.png');
+      onSnapshotCalledRef.current = true;
     }
   }, [onSnapshot]);
 
@@ -42,6 +43,7 @@ export function MentorCharacter({ state = 'idle', analyserNode, onSnapshot }) {
           max-width: 95%;
           max-height: 95%;
           object-fit: contain;
+          mix-blend-mode: multiply;
           filter: drop-shadow(0 8px 20px rgba(84, 87, 229, 0.16)); /* Contour drop shadow */
           transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
