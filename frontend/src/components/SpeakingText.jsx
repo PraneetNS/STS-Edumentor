@@ -30,6 +30,10 @@ export const SpeakingText = memo(function SpeakingText({
         style={{ display: 'inline', color: '#18181B', overflowWrap: 'break-word', wordBreak: 'normal' }}
       >
         {words.map((word, idx) => {
+          // Determine word highlighting state:
+          // - active (currently spoken word) gets indigo-600 background highlights
+          // - spoken (already read) gets standard dark zinc color
+          // - unspoken (future text) stays muted zinc-400
           const isSpoken = idx <= currentWordIndex;
           const isActive = idx === currentWordIndex;
 
