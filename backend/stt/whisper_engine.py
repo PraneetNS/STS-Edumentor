@@ -60,21 +60,92 @@ class WhisperEngine:
         if audio_array is None or len(audio_array) == 0:
             return ""
 
-        from typing import Optional
-
         segments, info = self.model.transcribe(
             audio_array,
             language="en",
             task="transcribe",
-            vad_filter=Config.WHISPER_VAD_FILTER,
-            beam_size=1,                           # fastest beam size
-            best_of=1,
+            vad_filter=True,                       # Skip silent/noisy segments before decoding
+            vad_parameters=dict(
+                min_silence_duration_ms=300,       # Minimum silence gap to split on
+                speech_pad_ms=200,                 # Padding around detected speech
+            ),
+            beam_size=Config.WHISPER_BEAM_SIZE,
+            best_of=Config.WHISPER_BEAM_SIZE,
             temperature=0.0,                       # greedy decoding = faster
             condition_on_previous_text=False,      # stateless per utterance
             initial_prompt=initial_prompt or Config.WHISPER_PROMPT,
             prefix=prefix,
         )
 
-        transcript = " ".join(seg.text.strip() for seg in segments).strip()
+        parts = []
+        for seg in segments:
+            text = seg.text.strip()
+            if text and not self._is_hallucination(text):
+                parts.append(text)
+
+        transcript = " ".join(parts).strip()
         logger.info("Transcript: %r (lang=%.2f)", transcript, info.language_probability)
         return transcript
+
+    @staticmethod
+    def _is_hallucination(text: str) -> bool:
+        """
+        Return True if the segment looks like a Whisper hallucination.
+
+        Whisper commonly hallucinates on silent / low-energy audio:
+          - Repeated punctuation:  "...", "- - -", "———"
+          - Tag-style artifacts:   "[Music]", "(Silence)", "[BLANK_AUDIO]"
+          - Single-char noise:     ".", "-", "*"
+          - Nonsense repetition:   "vvvvvv", "aaaa"
+          - Common filler phrases that appear with no real speech
+        """
+        import re
+
+        # Strip outer whitespace
+        t = text.strip()
+
+        if not t:
+            return True
+
+        # Pure punctuation / whitespace only (dots, dashes, underscores, spaces)
+        if re.fullmatch(r"[\s.·•\-_—–~*#]+", t):
+            return True
+
+        # Whisper tag artifacts: [Music], (Silence), [BLANK_AUDIO], etc.
+        if re.fullmatch(r"[\[\(].*[\]\)]\.?", t, re.IGNORECASE):
+            return True
+
+        # Repeated single character noise (e.g. "vvvvvvv", "aaaaaaa")
+        if len(t) > 3 and len(set(t.lower().replace(" ", ""))) <= 2:
+            return True
+
+        # Known filler hallucination phrases Whisper emits on silence
+        HALLUCINATION_PHRASES = {
+            "thank you",
+            "thank you.",
+            "thanks for watching",
+            "thanks for watching.",
+            "you",
+            ".",
+            "..",
+            "...",
+            "....",
+            "- - -",
+            "—",
+            "[ music ]",
+            "[music]",
+            "( music )",
+            "(music)",
+            "[ silence ]",
+            "[silence]",
+            "( silence )",
+            "(silence)",
+            "[blank_audio]",
+            "[ blank_audio ]",
+            "subtitles by",
+            "transcribed by",
+        }
+        if t.lower() in HALLUCINATION_PHRASES:
+            return True
+
+        return False
