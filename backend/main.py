@@ -461,7 +461,7 @@ async def voice_endpoint(websocket: WebSocket):
                                     await trigger_pipeline(is_vad_trigger=True)
                             else:
                                 # Decay speech_duration slowly instead of wiping it out immediately,
-                                # to handle quiet consonants or brief audio dips.
+                                # to handle quiet consonants or brief audio dips. Prevents voice pipeline cuts.
                                 speech_duration = max(0.0, speech_duration - 0.032)
 
             # ── Text control frame ──────────────────────────────────────────
