@@ -1,23 +1,84 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { PanelLeft } from 'lucide-react';
+import { PanelLeft, Home, X, BookOpen, ExternalLink, FileText } from 'lucide-react';
 
-import { useVoicePipeline }       from './hooks/useVoicePipeline';
-import { useConversationStore }   from './hooks/useConversationStore';
+import { useVoicePipeline } from './hooks/useVoicePipeline';
+import { useConversationStore } from './hooks/useConversationStore';
 import { useToasts, ToastContainer } from './components/ToastContainer';
 
-import { Sidebar }        from './components/Sidebar';
-import { MessageList }    from './components/MessageList';
+import { Sidebar } from './components/Sidebar';
+import { MessageList } from './components/MessageList';
 import { LiveTranscript } from './components/LiveTranscript';
-import { VoiceOrb }       from './components/VoiceOrb';
-import { ContextCards }   from './components/ContextCards';
+import { VoiceOrb } from './components/VoiceOrb';
+import { ContextCards } from './components/ContextCards';
 import { MentorCharacter } from './components/MentorCharacter';
 
 import './index.css';
 
+import { MarkdownViewer } from './components/MarkdownViewer';
+
+
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { toasts, addToast, removeToast } = useToasts();
+  const [view, setView] = useState('landing');
+  const [showDocs, setShowDocs] = useState(false);
+  const [readmeContent, setReadmeContent] = useState('');
+  const [isLoadingReadme, setIsLoadingReadme] = useState(false);
+
+  const launcherMessages = [
+    '💬 Talk to an AI Mentor',
+    "👋 Hey! I'm Edi",
+    '🚀 Master engineering concepts',
+    '🎙️ Ask me a question!'
+  ];
+  const [activeMessageIdx, setActiveMessageIdx] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setActiveMessageIdx((prev) => (prev + 1) % launcherMessages.length);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const disciplines = [
+    {
+      title: 'Computer Science',
+      desc: 'Data structures, algorithms, system architecture, database design, and programming languages.',
+      icon: '💻',
+      color: 'linear-gradient(135deg, #3b82f6, #1d4ed8)'
+    },
+    {
+      title: 'Mechanical Engineering',
+      desc: 'Thermodynamics, fluid mechanics, stress analysis, mechanics of materials, and CAD designing.',
+      icon: '⚙️',
+      color: 'linear-gradient(135deg, #ef4444, #b91c1c)'
+    },
+    {
+      title: 'Electrical Engineering',
+      desc: 'Circuit analysis, microprocessors, signals & systems, electromagnetics, and control theory.',
+      icon: '⚡',
+      color: 'linear-gradient(135deg, #eab308, #a16207)'
+    },
+    {
+      title: 'Civil Engineering',
+      desc: 'Structural engineering, geotechnical mechanics, concrete designs, and fluid dynamics.',
+      icon: '🏗️',
+      color: 'linear-gradient(135deg, #10b981, #047857)'
+    },
+    {
+      title: 'Chemical Engineering',
+      desc: 'Reaction kinetics, thermodynamics, mass transport, heat transfer, and process control.',
+      icon: '🧪',
+      color: 'linear-gradient(135deg, #a855f7, #6b21a8)'
+    },
+    {
+      title: 'Aerospace Engineering',
+      desc: 'Aerodynamics, orbital mechanics, propulsion systems, flight stability, and structural design.',
+      icon: '🚀',
+      color: 'linear-gradient(135deg, #ec4899, #be185d)'
+    }
+  ];
 
   // ── Conversation state ──────────────────────────────────────────────────
   const {
@@ -84,6 +145,27 @@ export default function App() {
     }
   });
 
+  // ── Fetch README Effect ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (showDocs && !readmeContent) {
+      setIsLoadingReadme(true);
+      fetch('/README.md')
+        .then((res) => {
+          if (!res.ok) throw new Error('Failed to load README.md');
+          return res.text();
+        })
+        .then((text) => {
+          setReadmeContent(text);
+          setIsLoadingReadme(false);
+        })
+        .catch((err) => {
+          console.error(err);
+          addToast('Could not load README.md file.', 'error');
+          setIsLoadingReadme(false);
+        });
+    }
+  }, [showDocs, readmeContent, addToast]);
+
   // ── Error detection ─────────────────────────────────────────────────────
   const prevStatus = useRef(status);
   useEffect(() => {
@@ -132,169 +214,321 @@ export default function App() {
 
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
 
-      <motion.div
-        className="app-shell"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.6 }}
-      >
-        <Sidebar
-          grouped={grouped}
-          activeId={activeId}
-          onSelect={selectConversation}
-          onDelete={deleteConversation}
-          onNewChat={createConversation}
-          isOpen={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-        />
-
-        <div className="workspace">
-          {/* Header */}
-          <header className="workspace-header">
-            <div className="header-left">
-              <button
-                className="hamburger-btn"
-                onClick={() => setSidebarOpen(true)}
-                aria-label="Open sidebar"
-              >
-                <PanelLeft size={18} />
-              </button>
-              <div className="header-logo">
-                <div className="header-logo-icon" style={{ background: 'transparent', boxShadow: 'none', padding: 0 }}>
-                  <img src="/mascot.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
-                </div>
-                <div>
-                  <div className="header-title">
-                    {activeConversation?.title === 'New Conversation' ? 'EduMentor' : activeConversation?.title ?? 'EduMentor'}
-                  </div>
-                  <div className="header-subtitle">AI Voice Tutor</div>
-                </div>
+      {view === 'landing' ? (
+        <div className="landing-container">
+          {/* Navigation Bar */}
+          <nav className="landing-nav">
+            <div className="header-logo">
+              <div className="header-logo-icon" style={{ background: 'transparent', boxShadow: 'none', padding: 0 }}>
+                <img src="/mascot.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
+              </div>
+              <div>
+                <div className="header-title">EduMentor</div>
+                <div className="header-subtitle">AI Engineering Mentor</div>
               </div>
             </div>
+            <div className="landing-nav-links">
+              <a href="#features" className="landing-nav-link">Disciplines</a>
+              <a href="#docs" className="landing-nav-link">Docs Setup</a>
+              <button onClick={() => setShowDocs(true)} className="landing-nav-link-btn">
+                Documentation
+              </button>
+            </div>
+            <button onClick={() => setView('chat')} className="landing-nav-cta">
+              Launch Mentor
+            </button>
+          </nav>
 
-            {/* Connection Status */}
-            <div className={`status-badge ${
-              status === 'connected' && !isRecording && !isProcessing && !isPlaying ? 'online' :
-              status !== 'connected' ? 'connecting' : ''
-            }`}>
-              <div className={`status-dot ${
-                isRecording ? 'recording' :
-                isProcessing ? 'processing' :
-                isPlaying ? 'playing' :
-                status === 'connected' ? 'connected' : ''
-              }`} />
-              {status === 'connected' ? (isRecording ? 'Listening' : isProcessing ? 'Thinking' : isPlaying ? 'Speaking' : 'Online') : 'Connecting...'}
+          {/* Hero Section */}
+          <header className="hero-section">
+            <h1 className="hero-title" style={{ marginTop: '30px' }}>
+              Your Personal <span>AI Mentor</span> for All Fields of Engineering
+            </h1>
+            <p className="hero-subtitle">
+              Say goodbye to generalized AI chat. EduMentor is a specialized, voice-driven platform
+              designed to help you understand complex calculations, analyze structures, write clean algorithms,
+              and conceptualize physical systems step-by-step.
+            </p>
+            <div className="hero-ctas">
+              <button onClick={() => setView('chat')} className="cta-primary">
+                Start Talking Now
+              </button>
+              <a href="#features" className="cta-secondary" style={{ textDecoration: 'none', display: 'inline-block' }}>
+                Explore Disciplines
+              </a>
             </div>
           </header>
 
-          {/* MAIN SCROLL AREA */}
-          <div className="flex-1 overflow-hidden flex flex-col relative z-10 pt-4">
-            {messages.length === 0 && (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="flex-1 flex flex-col items-center justify-center p-8 text-center"
-                style={{ gap: '28px' }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <motion.div
-                    layoutId="mentor-canvas"
-                    className="mentor-canvas-wrapper idle-mode"
-                  >
-                    <MentorCharacter
-                      state={
-                        isRecording ? 'listening' :
-                        isProcessing ? 'thinking' :
-                        isPlaying ? 'speaking' :
-                        'idle'
-                      }
-                      analyserNode={analyserNode}
-                      onSnapshot={!defaultAvatarUrl ? setDefaultAvatarUrl : undefined}
-                    />
-                  </motion.div>
+          {/* Features / Disciplines Grid Section */}
+          <section id="features" className="features-section">
+            <div className="section-header">
+              <h2 className="section-title">Support Across Every Major Discipline</h2>
+              <p className="section-subtitle">A foundational guide across essential engineering disciplines.</p>
+            </div>
+            <div className="cards-grid">
+              {disciplines.map((d, idx) => (
+                <div key={idx} className="feature-card">
+                  <div className="feature-card-icon-wrap" style={{ background: d.color }}>
+                    {d.icon}
+                  </div>
+                  <h3 className="feature-card-title">{d.title}</h3>
+                  <p className="feature-card-desc">{d.desc}</p>
                 </div>
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}>
-                  <p style={{
-                    fontSize: '18px',
-                    fontWeight: '600',
-                    color: 'var(--text-primary)',
-                    letterSpacing: '-0.01em',
-                    margin: 0,
-                  }}>
-                    Hey, I'm <span style={{ color: '#5457E5' }}>EDI</span>.
-                  </p>
-                  <p style={{
-                    fontSize: '13px',
-                    color: 'var(--text-muted)',
-                    margin: 0,
-                    lineHeight: '1.6',
-                    maxWidth: '280px',
-                  }}>
-                    Press the mic below to start our session.
-                  </p>
+              ))}
+            </div>
+          </section>
+
+
+
+          {/* Documentation Section */}
+          <section id="docs" className="docs-section">
+            <div className="section-header">
+              <h2 className="section-title">Getting Started & Documentation</h2>
+              <p className="section-subtitle">Learn how to set up the EduMentor workspace locally on your system.</p>
+            </div>
+            <div className="docs-grid-layout">
+              <div className="docs-card-highlight">
+                <div className="docs-card-icon-title">
+                  <FileText className="text-indigo-600" size={24} />
+                  <h3>Local Repository Documentation</h3>
                 </div>
-              </motion.div>
-            )}
-
-            {/* Conversation Timeline */}
-            <MessageList
-              messages={messages}
-              currentSpokenWordIndex={currentSpokenWordIndex}
-              isSpeakingTextSync={isSpeakingTextSync}
-              analyserNode={analyserNode}
-              conversationState={conversationState}
-              defaultAvatarUrl={defaultAvatarUrl}
-              onSnapshot={saveMessageSnapshot}
-            />
-          </div>
-
-          {/* VOICE INTERACTION ZONE (Fixed Bottom) */}
-          <footer className="voice-zone">
-            <div className="w-full max-w-2xl mx-auto flex flex-col gap-3">
-              <div className="flex justify-center pb-1">
-                <VoiceOrb
-                  isRecording={isRecording}
-                  isProcessing={isProcessing}
-                  isPlaying={isPlaying}
-                  conversationState={conversationState}
-                  onClick={toggleRecording}
-                />
+                <p>
+                  Read the complete setup guide, architectural specifications, performance tuning tips, and troubleshooting options directly from the project repository's README.
+                </p>
+                <div className="docs-action-buttons">
+                  <button onClick={() => setShowDocs(true)} className="docs-btn-primary">
+                    <BookOpen size={16} /> Read Full Docs (README)
+                  </button>
+                  <a href="/README.md" target="_blank" rel="noreferrer" className="docs-btn-secondary">
+                    View Raw File <ExternalLink size={14} />
+                  </a>
+                </div>
+              </div>
+              <div className="docs-features-list">
+                <div className="docs-feature-item">
+                  <div className="docs-feat-dot" />
+                  <div>
+                    <h4>Real-time Voice Pipeline</h4>
+                    <p>Uses high-performance AudioWorklet streams with Whisper STT and Kokoro TTS to achieve 2-4 seconds target latency.</p>
+                  </div>
+                </div>
+                <div className="docs-feature-item">
+                  <div className="docs-feat-dot" />
+                  <div>
+                    <h4>100% Private & Local</h4>
+                    <p>No external APIs or data leaks. Your chats, documents, and voice responses stay entirely on your physical machine.</p>
+                  </div>
+                </div>
+                <div className="docs-feature-item">
+                  <div className="docs-feat-dot" />
+                  <div>
+                    <h4>Broad Engineering Syllabus</h4>
+                    <p>Optimized prompts allow the mentor to guide you in solving complex calculations and systems engineering questions.</p>
+                  </div>
+                </div>
               </div>
             </div>
-          </footer>
+          </section>
 
-          {/* Soft radial glow behind the 3D character */}
-          <div 
-            className={`mentor-glow ${messages.length > 0 ? 'chat-mode' : 'idle-mode'}`} 
-            style={{ backgroundColor: glowColor }}
+          {/* Floating Chatbot Launcher widget */}
+          <div className="floating-launcher-wrap">
+            <div className="launcher-popover" onClick={() => setView('chat')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '180px' }}>
+              <motion.span
+                key={activeMessageIdx}
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -5 }}
+                transition={{ duration: 0.3 }}
+                style={{ display: 'inline-block' }}
+              >
+                {launcherMessages[activeMessageIdx]}
+              </motion.span>
+            </div>
+            <button className="floating-launcher-btn" onClick={() => setView('chat')} aria-label="Talk to AI Mentor">
+              <img src="/mascot.png" alt="EduMentor Logo" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <motion.div
+          className="app-shell"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.6 }}
+        >
+          <Sidebar
+            grouped={grouped}
+            activeId={activeId}
+            onSelect={selectConversation}
+            onDelete={deleteConversation}
+            onNewChat={createConversation}
+            isOpen={sidebarOpen}
+            onClose={() => setSidebarOpen(false)}
           />
 
-          {/* Live 3D Mentor Character (Centered or Footer via CSS transition) */}
-          {messages.length > 0 && (
-            <motion.div
-              layoutId="mentor-canvas"
-              className="mentor-canvas-wrapper chat-mode"
-            >
-              <MentorCharacter
-                state={
-                  isRecording ? 'listening' :
-                  isProcessing ? 'thinking' :
-                  isPlaying ? 'speaking' :
-                  'idle'
-                }
+          <div className="workspace">
+            {/* Header */}
+            <header className="workspace-header">
+              <div className="header-left">
+                <button
+                  className="home-btn mr-2"
+                  onClick={() => setView('landing')}
+                  aria-label="Back to home"
+                >
+                  <Home size={18} />
+                </button>
+                <button
+                  className="hamburger-btn"
+                  onClick={() => setSidebarOpen(true)}
+                  aria-label="Open sidebar"
+                >
+                  <PanelLeft size={18} />
+                </button>
+                <div className="header-logo">
+                  <div className="header-logo-icon" style={{ background: 'transparent', boxShadow: 'none', padding: 0 }}>
+                    <img src="/mascot.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
+                  </div>
+                  <div>
+                    <div className="header-title">
+                      {activeConversation?.title === 'New Conversation' ? 'EduMentor' : activeConversation?.title ?? 'EduMentor'}
+                    </div>
+                    <div className="header-subtitle">AI Voice Tutor</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Connection Status */}
+              <div className={`status-badge ${status === 'connected' ? 'online' : 'connecting'}`}>
+                <div className={`status-dot ${isRecording ? 'recording' :
+                  isProcessing ? 'processing' :
+                    isPlaying ? 'playing' :
+                      status === 'connected' ? 'connected' : ''
+                  }`} />
+                {status === 'connected' ? (isRecording ? 'Listening' : isProcessing ? 'Thinking' : isPlaying ? 'Speaking' : 'Online') : 'Connecting...'}
+              </div>
+            </header>
+
+            {/* MAIN SCROLL AREA */}
+            <div className="flex-1 overflow-hidden flex flex-col relative z-10 pt-4">
+              {messages.length === 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                  className="flex-1 flex flex-col items-center justify-center p-8 text-center"
+                  style={{ gap: '0px' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <motion.div
+                      layoutId="mentor-canvas"
+                      className="mentor-canvas-wrapper idle-mode"
+                    >
+                      <MentorCharacter
+                        state={
+                          isRecording ? 'listening' :
+                            isProcessing ? 'thinking' :
+                              isPlaying ? 'speaking' :
+                                'idle'
+                        }
+                        analyserNode={analyserNode}
+                        onSnapshot={!defaultAvatarUrl ? setDefaultAvatarUrl : undefined}
+                      />
+                    </motion.div>
+                  </div>
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}>
+                    <p style={{
+                      fontSize: '18px',
+                      fontWeight: '600',
+                      color: 'var(--text-primary)',
+                      letterSpacing: '-0.01em',
+                      margin: 0,
+                    }}>
+                      Hey, I'm <span style={{ color: '#5457E5' }}>EDI</span>.
+                    </p>
+                    <p style={{
+                      fontSize: '14px',
+                      fontWeight: '550',
+                      color: 'var(--text-secondary)',
+                      margin: '2px 0 4px',
+                    }}>
+                      Your Engineering Mentor
+                    </p>
+                    <p style={{
+                      fontSize: '13px',
+                      color: 'var(--text-muted)',
+                      margin: 0,
+                      lineHeight: '1.6',
+                      maxWidth: '280px',
+                    }}>
+                      Press the mic below to start our session.
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Conversation Timeline */}
+              <MessageList
+                messages={messages}
+                currentSpokenWordIndex={currentSpokenWordIndex}
+                isSpeakingTextSync={isSpeakingTextSync}
                 analyserNode={analyserNode}
-                onSnapshot={!defaultAvatarUrl ? setDefaultAvatarUrl : undefined}
+                conversationState={conversationState}
+                defaultAvatarUrl={defaultAvatarUrl}
+                onSnapshot={saveMessageSnapshot}
               />
-            </motion.div>
-          )}
+            </div>
+
+            {/* VOICE INTERACTION ZONE (Fixed Bottom) */}
+            <footer className="voice-zone">
+              <div className="w-full max-w-2xl mx-auto flex flex-col gap-3">
+                <div className="flex justify-center pb-1">
+                  <VoiceOrb
+                    isRecording={isRecording}
+                    isProcessing={isProcessing}
+                    isPlaying={isPlaying}
+                    conversationState={conversationState}
+                    onClick={toggleRecording}
+                  />
+                </div>
+              </div>
+            </footer>
+
+            {/* Soft radial glow behind the 3D character */}
+            <div
+              className={`mentor-glow ${messages.length > 0 ? 'chat-mode' : 'idle-mode'}`}
+              style={{ backgroundColor: glowColor }}
+            />
+          </div>
+        </motion.div>
+      )}
+
+      {showDocs && (
+        <div className="docs-modal-overlay" onClick={() => setShowDocs(false)}>
+          <div className="docs-modal" onClick={(e) => e.stopPropagation()}>
+            <header className="docs-modal-header">
+              <h3 className="docs-modal-title">Repository Documentation</h3>
+              <button className="docs-modal-close" onClick={() => setShowDocs(false)} aria-label="Close documentation">
+                <X size={18} />
+              </button>
+            </header>
+            <div className="docs-modal-content">
+              {isLoadingReadme ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '200px', gap: '12px' }}>
+                  <div className="voice-orb-spinner" style={{ position: 'relative', width: '32px', height: '32px', borderTopColor: 'var(--accent-indigo)' }} />
+                  <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Loading README.md...</p>
+                </div>
+              ) : (
+                <MarkdownViewer text={readmeContent} />
+              )}
+            </div>
+          </div>
         </div>
-      </motion.div>
+      )}
     </>
   );
 }
