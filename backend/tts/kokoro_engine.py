@@ -81,6 +81,9 @@ class KokoroEngine:
     def _preprocess_text(self, text: str) -> str:
         """
         Preprocesses text to improve Kokoro pronunciation of names, acronyms, and symbols.
+
+        This map expands technical engineering abbreviations and formats the name 'Edi'
+        for correct grapheme-to-phoneme translation inside the Kokoro model.
         """
         import re
 
