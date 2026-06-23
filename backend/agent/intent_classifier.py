@@ -146,6 +146,8 @@ class IntentClassifier:
     # Internal: fast rule-based pre-classifier (avoids LLM call for obvious cases)
     # ─────────────────────────────────────────────────────────────────────────
 
+    # Quick regex rules map common greeting keywords, thank phrases, and career queries
+    # to avoid the overhead of LLM calls for simple conversational intents.
     _QUICK_RULES: list = [
         # (regex_pattern, Intent, needs_history, confidence)
         (r"^(hi|hello|hey|good morning|good afternoon|good evening|howdy|yo|sup|greetings)\b", Intent.GREETING, False, 1.0),
