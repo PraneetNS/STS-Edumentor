@@ -4,6 +4,7 @@
 /* ═══════════════════════════════════════════════════
    DESIGN TOKENS
    ═══════════════════════════════════════════════════ */
+/* Tailored CSS design tokens for premium glassmorphic UI color harmony */
 :root {
   /* Background layers */
   --bg-primary: #FFFFFF;
