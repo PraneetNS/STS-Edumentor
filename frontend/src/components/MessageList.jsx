@@ -160,6 +160,8 @@ export const MessageList = memo(function MessageList({
 }) {
   const bottomRef = useRef(null);
 
+  // Auto-scroll to the bottom of the timeline whenever a new message is added
+  // or when an existing streaming assistant message receives new token updates.
   useEffect(() => {
     const el = bottomRef.current;
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'end' });
