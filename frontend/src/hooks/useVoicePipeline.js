@@ -122,6 +122,8 @@ export function useVoicePipeline({
   }, [clearClientSilenceTimer]);
 
   // ── WebSocket connection ──────────────────────────────────────────────────
+  // Connect to the backend FastAPI WebSocket server. Handles automatic reconnections
+  // and cleanup on connection failure or disconnect.
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
