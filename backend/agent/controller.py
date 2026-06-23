@@ -255,6 +255,8 @@ class AgentController:
                     coro = func(user_text)
                 else:
                     coro = asyncio.to_thread(func, user_text)
+                # Enforce a 200ms timeout on the pre-LLM safety guardrail check
+                # to ensure latency remains low for real-time voice synthesis.
                 processed_text, is_blocked, block_reason, refusal = await asyncio.wait_for(
                     coro,
                     timeout=0.2
