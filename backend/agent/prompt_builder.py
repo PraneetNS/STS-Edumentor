@@ -313,6 +313,8 @@ class PromptBuilder:
                     "- CRITICAL: If you output a <show> tag in your technical answer on the first turn, you MUST still output a preceding <speak> tag introducing it (e.g. 'Below is a roadmap showing the compiler workflow' or 'Below is the code for it') immediately before the <show> tag. You must never place a <show> tag immediately after the initial greeting/introduction <speak> tag without a separate preceding visual introduction <speak> tag."
                 )
         else:
+            # Subsequent turns must suppress introductory greetings and references to the name Edi
+            # to prevent conversational repetition.
             sections.append(
                 "[SUBSEQUENT-TURN RULES]\n"
                 "CRITICAL: This is a subsequent turn of the conversation (not the first turn). You MUST NOT say or output "
