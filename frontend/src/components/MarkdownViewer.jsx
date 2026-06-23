@@ -84,6 +84,7 @@ export function parseInlineMarkdown(text) {
   return parts;
 }
 
+// Clean custom XML/HTML tags and parse lists safely without breaking mathematical operators
 export function cleanXmlTags(text) {
   if (!text) return '';
   let cleaned = text;
