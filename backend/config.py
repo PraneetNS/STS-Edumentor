@@ -16,6 +16,8 @@ class Config:
     # Whisper (STT) settings
     # ─────────────────────────────────────────────
     WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "base.en")
+    WHISPER_BEAM_SIZE: int = int(os.getenv("WHISPER_BEAM_SIZE", "5"))
+
 
     # Auto-detect GPU; fall back to CPU
     WHISPER_DEVICE: str = "cuda" if torch.cuda.is_available() else "cpu"
