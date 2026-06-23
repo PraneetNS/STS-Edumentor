@@ -51,6 +51,8 @@ export function useVoicePipeline({
   const currentTranscriptRef      = useRef('');
   const currentAssistantTextRef   = useRef('');
   const assistantCharsDeliveredRef = useRef(0);
+  const clientSilenceTimerRef     = useRef(null);  // Client-side auto-stop timer
+  const hasSpeechRef              = useRef(false);  // True once live transcript arrives
 
   const onTranscriptRef = useRef(onTranscript);
   const onThinkingRef = useRef(onThinking);
@@ -72,10 +74,12 @@ export function useVoicePipeline({
   }, [onTranscript, onThinking, onTextUpdate, onFinished, onInterrupt]);
 
   const wsRef          = useRef(null);   // WebSocket
+  const reconnectTimerRef = useRef(null); // Auto-reconnect timer
   const audioCtxRef    = useRef(null);   // AudioContext
   const workletNodeRef = useRef(null);   // AudioWorkletNode
   const streamRef      = useRef(null);   // MediaStream
   const sourceNodeRef  = useRef(null);   // MediaStreamSourceNode
+  const workletLoadedRef = useRef(false); // Guard: addModule only once per AudioContext
 
   // Visualizer AnalyserNodes
   const analyserRef    = useRef(null);   // Playback analyser (destined to speakers)
@@ -99,12 +103,23 @@ export function useVoicePipeline({
     setCurrentSpokenWordIndex(-1);
   }, []);
 
+  const clearClientSilenceTimer = useCallback(() => {
+    if (clientSilenceTimerRef.current) {
+      clearTimeout(clientSilenceTimerRef.current);
+      clientSilenceTimerRef.current = null;
+    }
+  }, []);
+
   const cleanupMic = useCallback(() => {
+    clearClientSilenceTimer();
+    // Disconnect the audio graph nodes before stopping tracks
+    try { sourceNodeRef.current?.disconnect(); } catch (_) {}
+    try { workletNodeRef.current?.disconnect(); } catch (_) {}
     streamRef.current?.getTracks().forEach(t => t.stop());
     workletNodeRef.current = null;
     sourceNodeRef.current  = null;
     streamRef.current      = null;
-  }, []);
+  }, [clearClientSilenceTimer]);
 
   // ── WebSocket connection ──────────────────────────────────────────────────
   const connect = useCallback(() => {
@@ -121,6 +136,10 @@ export function useVoicePipeline({
 
     ws.onopen = () => {
       setStatus('connected');
+      if (reconnectTimerRef.current) {
+        clearInterval(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       ws._pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'ping' }));
@@ -135,15 +154,27 @@ export function useVoicePipeline({
       setIsProcessing(false);
       cleanupMic();
       clearTimeouts();
+
+      if (!reconnectTimerRef.current) {
+        reconnectTimerRef.current = setInterval(() => {
+          console.log('[WS] Auto-reconnecting...');
+          connect();
+        }, 3000);
+      }
     };
 
     ws.onerror = (err) => {
       console.error('[WS] error', err);
       setStatus('error');
+      ws.close();
     };
   }, [clearTimeouts, cleanupMic]);
 
   const disconnect = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearInterval(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
     wsRef.current?.close();
     wsRef.current = null;
     clearTimeouts();
@@ -327,6 +358,24 @@ export function useVoicePipeline({
           if (msg.words) {
             setLiveWords(msg.words);
           }
+          // Client-side silence watchdog: reset 1.2s auto-stop timer on every live transcript
+          if (msg.text && msg.text.trim()) {
+            hasSpeechRef.current = true;
+            clearClientSilenceTimer();
+            clientSilenceTimerRef.current = setTimeout(() => {
+              // Only auto-stop if still recording and not already processing
+              if (streamRef.current) {
+                console.log('[VAD] Client silence watchdog: auto-stopping mic after 1.2s of silence');
+                cleanupMic();
+                setIsRecording(false);
+                setIsProcessing(true);
+                setStatus('processing');
+                if (wsRef.current?.readyState === WebSocket.OPEN) {
+                  wsRef.current.send(JSON.stringify({ type: 'end_of_speech' }));
+                }
+              }
+            }, 1200);
+          }
           break;
         case 'transcript':
           setTranscript(msg.text);
@@ -380,6 +429,7 @@ export function useVoicePipeline({
           setIsPlaying(true);
           break;
         case 'vad_end_of_speech':
+          clearClientSilenceTimer();
           cleanupMic();
           setIsRecording(false);
           setIsProcessing(true);
@@ -476,6 +526,8 @@ export function useVoicePipeline({
 
     // Reset states for new turn
     totalEnqueuedWordsRef.current = 0;
+    hasSpeechRef.current = false;
+    clearClientSilenceTimer();
     clearTimeouts();
     hasFinishedStreamingRef.current = false;
 
@@ -498,7 +550,12 @@ export function useVoicePipeline({
       streamRef.current = stream;
 
       const ctx = getAudioContext();
-      await ctx.audioWorklet.addModule('/audio-processor.js');
+
+      // Load AudioWorklet module only once per AudioContext lifetime
+      if (!workletLoadedRef.current) {
+        await ctx.audioWorklet.addModule('/audio-processor.js');
+        workletLoadedRef.current = true;
+      }
 
       const sourceNode = ctx.createMediaStreamSource(stream);
       const workletNode = new AudioWorkletNode(ctx, 'audio-processor');
@@ -514,8 +571,11 @@ export function useVoicePipeline({
         }
       };
 
+      // IMPORTANT: Do NOT connect workletNode to ctx.destination.
+      // The worklet's only job is to forward PCM to the WebSocket.
+      // Connecting it to destination would keep the audio hardware
+      // active after cleanupMic(), causing the mic indicator to stay on.
       sourceNode.connect(workletNode);
-      workletNode.connect(ctx.destination);
 
       sourceNodeRef.current  = sourceNode;
       workletNodeRef.current = workletNode;
@@ -533,7 +593,7 @@ export function useVoicePipeline({
       console.error('[Mic] error', err);
       setStatus('Mic access denied');
     }
-  }, [connect, getAudioContext, isPlaying, isProcessing, resetPlayback, clearTimeouts]);
+  }, [connect, getAudioContext, isPlaying, isProcessing, resetPlayback, clearTimeouts, clearClientSilenceTimer]);
 
   const stopRecording = useCallback(() => {
     cleanupMic();
