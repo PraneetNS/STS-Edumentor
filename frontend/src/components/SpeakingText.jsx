@@ -1,76 +1,65 @@
 /**
- * SpeakingText — Highlights words in real-time as the assistant speaks.
+ * SpeakingText — Streams words in real-time as the assistant speaks.
  *
- * Visual states during active sync (isSpeakingTextSync=true):
- *  - Spoken words (index < currentWordIndex): White / Opaque
- *  - Active word (index === currentWordIndex): Accent colored (Indigo/Purple), slightly scaled, text-shadow glow
- *  - Upcoming words (index > currentWordIndex): Grey ghost text (Dimmed, semi-transparent)
- *
- * When not active, renders as a standard flowing text segment (fully white / opaque).
+ * Shows the full generated text immediately, highlighting spoken words
+ * and the active word as the audio plays.
  */
 import React, { memo, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { cleanXmlTags } from './MarkdownViewer';
 
 export const SpeakingText = memo(function SpeakingText({
   text = '',
   currentWordIndex = -1,
   isSpeakingTextSync = true,
+  isStreaming = false,
 }) {
+  const cleanedText = useMemo(() => cleanXmlTags(text), [text]);
+
   // Split text into words, preserving spaces
   const words = useMemo(() => {
-    if (!text) return [];
-    return text.split(' ');
-  }, [text]);
+    if (!cleanedText) return [];
+    // Replace newlines and bullet points/dashes with spaces for spoken word alignment
+    const spaces = cleanedText.replace(/[\r\n\-]+/g, ' ');
+    return spaces.split(' ').filter(Boolean);
+  }, [cleanedText]);
 
   if (isSpeakingTextSync) {
     return (
       <span
-        className="speaking-text-container leading-relaxed flex flex-wrap gap-x-1"
-        style={{ display: 'inline', lineBreak: 'anywhere' }}
+        className="speaking-text-container leading-relaxed"
+        style={{ display: 'inline', color: '#18181B', overflowWrap: 'break-word', wordBreak: 'normal' }}
       >
         {words.map((word, idx) => {
-          const isSpoken = idx < currentWordIndex;
+          const isSpoken = idx <= currentWordIndex;
           const isActive = idx === currentWordIndex;
 
-          // Custom style configurations
-          let color = 'rgba(255, 255, 255, 0.25)'; // Grey ghost for upcoming words
-          let fontWeight = 'normal';
-          let scale = 1;
-          let textShadow = 'none';
-
-          if (isSpoken) {
-            color = 'rgba(255, 255, 255, 0.95)'; // Confirmed white
-          } else if (isActive) {
-            color = 'var(--accent, #6366f1)'; // Accent color for current word
-            fontWeight = '600';
-            scale = 1.05;
-            textShadow = '0 0 12px rgba(99, 102, 241, 0.4)';
-          }
-
           return (
-            <motion.span
-              key={`${idx}-${word}`}
-              animate={{ color, scale, textShadow }}
-              transition={{ duration: 0.16, ease: 'easeOut' }}
-              style={{
-                display: 'inline-block',
-                marginRight: '4px',
-                fontWeight,
-                transformOrigin: 'bottom center',
-              }}
+            <span
+              key={idx}
+              className={`transition-all duration-150 ${
+                isActive
+                  ? 'text-indigo-600 font-semibold bg-indigo-50/80 px-0.5 rounded shadow-sm'
+                  : isSpoken
+                  ? 'text-zinc-900 font-medium'
+                  : 'text-zinc-400'
+              }`}
+              style={{ display: 'inline' }}
             >
-              {word}
-            </motion.span>
+              {word}{idx < words.length - 1 ? ' ' : ''}
+            </span>
           );
         })}
+        {isStreaming && <span className="stream-cursor" />}
       </span>
     );
   }
 
   // Otherwise, render full text normally
   return (
-    <span className="leading-relaxed">
-      {text}
+    <span className="leading-relaxed" style={{ color: '#18181B', overflowWrap: 'break-word', wordBreak: 'normal' }}>
+      {cleanedText}
+      {isStreaming && <span className="stream-cursor" />}
     </span>
   );
 });
+
