@@ -47,7 +47,7 @@ class KokoroEngine:
             self.sample_rate = Config.KOKORO_SAMPLE_RATE
             self.greeting_cache = {}
 
-            # Warm up voice profiles in the background to avoid cold-start latencies later
+            # warm up voice profiles in the background to avoid cold-start latencies later
             import threading
             def warmup_voices():
                 logger.info("Warming up Kokoro voice profile in the background...")
@@ -78,6 +78,68 @@ class KokoroEngine:
             logger.critical(msg)
             raise RuntimeError(msg) from exc
 
+    def _preprocess_text(self, text: str) -> str:
+        """
+        Preprocesses text to improve Kokoro pronunciation of names, acronyms, and symbols.
+        """
+        import re
+
+        # Fix spelling/pronunciation of Edi
+        text = re.sub(r"\bEdi\b", "Eddy", text)
+        text = re.sub(r"\bedi\b", "eddy", text)
+
+        # Expand engineering acronyms/abbreviations for natural pronunciation
+        acronyms = {
+            r"\bAI\b": "A I",
+            r"\bcse\b": "C S E",
+            r"\bCSE\b": "C S E",
+            r"\bdsa\b": "D S A",
+            r"\bDSA\b": "D S A",
+            r"\boop\b": "O O P",
+            r"\bOOP\b": "O O P",
+            r"\bllm\b": "L L M",
+            r"\bLLM\b": "L L M",
+            r"\btts\b": "T T S",
+            r"\bTTS\b": "T T S",
+            r"\bstt\b": "S T T",
+            r"\bSTT\b": "S T T",
+            r"\bapi\b": "A P I",
+            r"\bAPI\b": "A P I",
+            r"\bcs\b": "C S",
+            r"\bCS\b": "C S",
+            r"\bIT\b": "I T",
+            r"\bECE\b": "E C E",
+            r"\bece\b": "E C E",
+            r"\bEEE\b": "E E E",
+            r"\beee\b": "E E E",
+            r"\bCAD\b": "Cad",
+            r"\bcad\b": "cad",
+            r"\bDBMS\b": "D B M S",
+            r"\bdbms\b": "d b m s",
+            r"\bOS\b": "O S",
+            r"\bos\b": "o s",
+            r"\bSQL\b": "sequel",
+            r"\bsql\b": "sequel",
+            r"\bHTML\b": "H T M L",
+            r"\bhtml\b": "h t m l",
+            r"\bCSS\b": "C S S",
+            r"\bcss\b": "c s s",
+            r"\bJS\b": "J S",
+            r"\bjs\b": "j s",
+        }
+
+        for pattern, replacement in acronyms.items():
+            text = re.sub(pattern, replacement, text)
+
+        # Replace common symbols
+        text = text.replace("&", " and ")
+        text = text.replace("%", " percent ")
+
+        # Normalize spacing
+        text = re.sub(r"\s+", " ", text)
+
+        return text.strip()
+
     def synthesize(self, text: str, speed: float = 1.0, voice: Optional[str] = None) -> bytes:
         """
         Synthesize a text string to WAV bytes with dynamic speed and voice.
@@ -97,6 +159,9 @@ class KokoroEngine:
         text = text.strip()
         if not text:
             return b""
+
+        # Preprocess text to improve Kokoro pronunciation
+        text = self._preprocess_text(text)
 
         selected_voice = voice if voice is not None else Config.KOKORO_VOICE
         try:
