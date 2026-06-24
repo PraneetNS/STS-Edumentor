@@ -55,3 +55,92 @@ The platform runs entirely offline on your local hardware to preserve privacy, u
 
 ---
 
+## 📁 Repository Structure
+
+```
+EduMentor-Voice/
+├── backend/
+│   ├── main.py                  # FastAPI server + WebSocket endpoint /ws/voice
+│   ├── config.py                # System settings driven by environment variables
+│   ├── requirements.txt         # Backend Python packages (Whisper, Torch, Kokoro)
+│   ├── .env                     # Local configuration variables
+│   │
+│   ├── agent/                   # Multi-Agent Orchestration Subsystem
+│   │   ├── __init__.py
+│   │   ├── controller.py        # Central agent coordinator (Single Entry Point)
+│   │   ├── database.py          # PostgreSQL async connection pool & queries (asyncpg)
+│   │   ├── dialogue_manager.py  # Assembles dialogue contexts & interruption bridges
+│   │   ├── emotion_detector.py  # Text sentiment-based emotion classification
+│   │   ├── intent_classifier.py # Classifies user input into 14 intents
+│   │   ├── interrupt_manager.py # Handles barge-in state, character limits, & logs
+│   │   ├── knowledge_router.py  # Logic gates for RAG retrieval (PDF, Notes, etc.)
+│   │   ├── memory_manager.py    # Manages short-term conversation context window
+│   │   ├── models.py            # Dataclasses & Enums (Intent, Emotion, State)
+│   │   ├── prompt_builder.py    # System prompt builder (tags: speak, show, followup)
+│   │   ├── realtime_parser.py   # Token parser that strips tags from spoken streams
+│   │   ├── response_planner.py  # Cleans outputs to filter out diagrams from TTS
+│   │   ├── safety_guard.py      # Input/Output validation (checks cheating, harm, injections)
+│   │   ├── session_summarizer.py# Periodically compresses conversation history
+│   │   └── student_profile.py   # Persists & auto-infers student statistics
+│   │
+│   ├── speech/                  # Low-Level Audio Intelligence Subsystem
+│   │   ├── alignment.py         # Estimates word timestamps for visual text highlights
+│   │   ├── emotion.py           # Audio pitch/intensity analysis for prosody
+│   │   ├── normalizer.py        # Fixes transcript disfluencies and repetitions
+│   │   └── stabilizer.py        # Identifies confirmed vs temporary transcription words
+│   │
+│   ├── stt/
+│   │   └── whisper_engine.py    # Local Speech-to-Text via faster-whisper
+│   ├── llm/
+│   │   └── llm_engine.py        # OpenAI-compatible llama.cpp HTTP client
+│   ├── tts/
+│   │   └── kokoro_engine.py     # Local Text-to-Speech via Kokoro
+│   ├── utils/
+│   │   └── audio.py             # PCM conversion utilities and VAD sentence splitters
+│   ├── data/                    # JSON data storage (Student Profile, Summaries)
+│   ├── logs/                    # Local file logs
+│   └── tests/                   # 15+ comprehensive unit test suites
+│
+├── frontend/
+│   ├── public/
+│   │   ├── audio-processor.js   # Web Audio API AudioWorklet (mic stream capture)
+│   │   └── mascot.png           # EduMentor application mascot logo
+│   │
+│   ├── src/
+│   │   ├── App.jsx              # Landing nav + Chat View wrapper
+│   │   ├── index.css            # Custom CSS system (ambient blobs, glassmorphism)
+│   │   ├── main.jsx             # React DOM entry point
+│   │   │
+│   │   ├── components/          # Reusable React components
+│   │   │   ├── BirdAvatar.js    # 3D Avatar coordinates mapping
+│   │   │   ├── ContextCards.jsx # Side UI statistics for profile metrics
+│   │   │   ├── LiveTranscript.jsx # Bottom VAD text stream
+│   │   │   ├── MarkdownViewer.jsx # Renders markdown and cleans XML tags
+│   │   │   ├── MentorCharacter.jsx # 3D Canvas element animating the avatar
+│   │   │   ├── MessageList.jsx  # Bubbles timeline with text/visual segment splits
+│   │   │   ├── MicButton.jsx    # Pulsing microphone button
+│   │   │   ├── Sidebar.jsx      # Navigation drawer for previous conversation threads
+│   │   │   ├── SpeakingText.jsx # Highlight sync container for spoken words
+│   │   │   ├── StatusBar.jsx    # Connectivity state dashboard
+│   │   │   ├── ToastContainer.jsx # Floating alerts
+│   │   │   ├── VoiceOrb.jsx     # Animated main voice controller
+│   │   │   └── Waveform.jsx     # Live audio frequency visualizer
+│   │   │
+│   │   └── hooks/
+│   │       ├── useConversationStore.js # Conversation history state store
+│   │       └── useVoicePipeline.js     # WebSocket connection, audio queues, mic worklet
+│   │
+│   ├── package.json
+│   ├── tailwind.config.js       # Styling configuration
+│   └── vite.config.js
+│
+├── create_db.py                 # Setup script to create the PostgreSQL database
+├── run_llm_server.bat           # Executable script for llama.cpp server (Windows)
+├── run_llm_server.sh            # Executable script for llama.cpp server (Bash)
+├── run_backend.bat              # Executable script for FastAPI backend (Windows)
+├── run_backend.sh               # Executable script for FastAPI backend (Bash)
+└── README.md
+```
+
+---
+
