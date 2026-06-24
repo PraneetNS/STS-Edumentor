@@ -64,6 +64,7 @@ export function useVoicePipeline({
   const generatedTextBufferRef = useRef('');
   const fallbackToTokenStreamingRef = useRef(false);
   const hasReceivedAudioWithTimestampsRef = useRef(false);
+  const retryCountRef = useRef(0);
 
   useEffect(() => {
     onTranscriptRef.current = onTranscript;
@@ -123,7 +124,7 @@ export function useVoicePipeline({
 
   // ── WebSocket connection ──────────────────────────────────────────────────
   // Connect to the backend FastAPI WebSocket server. Handles automatic reconnections
-  // and cleanup on connection failure or disconnect.
+  // with exponential backoff and cleanup on connection failure or disconnect.
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
@@ -134,6 +135,8 @@ export function useVoicePipeline({
       wsUrlObj.searchParams.set('session_id', conversationId);
       wsUrlObj.searchParams.set('user_id', conversationId);
     }
+
+    console.log(`[WS] Connecting with session_id: ${conversationId}`);
     const ws = new WebSocket(wsUrlObj.toString());
     ws.binaryType = 'arraybuffer';
     wsRef.current = ws;
@@ -143,9 +146,11 @@ export function useVoicePipeline({
     };
 
     ws.onopen = () => {
+      console.log('[WS] Connected successfully.');
       setStatus('connected');
+      retryCountRef.current = 0; // Reset retries on successful connection
       if (reconnectTimerRef.current) {
-        clearInterval(reconnectTimerRef.current);
+        clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
       }
       ws._pingInterval = setInterval(() => {
@@ -157,17 +162,22 @@ export function useVoicePipeline({
 
     ws.onclose = () => {
       clearInterval(ws._pingInterval);
-      setStatus('disconnected');
       setIsRecording(false);
       setIsProcessing(false);
       cleanupMic();
       clearTimeouts();
 
+      // Calculate exponential backoff: delay starts at 1s, grows up to a maximum of 15s
+      const delay = Math.min(15000, 1000 * Math.pow(1.5, retryCountRef.current));
+      console.warn(`[WS] Connection dropped. Reconnecting in ${Math.round(delay)}ms (retry #${retryCountRef.current + 1})...`);
+      setStatus(`disconnected: reconnecting in ${Math.round(delay / 1000)}s...`);
+
       if (!reconnectTimerRef.current) {
-        reconnectTimerRef.current = setInterval(() => {
-          console.log('[WS] Auto-reconnecting...');
+        reconnectTimerRef.current = setTimeout(() => {
+          reconnectTimerRef.current = null;
           connect();
-        }, 3000);
+        }, delay);
+        retryCountRef.current += 1;
       }
     };
 
