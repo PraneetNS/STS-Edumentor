@@ -229,3 +229,127 @@ python create_db.py
    ```
 
 ---
+
+## 🏃 Running the Application
+
+To run the full voice tutor system, you must start **three processes** in separate terminal windows.
+
+### Terminal 1 — llama.cpp Server
+
+This process runs the local LLM. The startup script points to `backend\models\EduMentor-Qwen3-Q6_K.gguf`.
+
+*   **Windows**:
+    ```cmd
+    run_llm_server.bat
+    ```
+*   **Linux / macOS**:
+    ```bash
+    chmod +x run_llm_server.sh
+    ./run_llm_server.sh
+    ```
+Wait until the server starts and logs: `llama server listening at http://0.0.0.0:8080`.
+
+### Terminal 2 — FastAPI Backend
+
+This process coordinates the speech and agent subsystems.
+
+*   **Windows**:
+    ```cmd
+    run_backend.bat
+    ```
+*   **Linux / macOS**:
+    ```bash
+    chmod +x run_backend.sh
+    ./run_backend.sh
+    ```
+Wait for the initialization logs to show: `All engines ready — accepting connections`.
+
+> [!NOTE]
+> On the first run, the backend will automatically download the Kokoro TTS weights (`~300 MB`) from HuggingFace. Subsequent startups are instantaneous.
+
+### Terminal 3 — Vite Frontend
+
+This launches the React dashboard client.
+
+1. Navigate to the frontend directory:
+   ```bash
+   cd frontend
+   ```
+2. Start the development server:
+   ```bash
+   npm run dev
+   ```
+3. Open your web browser and navigate to: **http://localhost:5173**
+
+---
+
+## ⚙️ Configuration Reference
+
+### Backend Settings (`backend/.env`)
+
+| Variable | Default Value | Description |
+|---|---|---|
+| `WHISPER_MODEL` | `base.en` | Whisper size (`tiny.en`, `base.en`, `small.en`, `medium.en`). |
+| `WHISPER_BEAM_SIZE` | `5` | Beam search width for STT decoding accuracy. |
+| `VAD_THRESHOLD` | `0.35` | Silero VAD speech detection threshold. |
+| `VAD_SILENCE_TIMEOUT` | `0.8` | Seconds of silence after speech to trigger transcription. |
+| `LLM_BASE_URL` | `http://localhost:8080` | Endpoint of the running `llama-server`. |
+| `LLM_MAX_TOKENS` | `512` | Max generated tokens per user query. |
+| `LLM_TEMPERATURE` | `0.55` | Temperature for LLM generation. |
+| `KOKORO_VOICE` | `af_heart` | Default voice (`af_heart`, `af_bella`, `am_adam`, `bf_emma`). |
+| `KOKORO_SPEED` | `1.0` | Speaking speed multiplier. |
+| `AGENT_ENABLED` | `true` | Enables the full orchestration layer. If false, fails back to direct LLM streams. |
+| `AGENT_INTENT_CLASSIFY` | `true` | Classifies query intent. Turn off to save ~1s. |
+| `AGENT_SAFETY_ENABLED` | `true` | Evaluates inputs and outputs for PII, cheat codes, and policy breaches. |
+| `MEMORY_MAX_TURNS` | `10` | Size of the active history window. |
+| `POSTGRES_ENABLED` | `true` | Connects to PostgreSQL database for logging. |
+
+### Frontend Settings (`frontend/.env`)
+
+| Variable | Default Value | Description |
+|---|---|---|
+| `VITE_WS_URL` | `ws://localhost:8000/ws/voice` | WebSocket path of the FastAPI backend. |
+
+---
+
+## 🛠️ Testing Suite
+
+EduMentor Voice comes with a suite of unit and integration tests under `backend/tests/` to verify each subsystem.
+
+To run the backend tests, activate the virtual environment and run `pytest`:
+```bash
+cd backend
+.venv310\Scripts\activate
+pytest
+```
+
+### Key Subsystem Tests
+
+*   `test_subsystems.py`: Verifies STT, LLM connection, and TTS pipelines in a unified process.
+*   `test_safety_guard.py`: Validates PII masking, prompt injections, and blocked category filter boundaries.
+*   `test_speech_emotion.py` & `test_emotion_detector.py`: Checks text-based and audio pitch-based emotion detection logic.
+*   `test_speech_alignment.py`: Evaluates synthesised audio alignment with character offsets.
+*   `test_interrupt_manager.py`: Tests VAD barge-in thresholds, characters sent logging, and saved states.
+*   `test_student_profile.py`: Verifies dynamic learning topic tracking and JSON profiles load/save sequences.
+
+---
+
+## 💡 Troubleshooting & Performance Tuning
+
+### Latency Optimization (Reducing TTFA)
+1. **GPU Offloading**: Ensure llama.cpp offloads all layers to VRAM. Increase `-ngl` in `run_llm_server.bat` (e.g., `-ngl 32` or `--n-gpu-layers all`).
+2. **Whisper Acceleration**: On a GPU machine, ensure `WHISPER_DEVICE` is set to `cuda` and `WHISPER_COMPUTE_TYPE` is `float16`.
+3. **Intent Classifier Gating**: If latency is still high, set `AGENT_INTENT_CLASSIFY=false` in `.env` to skip semantic intent classification.
+
+### Out of GPU Memory (OOM)
+*   If your system runs out of VRAM, reduce the llama-server offloading layer count (e.g., `-ngl 15` instead of `20` in `run_llm_server.bat`).
+*   Alternatively, use a smaller GGUF quantization (e.g., Q4_K_M instead of Q6_K).
+
+### Microphone Access Issues
+*   Vite serves the client over HTTP on `localhost` by default, which is allowed by modern browser security policies. If accessing the app from an external IP, you **must** serve the frontend over HTTPS or configure browser exceptions to allow microphone permissions.
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License — 100% private, local, and open-source.
