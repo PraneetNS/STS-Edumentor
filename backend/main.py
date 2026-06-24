@@ -540,6 +540,20 @@ async def voice_endpoint(websocket: WebSocket):
             pass
     finally:
         logger.info("Cleaning up WebSocket session for client: %s", websocket.client)
+        # Save interruption state on unexpected disconnect to enable resuming
+        if is_pipeline_running and agent_controller and pipeline_task and not pipeline_task.done():
+            try:
+                partial = agent_controller.get_partial_response(session_id)
+                topic = agent_controller.get_current_topic(session_id)
+                logger.info("Unexpected disconnect during active pipeline. Saving interrupt state for session %s (partial length: %d)", session_id, len(partial))
+                interrupt_manager.save_state(
+                    session_id=session_id,
+                    partial_response=partial,
+                    topic=topic,
+                )
+            except Exception as e:
+                logger.warning("Failed to save disconnect interrupt state: %s", e)
+
         if pipeline_task and not pipeline_task.done():
             pipeline_task.cancel()
         if live_transcribe_task and not live_transcribe_task.done():
