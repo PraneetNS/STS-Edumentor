@@ -144,3 +144,88 @@ EduMentor-Voice/
 
 ---
 
+## 🛠️ Prerequisites
+
+Ensure you have the following installed on your machine:
+
+| Requirement | Supported Version | Notes |
+|---|---|---|
+| **Python** | `3.10` or `3.11` | Required. (Kokoro and faster-whisper do not support Python 3.12+). |
+| **Node.js** | `18+` | Required for building and running the Vite + React frontend. |
+| **PostgreSQL** | `14+` | Required for session persistence and database logging. |
+| **llama.cpp** | Latest (`llama-server`) | Compiled with CUDA support if offloading to GPU. |
+| **CUDA Toolkit** | `12.1+` (Optional) | Recommended for GPU acceleration of LLM, STT, and VAD. |
+
+---
+
+## 📦 Setup & Installation
+
+### Step 1: Place your GGUF model
+
+1. Download a fine-tuned GGUF model optimized for educational instructions (e.g., `Qwen2.5-Coder` or `Qwen2.5-Math` quantizations).
+2. Create the directory `backend/models/`.
+3. Copy the GGUF model file and rename it to:
+   ```
+   backend/models/EduMentor-Qwen3-Q6_K.gguf
+   ```
+
+### Step 2: Configure Environment Variables
+
+1. Copy `backend/.env.example` to `backend/.env`.
+2. Open `backend/.env` and update the settings (especially database credentials, default voices, and GPU parameters). Example database connection setup:
+   ```ini
+   POSTGRES_HOST=localhost
+   POSTGRES_PORT=5432
+   POSTGRES_USER=postgres
+   POSTGRES_PASSWORD=yourpassword
+   POSTGRES_DB=edumentor
+   POSTGRES_ENABLED=true
+   ```
+
+### Step 3: Run Database Setup
+
+EduMentor Voice logs sessions into PostgreSQL. Run the database creation script from the root folder to create the database if it doesn't exist:
+```bash
+python create_db.py
+```
+
+### Step 4: Install Backend Dependencies
+
+1. Navigate to the `backend/` directory:
+   ```bash
+   cd backend
+   ```
+2. Create a Python virtual environment:
+   ```bash
+   python -m venv .venv310
+   ```
+3. Activate the virtual environment:
+   * **Windows:**
+     ```cmd
+     .venv310\Scripts\activate
+     ```
+   * **Linux/macOS:**
+     ```bash
+     source .venv310/bin/activate
+     ```
+4. Install PyTorch with GPU support (Highly recommended for CUDA speedup):
+   ```bash
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+   ```
+5. Install the remaining requirements:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+### Step 5: Install Frontend Dependencies
+
+1. Navigate to the `frontend/` directory:
+   ```bash
+   cd ../frontend
+   ```
+2. Install npm dependencies:
+   ```bash
+   npm install
+   ```
+
+---
