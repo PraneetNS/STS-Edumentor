@@ -374,7 +374,8 @@ class AgentController:
                         yield {"raw": raw_chunk, "planned": cleaned_planned}
         except Exception as exc:
             logger.exception("LLM generation error: %s", exc)
-            yield {"raw": f"[Error: {exc}]", "planned": ""}
+            err_msg = f"I encountered an error while processing your request: {exc}. Please try again."
+            yield {"raw": err_msg, "planned": err_msg}
             
         # Finalize the parser
         for event in parser.finalize():

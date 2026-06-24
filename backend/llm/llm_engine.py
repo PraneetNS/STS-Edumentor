@@ -133,10 +133,10 @@ class LLMEngine:
                 "Make sure run_llm_server.bat is running.",
                 self.base_url,
             )
-            yield "[Error: LLM server not reachable]"
+            yield "<speak>I am sorry, but I cannot connect to my local LLM brain server right now. Please check if the llama.cpp server is running on port 8080.</speak>"
         except Exception as exc:
             logger.exception("LLM streaming error: %s", exc)
-            yield f"[Error: {exc}]"
+            yield f"<speak>I encountered an error while thinking: {exc}. Please verify that the local LLM server is running and reachable.</speak>"
 
     async def aclose(self) -> None:
         """Gracefully close the HTTP client on shutdown."""

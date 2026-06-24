@@ -590,18 +590,37 @@ async def _run_pipeline(
 
     # ── 1. STT ───────────────────────────────────────────────────────────────
     audio_array = int16_bytes_to_float32(raw_pcm)
-    if pre_transcribed_text:
-        transcript = pre_transcribed_text
-        logger.info("Using pre-transcribed text from live transcriber: %r", transcript)
-        latency_metrics["whisper_done"] = 0.0
-    else:
-        logger.info("Transcribing %.1f seconds of audio …", len(audio_array) / Config.AUDIO_SAMPLE_RATE)
+    try:
+        if pre_transcribed_text:
+            transcript = pre_transcribed_text
+            logger.info("Using pre-transcribed text from live transcriber: %r", transcript)
+            latency_metrics["whisper_done"] = 0.0
+        else:
+            logger.info("Transcribing %.1f seconds of audio …", len(audio_array) / Config.AUDIO_SAMPLE_RATE)
 
-        # Run blocking Whisper in a thread to keep the event loop free
-        transcript: str = await loop.run_in_executor(
-            None, whisper_engine.transcribe, audio_array
-        )
-        latency_metrics["whisper_done"] = round(time.time() - start_time, 2)
+            # Run blocking Whisper in a thread to keep the event loop free
+            transcript: str = await loop.run_in_executor(
+                None, whisper_engine.transcribe, audio_array
+            )
+            latency_metrics["whisper_done"] = round(time.time() - start_time, 2)
+    except Exception as stt_exc:
+        logger.exception("STT Transcription failed: %s", stt_exc)
+        # Notify the frontend of the user speech transcription error and explain gracefully
+        await websocket.send_json({
+            "type": "transcript", 
+            "text": "[Speech recognition unavailable]", 
+            "words": [{"word": "[Speech recognition unavailable]", "status": "confirmed"}]
+        })
+        await set_state(ConversationState.THINKING)
+        # Yield a spoken error response using defaults
+        stt_err_speed = Config.KOKORO_SPEED
+        stt_err_voice = Config.KOKORO_VOICE
+        async def mock_error_stream():
+            yield {"raw": "I am sorry, but I failed to recognize your speech due to a local transcriber error. Please try again.", "planned": "I am sorry, but I failed to recognize your speech due to a local transcriber error. Please try again."}
+        await _stream_llm_and_tts(websocket, mock_error_stream(), loop, set_state, stt_err_speed, stt_err_voice, latency_metrics, start_time)
+        await set_state(ConversationState.IDLE)
+        await websocket.send_json({"type": "assistant_finished"})
+        return
 
     if not transcript:
         logger.info("Empty transcript — skipping pipeline.")
@@ -790,13 +809,22 @@ async def _stream_llm_and_tts(
                     break
                 
                 logger.debug("TTS worker synthesizing: %r", sentence[:60])
-                # Synthesize sentence using dynamic speed and voice
-                wav_bytes = await loop.run_in_executor(None, lambda: kokoro_engine.synthesize(sentence, speed, voice))
-                
-                # Estimate word timestamps using the alignment engine
-                from speech.alignment import estimate_word_timestamps
-                timestamps = estimate_word_timestamps(sentence, wav_bytes)
-                
+                # Synthesize sentence using dynamic speed and voice with fail-safe logic
+                try:
+                    wav_bytes = await loop.run_in_executor(None, lambda: kokoro_engine.synthesize(sentence, speed, voice))
+                    
+                    # Estimate word timestamps using the alignment engine
+                    from speech.alignment import estimate_word_timestamps
+                    try:
+                        timestamps = estimate_word_timestamps(sentence, wav_bytes)
+                    except Exception as align_exc:
+                        logger.warning("Alignment engine failed: %s", align_exc)
+                        timestamps = []
+                except Exception as tts_exc:
+                    logger.error("TTS synthesis failed for sentence %r: %s", sentence, tts_exc)
+                    wav_bytes = b""
+                    timestamps = []
+
                 await audio_queue.put({
                     "wav": wav_bytes,
                     "timestamps": timestamps,
