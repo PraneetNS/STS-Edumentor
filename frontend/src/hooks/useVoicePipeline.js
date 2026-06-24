@@ -128,7 +128,13 @@ export function useVoicePipeline({
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     setStatus('connecting');
-    const ws = new WebSocket(WS_URL);
+    // Build WebSocket URL with persistent session query parameters for resuming
+    const wsUrlObj = new URL(WS_URL);
+    if (conversationId) {
+      wsUrlObj.searchParams.set('session_id', conversationId);
+      wsUrlObj.searchParams.set('user_id', conversationId);
+    }
+    const ws = new WebSocket(wsUrlObj.toString());
     ws.binaryType = 'arraybuffer';
     wsRef.current = ws;
 
