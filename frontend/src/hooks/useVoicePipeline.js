@@ -65,6 +65,7 @@ export function useVoicePipeline({
   const fallbackToTokenStreamingRef = useRef(false);
   const hasReceivedAudioWithTimestampsRef = useRef(false);
   const retryCountRef = useRef(0);
+  const isManualDisconnectRef = useRef(false);
 
   useEffect(() => {
     onTranscriptRef.current = onTranscript;
@@ -129,6 +130,8 @@ export function useVoicePipeline({
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     setStatus('connecting');
+    isManualDisconnectRef.current = false;
+
     // Build WebSocket URL with persistent session query parameters for resuming
     const wsUrlObj = new URL(WS_URL);
     if (conversationId) {
@@ -167,6 +170,13 @@ export function useVoicePipeline({
       cleanupMic();
       clearTimeouts();
 
+      // If manual disconnect occurred (switching chat, logout), do not auto-reconnect
+      if (isManualDisconnectRef.current) {
+        console.log('[WS] Manual disconnect. Skipping auto-reconnect.');
+        setStatus('disconnected');
+        return;
+      }
+
       // Calculate exponential backoff: delay starts at 1s, grows up to a maximum of 15s
       const delay = Math.min(15000, 1000 * Math.pow(1.5, retryCountRef.current));
       console.warn(`[WS] Connection dropped. Reconnecting in ${Math.round(delay)}ms (retry #${retryCountRef.current + 1})...`);
@@ -182,15 +192,17 @@ export function useVoicePipeline({
     };
 
     ws.onerror = (err) => {
-      console.error('[WS] error', err);
+      console.error('[WS] Error detected', err);
       setStatus('error');
       ws.close();
     };
-  }, [clearTimeouts, cleanupMic]);
+  }, [clearTimeouts, cleanupMic, conversationId]);
 
   const disconnect = useCallback(() => {
+    console.log('[WS] Disconnecting manually...');
+    isManualDisconnectRef.current = true;
     if (reconnectTimerRef.current) {
-      clearInterval(reconnectTimerRef.current);
+      clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
     }
     wsRef.current?.close();
@@ -198,8 +210,9 @@ export function useVoicePipeline({
     clearTimeouts();
   }, [clearTimeouts]);
 
-  // Auto-connect on mount
+  // Auto-connect on mount and reconnect on conversationId changes
   useEffect(() => {
+    retryCountRef.current = 0; // Reset retries for new conversation session
     connect();
     return () => disconnect();
   }, [connect, disconnect]);
