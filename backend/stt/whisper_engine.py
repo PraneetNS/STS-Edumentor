@@ -38,7 +38,112 @@ class WhisperEngine:
             compute_type=Config.WHISPER_COMPUTE_TYPE,
         )
         self.sample_rate = Config.AUDIO_SAMPLE_RATE
+
+        import json
+        import os
+        self.vocab = {}
+        vocab_path = os.path.join(os.path.dirname(__file__), "..", "..", "engineering_vocab.json")
+        try:
+            if os.path.exists(vocab_path):
+                with open(vocab_path, "r", encoding="utf-8") as f:
+                    self.vocab = json.load(f)
+                logger.info("[OK] WhisperEngine loaded engineering vocabulary for prompt biasing.")
+            else:
+                logger.warning("engineering_vocab.json not found at %s. Prompt biasing will fall back to config default.", vocab_path)
+        except Exception as e:
+            logger.error("Failed to load engineering_vocab.json: %s", e)
+
         logger.info("[OK] Whisper engine ready.")
+
+    def get_prompt_for_discipline(
+        self,
+        discipline: str,
+        user_corrections: Optional[list[str]] = None
+    ) -> str:
+        """
+        Assemble a dynamic prompt biasing list of engineering vocabulary
+        and student-specific corrections.
+        """
+        prompt_terms = []
+
+        # 1. Prepend user-specific corrections (unique words, max 15)
+        if user_corrections:
+            for phrase in user_corrections:
+                for word in phrase.split():
+                    word_clean = word.strip(".,!?").capitalize()
+                    if word_clean and len(word_clean) > 2 and word_clean not in prompt_terms:
+                        prompt_terms.append(word_clean)
+                        if len(prompt_terms) >= 15:
+                            break
+                if len(prompt_terms) >= 15:
+                    break
+
+        # 2. Add discipline-specific terms (unique words, max 25)
+        discipline_key = discipline if discipline in self.vocab else "cse"
+        if self.vocab and discipline_key in self.vocab:
+            disc_terms = list(self.vocab[discipline_key].keys())
+            for term in disc_terms:
+                term_cap = term.capitalize()
+                if term_cap not in prompt_terms:
+                    prompt_terms.append(term_cap)
+                    if len(prompt_terms) >= 40:
+                        break
+
+        final_terms = prompt_terms[:40]
+        if not final_terms:
+            return Config.WHISPER_PROMPT
+        
+        return ", ".join(final_terms) + "."
+
+    def transcribe_with_confidence(
+        self,
+        audio_array: np.ndarray,
+        initial_prompt: Optional[str] = None,
+        prefix: Optional[str] = None,
+    ) -> tuple[str, float]:
+        """
+        Transcribe a mono Float32 numpy array (16 kHz) and return transcript + min avg_logprob.
+        """
+        if audio_array is None or len(audio_array) == 0:
+            return "", 0.0
+
+        segments, info = self.model.transcribe(
+            audio_array,
+            language="en",
+            task="transcribe",
+            vad_filter=True,
+            vad_parameters=dict(
+                min_silence_duration_ms=300,
+                speech_pad_ms=200,
+            ),
+            beam_size=Config.WHISPER_BEAM_SIZE,
+            best_of=Config.WHISPER_BEAM_SIZE,
+            temperature=0.0,
+            condition_on_previous_text=False,
+            initial_prompt=initial_prompt or Config.WHISPER_PROMPT,
+            prefix=prefix,
+        )
+
+        parts = []
+        min_avg_logprob = 0.0
+        has_segments = False
+
+        for seg in segments:
+            text = seg.text.strip()
+            if text and not self._is_hallucination(text):
+                parts.append(text)
+                if not has_segments:
+                    min_avg_logprob = seg.avg_logprob
+                    has_segments = True
+                else:
+                    min_avg_logprob = min(min_avg_logprob, seg.avg_logprob)
+
+        transcript = " ".join(parts).strip()
+        logger.info(
+            "Transcript (with confidence): %r (lang=%.2f, min_avg_logprob=%.2f)",
+            transcript, info.language_probability, min_avg_logprob
+        )
+        return transcript, min_avg_logprob
 
     def transcribe(
         self,
