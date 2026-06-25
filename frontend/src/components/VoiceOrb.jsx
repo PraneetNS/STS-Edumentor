@@ -37,7 +37,8 @@ export const VoiceOrb = React.memo(function VoiceOrb({
   isProcessing,
   isPlaying,
   conversationState,
-  onClick
+  onClick,
+  shortcutsEnabled = true
 }) {
   const state = useMemo(() => {
     if (conversationState === 'LISTENING') return 'listening';
@@ -110,7 +111,13 @@ export const VoiceOrb = React.memo(function VoiceOrb({
       {/* Shortcut Hint */}
       {state === 'idle' && (
         <div className="voice-hint mt-1">
-          <kbd>Space</kbd> to talk
+          {shortcutsEnabled ? (
+            <>
+              <kbd>Space</kbd> to talk
+            </>
+          ) : (
+            "Click to talk"
+          )}
         </div>
       )}
     </div>
