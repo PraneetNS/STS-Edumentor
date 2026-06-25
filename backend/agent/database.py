@@ -97,12 +97,28 @@ class DatabaseManager:
         query_index_session = """
         CREATE INDEX IF NOT EXISTS idx_conv_session ON conversation_logs (session_id, created_at DESC);
         """
+        query_corr_table = """
+        CREATE TABLE IF NOT EXISTS speech_corrections (
+            id              BIGSERIAL PRIMARY KEY,
+            user_id         UUID NOT NULL,
+            session_id      UUID NOT NULL,
+            raw_text        TEXT NOT NULL,
+            corrected_text  TEXT NOT NULL,
+            source          VARCHAR(16) NOT NULL DEFAULT 'session',
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        """
+        query_index_corr = """
+        CREATE INDEX IF NOT EXISTS idx_speech_corr_user ON speech_corrections (user_id);
+        """
 
         try:
             async with self.pool.acquire() as conn:
                 await conn.execute(query_table)
                 await conn.execute(query_index_user)
                 await conn.execute(query_index_session)
+                await conn.execute(query_corr_table)
+                await conn.execute(query_index_corr)
                 logger.info("[OK] PostgreSQL database schema and indexes verified.")
         except Exception as e:
             logger.error("Failed to verify database schema: %s", e)
@@ -193,4 +209,62 @@ class DatabaseManager:
                 return [dict(r) for r in rows]
         except Exception as e:
             logger.error("Failed to fetch history for user_id=%s from PostgreSQL: %s", user_id, e)
+            return []
+
+    async def write_speech_correction(
+        self,
+        user_id: uuid.UUID,
+        session_id: uuid.UUID,
+        raw_text: str,
+        corrected_text: str,
+        source: str = "session",
+    ) -> None:
+        """
+        Write a speech correction log row.
+        """
+        if not self.enabled or not self.pool:
+            logger.debug("Database disabled or pool not initialized. Skipping speech correction write.")
+            return
+
+        query = """
+        INSERT INTO speech_corrections (
+            user_id,
+            session_id,
+            raw_text,
+            corrected_text,
+            source
+        ) VALUES ($1, $2, $3, $4, $5);
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, user_id, session_id, raw_text, corrected_text, source)
+                logger.info(
+                    "Logged speech correction to DB. user_id=%s, raw=%r, corrected=%r, source=%s",
+                    user_id, raw_text, corrected_text, source
+                )
+        except Exception as e:
+            logger.error("Failed to write speech correction to PostgreSQL: %s", e)
+
+    async def fetch_user_corrections(self, user_id: uuid.UUID, limit: int = 15) -> List[str]:
+        """
+        Fetch the most frequently corrected terms/phrases for a given user_id.
+        """
+        if not self.enabled or not self.pool:
+            logger.debug("Database disabled or pool not initialized. Returning empty corrections.")
+            return []
+
+        query = """
+        SELECT corrected_text, COUNT(*) as count
+        FROM speech_corrections
+        WHERE user_id = $1
+        GROUP BY corrected_text
+        ORDER BY count DESC, max(created_at) DESC
+        LIMIT $2;
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, user_id, limit)
+                return [r["corrected_text"] for r in rows]
+        except Exception as e:
+            logger.error("Failed to fetch speech corrections for user_id=%s from PostgreSQL: %s", user_id, e)
             return []
