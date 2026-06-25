@@ -6,6 +6,7 @@ streaming API. Tokens are yielded one-by-one as they are generated —
 no waiting for the full response.
 """
 
+import asyncio
 import json
 import logging
 from typing import AsyncIterator
@@ -138,6 +139,46 @@ class LLMEngine:
             logger.exception("LLM streaming error: %s", exc)
             yield f"<speak>I encountered an error while thinking: {exc}. Please verify that the local LLM server is running and reachable.</speak>"
 
+    async def get_completion(
+        self,
+        messages: list,
+        max_tokens: int = 20,
+        timeout: float = 0.4
+    ) -> str:
+        """
+        Get a single non-streaming completion from the LLM with strict token limits and timeout.
+        Used for the low-latency context-aware STT correction pass.
+        """
+        payload = {
+            "model":          Config.LLM_MODEL_NAME,
+            "messages":       messages,
+            "stream":         False,
+            "max_tokens":     max_tokens,
+            "temperature":    0.0,  # greedy decoding = faster & consistent
+            "top_p":          Config.LLM_TOP_P,
+            "repeat_penalty": Config.LLM_REPEAT_PENALTY,
+            "stop": ["<|im_end|>", "<|im_start|>", "<|endoftext|>"],
+        }
+        try:
+            response = await asyncio.wait_for(
+                self.client.post(
+                    "/v1/chat/completions",
+                    json=payload,
+                    timeout=httpx.Timeout(connect=2.0, read=timeout, write=2.0, pool=2.0)
+                ),
+                timeout=timeout
+            )
+            response.raise_for_status()
+            res_data = response.json()
+            choices = res_data.get("choices", [])
+            if choices:
+                return choices[0].get("message", {}).get("content", "").strip()
+            return ""
+        except Exception as exc:
+            logger.warning("LLM non-streaming correction pass failed or timed out: %s", exc)
+            return ""
+
     async def aclose(self) -> None:
         """Gracefully close the HTTP client on shutdown."""
         await self.client.aclose()
+
