@@ -26,6 +26,15 @@ export default function App() {
   const [readmeContent, setReadmeContent] = useState('');
   const [isLoadingReadme, setIsLoadingReadme] = useState(false);
 
+  const [shortcutsEnabled, setShortcutsEnabled] = useState(() => {
+    const saved = localStorage.getItem('shortcutsEnabled');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('shortcutsEnabled', JSON.stringify(shortcutsEnabled));
+  }, [shortcutsEnabled]);
+
   const launcherMessages = [
     '💬 Talk to an AI Mentor',
     "👋 Hey! I'm Edi",
@@ -188,6 +197,7 @@ export default function App() {
   // ── Keyboard shortcut: Space to toggle mic ──────────────────────────────
   useEffect(() => {
     function handleKey(e) {
+      if (!shortcutsEnabled) return;
       if (
         e.code === 'Space' &&
         !['INPUT', 'TEXTAREA', 'BUTTON'].includes(e.target.tagName) &&
@@ -199,7 +209,7 @@ export default function App() {
     }
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [toggleRecording, isProcessing]);
+  }, [toggleRecording, isProcessing, shortcutsEnabled]);
 
   const isMintState = isRecording || isPlaying || conversationState === 'LISTENING' || conversationState === 'SPEAKING';
   const glowColor = isMintState ? '#10B981' : '#4F46E5';
@@ -397,14 +407,30 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Connection Status */}
-              <div className={`status-badge ${status === 'connected' ? 'online' : 'connecting'}`}>
-                <div className={`status-dot ${isRecording ? 'recording' :
-                  isProcessing ? 'processing' :
-                    isPlaying ? 'playing' :
-                      status === 'connected' ? 'connected' : ''
-                  }`} />
-                {status === 'connected' ? (isRecording ? 'Listening' : isProcessing ? 'Thinking' : isPlaying ? 'Speaking' : 'Online') : 'Connecting...'}
+              <div className="flex items-center gap-3">
+                {/* Keyboard Shortcuts Toggle Button */}
+                <button
+                  onClick={() => setShortcutsEnabled(!shortcutsEnabled)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                    shortcutsEnabled
+                      ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/30 dark:border-indigo-900/50 dark:text-indigo-300'
+                      : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 dark:bg-slate-800/30 dark:border-slate-700/50 dark:text-slate-400'
+                  }`}
+                  title={shortcutsEnabled ? "Disable Spacebar shortcut" : "Enable Spacebar shortcut"}
+                >
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: shortcutsEnabled ? 'var(--accent-indigo)' : 'var(--text-tertiary)' }} />
+                  <span>Spacebar {shortcutsEnabled ? 'Active' : 'Disabled'}</span>
+                </button>
+
+                {/* Connection Status */}
+                <div className={`status-badge ${status === 'connected' ? 'online' : 'connecting'}`}>
+                  <div className={`status-dot ${isRecording ? 'recording' :
+                    isProcessing ? 'processing' :
+                      isPlaying ? 'playing' :
+                        status === 'connected' ? 'connected' : ''
+                    }`} />
+                  {status === 'connected' ? (isRecording ? 'Listening' : isProcessing ? 'Thinking' : isPlaying ? 'Speaking' : 'Online') : 'Connecting...'}
+                </div>
               </div>
             </header>
 
@@ -493,6 +519,7 @@ export default function App() {
                     isPlaying={isPlaying}
                     conversationState={conversationState}
                     onClick={toggleRecording}
+                    shortcutsEnabled={shortcutsEnabled}
                   />
                 </div>
               </div>
