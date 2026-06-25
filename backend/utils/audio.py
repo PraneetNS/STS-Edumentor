@@ -55,7 +55,7 @@ _CLAUSE_END_RE = re.compile(r"(?<=\S{2})[,;:—\n\r]+(?:\s|$)")
 _SENTENCE_END_RE = re.compile(r"(?<=\S{2})[.!?]+(?:\s|$)")
 
 MIN_SENTENCE_CHARS = 3
-MIN_CLAUSE_CHARS = 15
+MIN_CLAUSE_CHARS = 30
 
 
 def is_sentence_complete(text: str) -> bool:
