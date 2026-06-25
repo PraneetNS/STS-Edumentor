@@ -52,6 +52,7 @@ export function useVoicePipeline({
   const currentAssistantTextRef   = useRef('');
   const assistantCharsDeliveredRef = useRef(0);
   const clientSilenceTimerRef     = useRef(null);  // Client-side auto-stop timer
+  const clientInactivityTimerRef  = useRef(null);  // Client-side absolute inactivity timer
   const hasSpeechRef              = useRef(false);  // True once live transcript arrives
 
   const onTranscriptRef = useRef(onTranscript);
@@ -112,8 +113,16 @@ export function useVoicePipeline({
     }
   }, []);
 
+  const clearClientInactivityTimer = useCallback(() => {
+    if (clientInactivityTimerRef.current) {
+      clearTimeout(clientInactivityTimerRef.current);
+      clientInactivityTimerRef.current = null;
+    }
+  }, []);
+
   const cleanupMic = useCallback(() => {
     clearClientSilenceTimer();
+    clearClientInactivityTimer();
     // Disconnect the audio graph nodes before stopping tracks
     try { sourceNodeRef.current?.disconnect(); } catch (_) {}
     try { workletNodeRef.current?.disconnect(); } catch (_) {}
@@ -121,7 +130,7 @@ export function useVoicePipeline({
     workletNodeRef.current = null;
     sourceNodeRef.current  = null;
     streamRef.current      = null;
-  }, [clearClientSilenceTimer]);
+  }, [clearClientSilenceTimer, clearClientInactivityTimer]);
 
   // ── WebSocket connection ──────────────────────────────────────────────────
   // Connect to the backend FastAPI WebSocket server. Handles automatic reconnections
@@ -376,6 +385,10 @@ export function useVoicePipeline({
       switch (msg.type) {
         case 'state':
           setConversationState(msg.state);
+          if (msg.state === 'LISTENING' || msg.state === 'THINKING') {
+            hasSpeechRef.current = true;
+            clearClientInactivityTimer();
+          }
           if (msg.state === 'THINKING') {
             setIsProcessing(true);
             setStatus('processing');
@@ -392,6 +405,7 @@ export function useVoicePipeline({
           // Client-side silence watchdog: reset 1.2s auto-stop timer on every live transcript
           if (msg.text && msg.text.trim()) {
             hasSpeechRef.current = true;
+            clearClientInactivityTimer();
             clearClientSilenceTimer();
             clientSilenceTimerRef.current = setTimeout(() => {
               // Only auto-stop if still recording and not already processing
@@ -597,7 +611,9 @@ export function useVoicePipeline({
       }
 
       workletNode.port.onmessage = (event) => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
+        // Only stream microphone data to the backend if the assistant is not currently speaking.
+        // This prevents acoustic feedback/echo from triggering accidental barge-ins or muddying Whisper STT.
+        if (wsRef.current?.readyState === WebSocket.OPEN && !isPlayingRef.current) {
           wsRef.current.send(event.data);
         }
       };
@@ -620,11 +636,21 @@ export function useVoicePipeline({
       assistantCharsDeliveredRef.current = 0;
       resetPlayback();
       setStatus('recording');
+
+      // Start 5-second absolute inactivity watchdog to auto-close mic if no speech is detected
+      clientInactivityTimerRef.current = setTimeout(() => {
+        if (!hasSpeechRef.current) {
+          console.log('[VAD] Client inactivity watchdog: no speech detected for 5s, stopping mic.');
+          cleanupMic();
+          setIsRecording(false);
+          setStatus('connected');
+        }
+      }, 5000);
     } catch (err) {
       console.error('[Mic] error', err);
       setStatus('Mic access denied');
     }
-  }, [connect, getAudioContext, isPlaying, isProcessing, resetPlayback, clearTimeouts, clearClientSilenceTimer]);
+  }, [connect, getAudioContext, isPlaying, isProcessing, resetPlayback, clearTimeouts, clearClientSilenceTimer, clearClientInactivityTimer, cleanupMic]);
 
   const stopRecording = useCallback(() => {
     cleanupMic();
