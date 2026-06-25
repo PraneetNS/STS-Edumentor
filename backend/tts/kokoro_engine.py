@@ -32,6 +32,9 @@ class KokoroEngine:
     """
 
     def __init__(self) -> None:
+        # Silence noisy warnings from the phonemizer library
+        logging.getLogger("phonemizer").setLevel(logging.ERROR)
+
         logger.info("Loading Kokoro TTS pipeline (lang='%s') ...", Config.KOKORO_LANG_CODE)
         try:
             from kokoro import KPipeline  # noqa: PLC0415
@@ -86,6 +89,20 @@ class KokoroEngine:
         for correct grapheme-to-phoneme translation inside the Kokoro model.
         """
         import re
+
+        # Remove any lingering XML/HTML-style tags (safeguard against tag leakages)
+        text = re.sub(r"</?[a-zA-Z]+(?:\s+[^>]*)?>", "", text)
+
+        # Remove markdown characters that confuse the G2P phoneme engine
+        text = re.sub(r"[*`_\[\]{}()#]", "", text)
+
+        # Replace ellipses and dashes with commas/periods for natural pauses
+        text = text.replace("...", ". ")
+        text = text.replace("--", ", ")
+        text = text.replace("—", ", ")
+
+        # Ensure a space character always follows punctuation to help word boundaries
+        text = re.sub(r"([.,!?;:])(?=[a-zA-Z])", r"\1 ", text)
 
         # Fix spelling/pronunciation of Edi
         text = re.sub(r"\bEdi\b", "Eddy", text)
