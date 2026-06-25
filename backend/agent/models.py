@@ -303,6 +303,8 @@ class StudentProfile:
         weak_topics:      Topics the student struggles with (auto-inferred).
         preferred_style:  Response style: "examples" | "theory" | "mixed"
         session_count:    Total number of sessions completed.
+        discipline:       Selected discipline (e.g. cse, mech, eee)
+        active_topics:    List of topics active in the current session
     """
     name:             str        = "Student"
     level:            str        = "beginner"
@@ -310,6 +312,8 @@ class StudentProfile:
     weak_topics:      List[str]  = field(default_factory=list)
     preferred_style:  str        = "examples"
     session_count:    int        = 0
+    discipline:       str        = "cse"
+    active_topics:    List[str]  = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -319,6 +323,8 @@ class StudentProfile:
             "weak_topics":     self.weak_topics,
             "preferred_style": self.preferred_style,
             "session_count":   self.session_count,
+            "discipline":      self.discipline,
+            "active_topics":   self.active_topics,
         }
 
     @classmethod
@@ -330,6 +336,8 @@ class StudentProfile:
             weak_topics     = data.get("weak_topics", []),
             preferred_style = data.get("preferred_style", "examples"),
             session_count   = data.get("session_count", 0),
+            discipline      = data.get("discipline", "cse"),
+            active_topics   = data.get("active_topics", []),
         )
 
     def to_prompt_block(self) -> str:
