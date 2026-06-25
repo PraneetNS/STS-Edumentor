@@ -1,0 +1,1814 @@
+{
+  "cse": {
+    "RAG": [
+      "rag",
+      "rack",
+      "r.a.g.",
+      "wreg"
+    ],
+    "cache": [
+      "chace",
+      "cash",
+      "cashe",
+      "cash memory",
+      "catch"
+    ],
+    "kernel": [
+      "colonel",
+      "carnel",
+      "kernal",
+      "kernell"
+    ],
+    "pointer": [
+      "printer",
+      "pointer's",
+      "ponder"
+    ],
+    "recursion": [
+      "reclusion",
+      "recursion's",
+      "re curtian",
+      "re cursion"
+    ],
+    "iteration": [
+      "italian",
+      "iter ration",
+      "irritation"
+    ],
+    "asynchronous": [
+      "a synchronous",
+      "synchronous",
+      "a sin chronous"
+    ],
+    "synchronous": [
+      "sin chronous",
+      "sing chronous"
+    ],
+    "mutex": [
+      "mute x",
+      "mutext",
+      "mu tex"
+    ],
+    "deadlock": [
+      "dead lock",
+      "dedlock",
+      "dead block"
+    ],
+    "semaphore": [
+      "semifore",
+      "semi four",
+      "semaphor"
+    ],
+    "thread": [
+      "tread",
+      "thred",
+      "threat"
+    ],
+    "process": [
+      "progress",
+      "prosses",
+      "proses"
+    ],
+    "scheduler": [
+      "shed yuler",
+      "schedular",
+      "shadular"
+    ],
+    "compiler": [
+      "compailer",
+      "complier",
+      "com filer"
+    ],
+    "interpreter": [
+      "inter printer",
+      "interpretor",
+      "inter pretor"
+    ],
+    "segmentation fault": [
+      "segment haitian fault",
+      "segmentation fold",
+      "segmentation false"
+    ],
+    "stack overflow": [
+      "stack over flow",
+      "stock overflow"
+    ],
+    "heap": [
+      "hip",
+      "heep",
+      "heaps"
+    ],
+    "garbage collection": [
+      "garbage collation",
+      "garbage collision"
+    ],
+    "polymorphism": [
+      "poly morphism",
+      "poly mortism",
+      "polymorphis"
+    ],
+    "inheritance": [
+      "in heritance",
+      "inheritence",
+      "in hair tance"
+    ],
+    "encapsulation": [
+      "en capsulation",
+      "encapsalation"
+    ],
+    "abstraction": [
+      "ab straction",
+      "abstration"
+    ],
+    "constructor": [
+      "con structor",
+      "constructer"
+    ],
+    "destructor": [
+      "de structor",
+      "destructer"
+    ],
+    "API": [
+      "a p i",
+      "appy",
+      "a.p.e."
+    ],
+    "REST API": [
+      "rest a p i",
+      "wrest api",
+      "rest happy"
+    ],
+    "JSON": [
+      "jay son",
+      "jason",
+      "j.s.o.n"
+    ],
+    "XML": [
+      "x m l",
+      "ex em el"
+    ],
+    "SQL": [
+      "sequel",
+      "s q l",
+      "se quill"
+    ],
+    "NoSQL": [
+      "no sequel",
+      "no s q l"
+    ],
+    "database": [
+      "data base",
+      "data bass",
+      "data based"
+    ],
+    "indexing": [
+      "in dexing",
+      "indexin"
+    ],
+    "normalization": [
+      "normal ization",
+      "normal isation"
+    ],
+    "join": [
+      "joint",
+      "joins",
+      "jon"
+    ],
+    "primary key": [
+      "primary key's",
+      "primary qui"
+    ],
+    "foreign key": [
+      "foreign quay",
+      "for in key"
+    ],
+    "algorithm": [
+      "all gore rhythm",
+      "algo rhythm",
+      "algorism"
+    ],
+    "Big O notation": [
+      "big o notation",
+      "big oh notation",
+      "big zero notation"
+    ],
+    "Dijkstra": [
+      "dike struh",
+      "dyke struh",
+      "dijkstra's",
+      "dixtra"
+    ],
+    "Bellman-Ford": [
+      "bellman for",
+      "bellman fourd"
+    ],
+    "Kruskal": [
+      "crustal",
+      "krustal",
+      "kruskel"
+    ],
+    "Prim's algorithm": [
+      "prince algorithm",
+      "prims algorithm",
+      "prince algorism"
+    ],
+    "depth first search": [
+      "death first search",
+      "depth furst search"
+    ],
+    "breadth first search": [
+      "breath first search",
+      "bread first search"
+    ],
+    "binary search": [
+      "bionary search",
+      "binary serge"
+    ],
+    "hash table": [
+      "hash table's",
+      "has table",
+      "hash stable"
+    ],
+    "hash map": [
+      "has map",
+      "hash mop"
+    ],
+    "linked list": [
+      "link list",
+      "linked lis",
+      "linklist"
+    ],
+    "binary tree": [
+      "bionary tree",
+      "binary tre"
+    ],
+    "AVL tree": [
+      "a v l tree",
+      "ave el tree"
+    ],
+    "B-tree": [
+      "bee tree",
+      "b tree's"
+    ],
+    "trie": [
+      "try",
+      "tree",
+      "trie's"
+    ],
+    "graph traversal": [
+      "graph traversal's",
+      "graph transversal"
+    ],
+    "dynamic programming": [
+      "dynamic program ing",
+      "dynamic progressing"
+    ],
+    "memoization": [
+      "memorization",
+      "memo ization"
+    ],
+    "greedy algorithm": [
+      "greedy algorism",
+      "greedy all gore rhythm"
+    ],
+    "backtracking": [
+      "back tracking",
+      "back trekking"
+    ],
+    "time complexity": [
+      "time complexedy",
+      "time complex ity"
+    ],
+    "space complexity": [
+      "space complexedy"
+    ],
+    "operating system": [
+      "operating sister",
+      "operating cistern"
+    ],
+    "virtual memory": [
+      "virtual memory's",
+      "virtual memoir"
+    ],
+    "paging": [
+      "paging's",
+      "paaging",
+      "pageing"
+    ],
+    "fragmentation": [
+      "frag mentation",
+      "fragmen tation"
+    ],
+    "context switch": [
+      "context switch's",
+      "context which"
+    ],
+    "interrupt": [
+      "inter rupt",
+      "interupt"
+    ],
+    "system call": [
+      "system call's",
+      "sister call"
+    ],
+    "race condition": [
+      "race condition's",
+      "rice condition"
+    ],
+    "concurrency": [
+      "con currency",
+      "concurrency's",
+      "currency"
+    ],
+    "parallelism": [
+      "parallel ism",
+      "parallelism's"
+    ],
+    "Kubernetes": [
+      "coober netties",
+      "cuber netties",
+      "kubernetes's",
+      "cooper netties"
+    ],
+    "Docker": [
+      "doctor",
+      "dockery",
+      "docker's"
+    ],
+    "container": [
+      "container's",
+      "contain er"
+    ],
+    "microservices": [
+      "micro services",
+      "micro services's"
+    ],
+    "load balancer": [
+      "load balancer's",
+      "load balanser"
+    ],
+    "Nginx": [
+      "engine x",
+      "n jinx",
+      "engine ex"
+    ],
+    "middleware": [
+      "middle wear",
+      "middle were"
+    ],
+    "framework": [
+      "frame work",
+      "framewerk"
+    ],
+    "git": [
+      "get",
+      "git's",
+      "kit"
+    ],
+    "git commit": [
+      "get commit",
+      "git comet"
+    ],
+    "git merge": [
+      "get merge",
+      "git emerge"
+    ],
+    "git rebase": [
+      "get rebase",
+      "git re base"
+    ],
+    "pull request": [
+      "pull request's",
+      "poll request"
+    ],
+    "merge conflict": [
+      "merge conflict's",
+      "merch conflict"
+    ],
+    "version control": [
+      "version control's",
+      "virgin control"
+    ],
+    "compiler optimization": [
+      "compiler optimisation",
+      "complier optimization"
+    ],
+    "machine learning": [
+      "machine learning's",
+      "mission learning"
+    ],
+    "neural network": [
+      "neural net work",
+      "neuro network"
+    ],
+    "gradient descent": [
+      "radiant descent",
+      "gradient decent"
+    ],
+    "backpropagation": [
+      "back propagation",
+      "back propogation"
+    ],
+    "overfitting": [
+      "over fitting",
+      "over fit ing"
+    ],
+    "underfitting": [
+      "under fitting",
+      "under fit ing"
+    ],
+    "hyperparameter": [
+      "hyper parameter",
+      "hiper parameter"
+    ],
+    "epoch": [
+      "e pock",
+      "epic",
+      "epoch's"
+    ],
+    "tensor": [
+      "tenser",
+      "tensor's",
+      "tension"
+    ],
+    "convolution": [
+      "con volution",
+      "convolusion"
+    ],
+    "transformer": [
+      "trans former",
+      "transformer's"
+    ],
+    "tokenization": [
+      "token ization",
+      "token isation"
+    ],
+    "embedding": [
+      "em bedding",
+      "in bedding"
+    ],
+    "regression": [
+      "re gression",
+      "regress ion"
+    ],
+    "classification": [
+      "class if occasion",
+      "classify cation"
+    ],
+    "clustering": [
+      "clustering's",
+      "clusturing"
+    ],
+    "cross validation": [
+      "cross validation's",
+      "cross valid asian"
+    ],
+    "supervised learning": [
+      "super vised learning",
+      "supervisor learning"
+    ],
+    "unsupervised learning": [
+      "un supervised learning",
+      "unsupervisor learning"
+    ],
+    "reinforcement learning": [
+      "reinforce mint learning",
+      "re enforcement learning"
+    ],
+    "large language model": [
+      "large language model's",
+      "large language mottle"
+    ],
+    "token": [
+      "tolken",
+      "token's",
+      "talk in"
+    ],
+    "inference": [
+      "in ference",
+      "inference's"
+    ],
+    "latency": [
+      "late ency",
+      "latency's"
+    ],
+    "throughput": [
+      "through put",
+      "thru put"
+    ],
+    "bandwidth": [
+      "band width",
+      "band with"
+    ],
+    "firewall": [
+      "fire wall",
+      "fire wal"
+    ],
+    "encryption": [
+      "en cryption",
+      "in cryption"
+    ],
+    "decryption": [
+      "de cryption",
+      "the cryption"
+    ],
+    "hashing": [
+      "hash ing",
+      "ashing"
+    ],
+    "checksum": [
+      "check sum",
+      "check some"
+    ],
+    "TCP": [
+      "t c p",
+      "tee see pee"
+    ],
+    "UDP": [
+      "u d p",
+      "you d p"
+    ],
+    "HTTP": [
+      "h t t p",
+      "aitch tee tee pee"
+    ],
+    "HTTPS": [
+      "h t t p s",
+      "aitch tee tee pee ess"
+    ],
+    "DNS": [
+      "d n s",
+      "dee en es"
+    ],
+    "IP address": [
+      "i p address",
+      "eye pee address"
+    ],
+    "socket": [
+      "soccet",
+      "socket's",
+      "sock it"
+    ],
+    "WebSocket": [
+      "web socket",
+      "web soccet"
+    ],
+    "byte": [
+      "bite",
+      "bight",
+      "byte's"
+    ],
+    "bit": [
+      "bit's",
+      "bid"
+    ],
+    "byte code": [
+      "bite code",
+      "bike code"
+    ],
+    "compiler error": [
+      "compiler air",
+      "complier error"
+    ],
+    "runtime error": [
+      "run time air",
+      "run-time error"
+    ],
+    "syntax error": [
+      "syntax air",
+      "sin tax error"
+    ],
+    "exception handling": [
+      "exception handling's",
+      "exemption handling"
+    ],
+    "try catch block": [
+      "try catch block's",
+      "try cache block"
+    ],
+    "lambda function": [
+      "lamda function",
+      "lambda's function"
+    ],
+    "closure": [
+      "closer",
+      "closure's",
+      "clothure"
+    ],
+    "callback": [
+      "call back",
+      "call bach"
+    ],
+    "promise": [
+      "promise's",
+      "promiss"
+    ],
+    "async await": [
+      "a sink await",
+      "async a wait"
+    ]
+  },
+  "eee": {
+    "impedance": [
+      "impeedance",
+      "impedance's",
+      "important dance"
+    ],
+    "capacitor": [
+      "capasitor",
+      "capacitor's",
+      "cap as ter"
+    ],
+    "inductor": [
+      "in ductor",
+      "inducter"
+    ],
+    "resistor": [
+      "re sister",
+      "resister",
+      "resistor's"
+    ],
+    "resistance": [
+      "re sistance",
+      "resistance's"
+    ],
+    "capacitance": [
+      "capasitance",
+      "capacitance's"
+    ],
+    "inductance": [
+      "in ductance",
+      "inductance's"
+    ],
+    "Thevenin": [
+      "the venin",
+      "thev e nin",
+      "thevenin's"
+    ],
+    "Norton's theorem": [
+      "norton's theorum",
+      "north and theorem"
+    ],
+    "Kirchhoff's law": [
+      "kirk off's law",
+      "kirchoffs law",
+      "circ off law"
+    ],
+    "Ohm's law": [
+      "owns law",
+      "ohms law",
+      "om's law"
+    ],
+    "alternating current": [
+      "alternate ing current",
+      "alter nating current"
+    ],
+    "direct current": [
+      "direct current's",
+      "direct curr ent"
+    ],
+    "transformer": [
+      "trans former",
+      "transformer's"
+    ],
+    "rectifier": [
+      "rectify er",
+      "wreck tifier"
+    ],
+    "inverter": [
+      "in vertor",
+      "inverter's"
+    ],
+    "amplifier": [
+      "amply fire",
+      "amplify er"
+    ],
+    "op-amp": [
+      "op amp's",
+      "obb amp",
+      "off amp"
+    ],
+    "operational amplifier": [
+      "operation amplifier",
+      "operational amply fire"
+    ],
+    "transistor": [
+      "tran sister",
+      "transistor's"
+    ],
+    "diode": [
+      "dye owed",
+      "diode's",
+      "dyad"
+    ],
+    "zener diode": [
+      "zenner diode",
+      "z ner diode"
+    ],
+    "MOSFET": [
+      "moss fet",
+      "mass fet",
+      "moes fet"
+    ],
+    "BJT": [
+      "b j t",
+      "bee jay tee"
+    ],
+    "FET": [
+      "fett",
+      "f e t"
+    ],
+    "PN junction": [
+      "p n junction",
+      "pee en junction"
+    ],
+    "semiconductor": [
+      "semi conductor",
+      "semicon doctor"
+    ],
+    "doping": [
+      "dope ing",
+      "dopping"
+    ],
+    "bandgap": [
+      "band gap",
+      "ban gap"
+    ],
+    "frequency": [
+      "freaquency",
+      "frequency's",
+      "free quincy"
+    ],
+    "phase shift": [
+      "face shift",
+      "phase shift's"
+    ],
+    "harmonic": [
+      "har monic",
+      "harmonics"
+    ],
+    "waveform": [
+      "wave form",
+      "wave farm"
+    ],
+    "sinusoidal": [
+      "sin a soidal",
+      "sinusoidal's"
+    ],
+    "modulation": [
+      "mod ulation",
+      "modulation's"
+    ],
+    "amplitude modulation": [
+      "amply tude modulation"
+    ],
+    "frequency modulation": [
+      "freaquency modulation"
+    ],
+    "demodulation": [
+      "de modulation",
+      "demod ulation"
+    ],
+    "rotor": [
+      "rota",
+      "rotor's",
+      "roader"
+    ],
+    "stator": [
+      "stayed her",
+      "stator's"
+    ],
+    "armature": [
+      "arm ature",
+      "armature's"
+    ],
+    "alternator": [
+      "alter nator",
+      "alternator's"
+    ],
+    "synchronous motor": [
+      "sin chronous motor"
+    ],
+    "induction motor": [
+      "in duction motor",
+      "induction motor's"
+    ],
+    "torque": [
+      "talk",
+      "tork",
+      "torque's"
+    ],
+    "back EMF": [
+      "back e m f",
+      "back emf's"
+    ],
+    "electromotive force": [
+      "electro motive force"
+    ],
+    "power factor": [
+      "power factor's",
+      "power fact or"
+    ],
+    "three phase": [
+      "tree phase",
+      "three face"
+    ],
+    "single phase": [
+      "single face",
+      "single phase's"
+    ],
+    "grounding": [
+      "ground ing",
+      "grounding's"
+    ],
+    "earthing": [
+      "earth ing",
+      "erthing"
+    ],
+    "circuit breaker": [
+      "circuit breaker's",
+      "circuit braker"
+    ],
+    "relay": [
+      "re lay",
+      "relay's"
+    ],
+    "switchgear": [
+      "switch gear",
+      "switch geer"
+    ],
+    "transmission line": [
+      "trans mission line",
+      "transmission lyne"
+    ],
+    "substation": [
+      "sub station",
+      "sub stay shun"
+    ],
+    "load shedding": [
+      "load shedding's",
+      "load shading"
+    ],
+    "PLC": [
+      "p l c",
+      "pee el see"
+    ],
+    "SCADA": [
+      "ska da",
+      "scada's",
+      "skar dar"
+    ],
+    "microcontroller": [
+      "micro controller",
+      "micro contoller"
+    ],
+    "embedded system": [
+      "em bedded system",
+      "embedded sister em"
+    ],
+    "ADC": [
+      "a d c",
+      "ay dee see"
+    ],
+    "DAC": [
+      "dack",
+      "d a c"
+    ],
+    "PWM": [
+      "p w m",
+      "pee double u em"
+    ],
+    "duty cycle": [
+      "duty cycle's",
+      "doodie cycle"
+    ],
+    "ripple voltage": [
+      "ripple voltage's",
+      "ripple volt age"
+    ],
+    "ground loop": [
+      "ground loop's",
+      "ground lup"
+    ],
+    "signal to noise ratio": [
+      "signal to noise ratio's",
+      "signal denoise ratio"
+    ],
+    "bode plot": [
+      "bode plot's",
+      "bowed plot",
+      "body plot"
+    ],
+    "Nyquist": [
+      "nikwist",
+      "ny quist",
+      "nyquist's"
+    ],
+    "Laplace transform": [
+      "la place transform",
+      "laplace's transform"
+    ],
+    "Fourier transform": [
+      "foreier transform",
+      "four year transform"
+    ],
+    "feedback loop": [
+      "feed back loop",
+      "feedback lup"
+    ],
+    "open loop": [
+      "open lup",
+      "open loop's"
+    ],
+    "closed loop": [
+      "closed lup",
+      "close loop"
+    ],
+    "PID controller": [
+      "p i d controller",
+      "pid's controller"
+    ]
+  },
+  "ece": {
+    "modem": [
+      "moe dem",
+      "modem's",
+      "mowdem"
+    ],
+    "antenna": [
+      "an tenna",
+      "antenna's",
+      "and tenna"
+    ],
+    "waveguide": [
+      "wave guide",
+      "wave glide"
+    ],
+    "multiplexing": [
+      "multi plexing",
+      "multiplex sing"
+    ],
+    "demultiplexing": [
+      "de multiplexing",
+      "demultiplex sing"
+    ],
+    "modulator": [
+      "mod ulator",
+      "modulater"
+    ],
+    "demodulator": [
+      "de modulator",
+      "demodulater"
+    ],
+    "bit error rate": [
+      "bit error rate's",
+      "bit error rate"
+    ],
+    "signal processing": [
+      "signal processing's",
+      "single processing"
+    ],
+    "digital signal processing": [
+      "digital single processing"
+    ],
+    "FPGA": [
+      "f p g a",
+      "eff pee gee ay"
+    ],
+    "VLSI": [
+      "v l s i",
+      "vee el ess eye"
+    ],
+    "ASIC": [
+      "a sick",
+      "a-sick",
+      "asic's"
+    ],
+    "fiber optics": [
+      "fiber optics's",
+      "fyber optics"
+    ],
+    "satellite communication": [
+      "satellite communication's",
+      "sattelite communication"
+    ],
+    "GSM": [
+      "g s m",
+      "gee es em"
+    ],
+    "CDMA": [
+      "c d m a",
+      "see dee em ay"
+    ],
+    "OFDM": [
+      "o f d m",
+      "oh eff dee em"
+    ],
+    "bit rate": [
+      "bit rate's",
+      "bid rate"
+    ],
+    "baud rate": [
+      "bod rate",
+      "bawd rate",
+      "board rate"
+    ],
+    "carrier wave": [
+      "carrier wave's",
+      "career wave"
+    ],
+    "noise margin": [
+      "noise margin's",
+      "noisemar gin"
+    ],
+    "Shannon's theorem": [
+      "shannons theorum",
+      "shanon's theorem"
+    ],
+    "quantization": [
+      "quanti zation",
+      "quantum ization"
+    ],
+    "sampling rate": [
+      "sampling rate's",
+      "sample ing rate"
+    ],
+    "Nyquist rate": [
+      "nikwist rate",
+      "ny quest rate"
+    ],
+    "aliasing": [
+      "alias sing",
+      "a lyasing"
+    ],
+    "filter design": [
+      "filter design's",
+      "filter the sign"
+    ],
+    "low pass filter": [
+      "lo pass filter",
+      "low pass filters"
+    ],
+    "high pass filter": [
+      "hi pass filter",
+      "high path filter"
+    ],
+    "band pass filter": [
+      "band path filter",
+      "ban pass filter"
+    ],
+    "microwave engineering": [
+      "micro wave engineering"
+    ],
+    "radar": [
+      "raydar",
+      "rader",
+      "radar's"
+    ],
+    "IoT": [
+      "i o t",
+      "eye oh tee"
+    ],
+    "embedded firmware": [
+      "embedded firm ware",
+      "embedded firmwear"
+    ]
+  },
+  "mech": {
+    "torque": [
+      "talk",
+      "tork",
+      "torque's"
+    ],
+    "tensile strength": [
+      "tensile strength's",
+      "ten cell strength"
+    ],
+    "compressive strength": [
+      "compressive strength's",
+      "compress sieve strength"
+    ],
+    "stress strain curve": [
+      "stress train curve",
+      "stress strain cur"
+    ],
+    "Young's modulus": [
+      "youngs modules",
+      "young's module's"
+    ],
+    "shear stress": [
+      "sheer stress",
+      "shear stress's"
+    ],
+    "fatigue": [
+      "fa teeg",
+      "fatigue's",
+      "fateague"
+    ],
+    "creep": [
+      "creap",
+      "creep's"
+    ],
+    "ductility": [
+      "duck tility",
+      "ductility's"
+    ],
+    "brittleness": [
+      "brittle ness",
+      "brittlenes"
+    ],
+    "Reynolds number": [
+      "raynolds number",
+      "renolds number"
+    ],
+    "Bernoulli's equation": [
+      "bernoulis equation",
+      "burn oolie's equation"
+    ],
+    "viscosity": [
+      "vis cosity",
+      "viscosity's"
+    ],
+    "laminar flow": [
+      "lamen ar flow",
+      "laminar flo"
+    ],
+    "turbulent flow": [
+      "turbu lent flow",
+      "turbulant flow"
+    ],
+    "thermodynamics": [
+      "thermo dynamics",
+      "thermo die namics"
+    ],
+    "entropy": [
+      "en tropy",
+      "entropy's"
+    ],
+    "enthalpy": [
+      "en thalpy",
+      "anthalpy"
+    ],
+    "isothermal process": [
+      "iso thermal process",
+      "iso thermo process"
+    ],
+    "adiabatic process": [
+      "a die a batik process",
+      "adia batic process"
+    ],
+    "Carnot cycle": [
+      "car not cycle",
+      "carnaut cycle"
+    ],
+    "refrigeration cycle": [
+      "refrigeration cycle's",
+      "refrigeration sickle"
+    ],
+    "heat exchanger": [
+      "heat ex changer",
+      "heat exchanger's"
+    ],
+    "convection": [
+      "con vection",
+      "convection's"
+    ],
+    "conduction": [
+      "con duction",
+      "conduction's"
+    ],
+    "radiation heat transfer": [
+      "radiation heat transfer's"
+    ],
+    "finite element analysis": [
+      "finite element ana lysis",
+      "finite alament analysis"
+    ],
+    "FEA": [
+      "f e a",
+      "eff ee ay"
+    ],
+    "CAD": [
+      "cad's",
+      "kad",
+      "c a d"
+    ],
+    "CAM": [
+      "cam's",
+      "k am",
+      "c a m"
+    ],
+    "CNC machine": [
+      "c n c machine",
+      "see en see machine"
+    ],
+    "lathe machine": [
+      "laythe machine",
+      "lath machine"
+    ],
+    "milling machine": [
+      "milling machine's",
+      "miling machine"
+    ],
+    "gear ratio": [
+      "gear ratio's",
+      "geer ratio"
+    ],
+    "kinematics": [
+      "kine matics",
+      "kinematics's"
+    ],
+    "dynamics": [
+      "die namics",
+      "dynamics's"
+    ],
+    "statics": [
+      "statics's",
+      "static's"
+    ],
+    "moment of inertia": [
+      "moment of inertia's",
+      "moment of inershia"
+    ],
+    "center of gravity": [
+      "center of gravity's",
+      "centre of gravety"
+    ],
+    "bending moment": [
+      "bending moment's",
+      "binding moment"
+    ],
+    "shear force": [
+      "sheer force",
+      "shear force's"
+    ],
+    "cantilever beam": [
+      "cantile ver beam",
+      "cantilever beam's"
+    ],
+    "truss": [
+      "trust",
+      "truss's",
+      "trus"
+    ],
+    "bearing": [
+      "baring",
+      "bearing's",
+      "barring"
+    ],
+    "lubrication": [
+      "lubri cation",
+      "lubrik cation"
+    ],
+    "piston": [
+      "pisten",
+      "piston's"
+    ],
+    "crankshaft": [
+      "crank shaft",
+      "crankshaft's"
+    ],
+    "camshaft": [
+      "cam shaft",
+      "camshaft's"
+    ],
+    "flywheel": [
+      "fly wheel",
+      "flywheel's"
+    ],
+    "internal combustion engine": [
+      "internal combust ion engine"
+    ],
+    "compression ratio": [
+      "compression ratio's",
+      "compress ion ratio"
+    ],
+    "thermal efficiency": [
+      "thermal efficiency's",
+      "thermal afficiency"
+    ],
+    "HVAC": [
+      "h vac",
+      "h v a c"
+    ],
+    "fluid mechanics": [
+      "fluid mechanics's",
+      "flued mechanics"
+    ],
+    "hydraulics": [
+      "hi draulics",
+      "hydraulics's"
+    ],
+    "pneumatics": [
+      "new matics",
+      "pneumatics's"
+    ],
+    "robotics": [
+      "row botics",
+      "robotics's"
+    ],
+    "actuator": [
+      "act u ator",
+      "actuator's"
+    ],
+    "servo motor": [
+      "servo motor's",
+      "serve motor"
+    ],
+    "additive manufacturing": [
+      "additive manufacturing's"
+    ],
+    "3D printing": [
+      "three d printing",
+      "3 d printing"
+    ]
+  },
+  "civil": {
+    "reinforced concrete": [
+      "re inforced concrete",
+      "reinforced concreat"
+    ],
+    "RCC": [
+      "r c c",
+      "are see see"
+    ],
+    "compressive strength": [
+      "compress sieve strength"
+    ],
+    "tensile strength": [
+      "ten cell strength"
+    ],
+    "load bearing": [
+      "load baring",
+      "load bearing's"
+    ],
+    "shear wall": [
+      "sheer wall",
+      "shear wal"
+    ],
+    "column": [
+      "colum",
+      "column's",
+      "colon"
+    ],
+    "beam": [
+      "beem",
+      "beam's"
+    ],
+    "slab": [
+      "slab's",
+      "slap"
+    ],
+    "foundation": [
+      "found ation",
+      "foundation's"
+    ],
+    "footing": [
+      "footing's",
+      "futing"
+    ],
+    "pile foundation": [
+      "pile foundation's",
+      "pyle foundation"
+    ],
+    "soil mechanics": [
+      "soil mechanics's",
+      "soyl mechanics"
+    ],
+    "geotechnical engineering": [
+      "geo technical engineering"
+    ],
+    "bearing capacity": [
+      "bearing capacity's",
+      "baring capacity"
+    ],
+    "settlement": [
+      "settlement's",
+      "settle mint"
+    ],
+    "consolidation": [
+      "con solidation",
+      "consolidation's"
+    ],
+    "permeability": [
+      "perme ability",
+      "permea bility"
+    ],
+    "surveying": [
+      "surveying's",
+      "serveying"
+    ],
+    "theodolite": [
+      "the odolite",
+      "theodo lite",
+      "theodolite's"
+    ],
+    "total station": [
+      "total station's",
+      "total stay shun"
+    ],
+    "leveling": [
+      "leveling's",
+      "leveleing"
+    ],
+    "contour mapping": [
+      "contour mapping's",
+      "kontour mapping"
+    ],
+    "structural analysis": [
+      "structural analysis's",
+      "structural ana lysis"
+    ],
+    "bending moment diagram": [
+      "bending moment diagram's"
+    ],
+    "shear force diagram": [
+      "shear force diagram's",
+      "sheer force diagram"
+    ],
+    "moment of inertia": [
+      "moment of inertia's"
+    ],
+    "deflection": [
+      "de flection",
+      "deflection's"
+    ],
+    "buckling": [
+      "buckle ing",
+      "buckling's"
+    ],
+    "seismic design": [
+      "seismic design's",
+      "sysmic design"
+    ],
+    "earthquake resistant design": [
+      "earth quake resistant design"
+    ],
+    "highway engineering": [
+      "high way engineering"
+    ],
+    "pavement design": [
+      "pavement design's",
+      "pavment design"
+    ],
+    "flexible pavement": [
+      "flexible pavement's",
+      "flexable pavement"
+    ],
+    "rigid pavement": [
+      "rigid pavement's",
+      "rigit pavement"
+    ],
+    "asphalt": [
+      "ass phalt",
+      "asfalt",
+      "asphalt's"
+    ],
+    "bitumen": [
+      "bit u men",
+      "bitumen's"
+    ],
+    "aggregate": [
+      "agg re gate",
+      "aggregate's"
+    ],
+    "cement": [
+      "se ment",
+      "cement's"
+    ],
+    "concrete mix design": [
+      "concrete mix design's",
+      "concreat mix design"
+    ],
+    "water cement ratio": [
+      "water cement ratio's"
+    ],
+    "curing": [
+      "curing's",
+      "kuring"
+    ],
+    "irrigation engineering": [
+      "irrigation engineering's"
+    ],
+    "hydrology": [
+      "hi drology",
+      "hydrology's"
+    ],
+    "watershed": [
+      "water shed",
+      "watershed's"
+    ],
+    "open channel flow": [
+      "open channel flow's",
+      "open chanel flow"
+    ],
+    "rainfall runoff": [
+      "rainfall run off",
+      "rainfal runoff"
+    ],
+    "sewage treatment": [
+      "sewage treatment's",
+      "sewer age treatment"
+    ],
+    "wastewater treatment": [
+      "waste water treatment"
+    ],
+    "environmental engineering": [
+      "environmental engineering's"
+    ],
+    "transportation engineering": [
+      "transportation engineering's"
+    ],
+    "traffic flow": [
+      "traffic flow's",
+      "traffik flow"
+    ],
+    "urban planning": [
+      "urban planning's",
+      "urben planning"
+    ],
+    "land surveying": [
+      "land surveying's",
+      "land serveying"
+    ],
+    "GIS": [
+      "g i s",
+      "gee eye ess"
+    ],
+    "AutoCAD": [
+      "auto cad",
+      "auto k ad"
+    ],
+    "STAAD Pro": [
+      "stad pro",
+      "staad pro's",
+      "stad pro"
+    ]
+  },
+  "chemical": {
+    "stoichiometry": [
+      "stoy key ometry",
+      "stoy chi ometry",
+      "stoichiometry's"
+    ],
+    "thermodynamics": [
+      "thermo dynamics"
+    ],
+    "mass transfer": [
+      "mass transfer's",
+      "mass transferr"
+    ],
+    "heat transfer": [
+      "heat transfer's",
+      "heat transferr"
+    ],
+    "distillation": [
+      "dis tillation",
+      "distillation's"
+    ],
+    "fractional distillation": [
+      "fractional distillation's"
+    ],
+    "absorption": [
+      "ab sorption",
+      "absorption's"
+    ],
+    "adsorption": [
+      "ad sorption",
+      "adsorption's"
+    ],
+    "extraction": [
+      "ex traction",
+      "extraction's"
+    ],
+    "filtration": [
+      "fil tration",
+      "filtration's"
+    ],
+    "crystallization": [
+      "crystal ization",
+      "crystallization's"
+    ],
+    "evaporation": [
+      "e vaporation",
+      "evaporation's"
+    ],
+    "reactor design": [
+      "reactor design's",
+      "react er design"
+    ],
+    "catalysis": [
+      "cata lysis",
+      "catalysis's"
+    ],
+    "catalyst": [
+      "cata list",
+      "catalyst's"
+    ],
+    "fluidization": [
+      "fluid ization",
+      "fluidization's"
+    ],
+    "fluidized bed": [
+      "fluid ised bed",
+      "fluidised bed"
+    ],
+    "unit operations": [
+      "unit operations's",
+      "unit oprations"
+    ],
+    "process control": [
+      "process control's",
+      "progress control"
+    ],
+    "chemical kinetics": [
+      "chemical kinetics's",
+      "chemical kinematics"
+    ],
+    "reaction rate": [
+      "reaction rate's",
+      "re action rate"
+    ],
+    "equilibrium constant": [
+      "equilibrium constant's",
+      "equib lib rium constant"
+    ],
+    "phase equilibrium": [
+      "phase equilibrium's",
+      "face equilibrium"
+    ],
+    "vapor liquid equilibrium": [
+      "vapor liquid equilibrium's"
+    ],
+    "polymerization": [
+      "polymer ization",
+      "polymerization's"
+    ],
+    "petrochemicals": [
+      "petro chemicals",
+      "petrochemicals's"
+    ],
+    "distillation column": [
+      "distillation column's",
+      "dis tillation colum"
+    ],
+    "heat exchanger": [
+      "heat ex changer"
+    ],
+    "mole fraction": [
+      "mole fraction's",
+      "mol fraction"
+    ],
+    "molarity": [
+      "mo larity",
+      "molarity's"
+    ],
+    "viscosity": [
+      "vis cosity"
+    ],
+    "Reynolds number": [
+      "raynolds number"
+    ],
+    "mass balance": [
+      "mass balance's",
+      "mass ballance"
+    ],
+    "energy balance": [
+      "energy balance's",
+      "energy ballance"
+    ]
+  },
+  "aerospace": {
+    "aerodynamics": [
+      "aero dynamics",
+      "aerodynamics's"
+    ],
+    "lift coefficient": [
+      "lift co efficient",
+      "lift coefficient's"
+    ],
+    "drag coefficient": [
+      "drag co efficient",
+      "drag coefficient's"
+    ],
+    "angle of attack": [
+      "angle of attack's",
+      "angle of a tack"
+    ],
+    "stall": [
+      "stall's",
+      "stol"
+    ],
+    "thrust": [
+      "thrust's",
+      "trust"
+    ],
+    "propulsion": [
+      "pro pulsion",
+      "propulsion's"
+    ],
+    "turbojet": [
+      "turbo jet",
+      "turbojet's"
+    ],
+    "turbofan": [
+      "turbo fan",
+      "turbofan's"
+    ],
+    "ramjet": [
+      "ram jet",
+      "ramjet's"
+    ],
+    "scramjet": [
+      "scram jet",
+      "scramjet's"
+    ],
+    "Mach number": [
+      "mock number",
+      "mach number's",
+      "match number"
+    ],
+    "supersonic": [
+      "super sonic",
+      "supersonic's"
+    ],
+    "subsonic": [
+      "sub sonic",
+      "subsonic's"
+    ],
+    "hypersonic": [
+      "hyper sonic",
+      "hypersonic's"
+    ],
+    "fuselage": [
+      "few se lodge",
+      "fuse lage",
+      "fuselage's"
+    ],
+    "aileron": [
+      "ale er on",
+      "aileron's",
+      "ail er on"
+    ],
+    "rudder": [
+      "rudder's",
+      "rutter"
+    ],
+    "elevator": [
+      "elevator's",
+      "ele vater"
+    ],
+    "empennage": [
+      "em pen ahj",
+      "empenage",
+      "empennage's"
+    ],
+    "avionics": [
+      "a vionics",
+      "avionics's"
+    ],
+    "trajectory": [
+      "tra jectory",
+      "trajectory's"
+    ],
+    "orbital mechanics": [
+      "orbital mechanics's",
+      "orbit al mechanics"
+    ],
+    "payload": [
+      "pay load",
+      "payload's"
+    ],
+    "reentry": [
+      "re entry",
+      "reentry's"
+    ],
+    "ablation": [
+      "ab lation",
+      "ablation's"
+    ],
+    "fuselage stress": [
+      "fuselage stress's"
+    ],
+    "wing loading": [
+      "wing loading's",
+      "wing low ding"
+    ],
+    "center of pressure": [
+      "center of pressure's",
+      "centre of presure"
+    ],
+    "boundary layer": [
+      "boundary layer's",
+      "boundery layer"
+    ],
+    "shock wave": [
+      "shock wave's",
+      "shok wave"
+    ],
+    "control surfaces": [
+      "control surfaces's",
+      "control surface's"
+    ]
+  }
+}
