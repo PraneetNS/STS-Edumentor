@@ -17,6 +17,11 @@ class Config:
     # ─────────────────────────────────────────────
     WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "base.en")
     WHISPER_BEAM_SIZE: int = int(os.getenv("WHISPER_BEAM_SIZE", "5"))
+    WHISPER_CORRECTION_THRESHOLD: float = float(os.getenv("WHISPER_CORRECTION_THRESHOLD", "-0.5"))
+    WHISPER_CORRECTION_TIMEOUT: float = float(os.getenv("WHISPER_CORRECTION_TIMEOUT", "0.4"))
+    WHISPER_CORRECTION_MAX_TOKENS: int = int(os.getenv("WHISPER_CORRECTION_MAX_TOKENS", "20"))
+    FUZZY_MATCH_THRESHOLD: float = float(os.getenv("FUZZY_MATCH_THRESHOLD", "80.0"))
+    VOCAB_PATH: str = os.getenv("VOCAB_PATH", "../engineering_vocab.json")
 
     # Auto-detect GPU; fall back to CPU
     WHISPER_DEVICE: str = "cuda" if torch.cuda.is_available() else "cpu"
@@ -29,7 +34,7 @@ class Config:
 
     # ── Voice Activity Detection (VAD) ───────────────────────────────────────
     VAD_ENGINE: str = os.getenv("VAD_ENGINE", "silero")
-    VAD_THRESHOLD: float = float(os.getenv("VAD_THRESHOLD", "0.35"))
+    VAD_THRESHOLD: float = float(os.getenv("VAD_THRESHOLD", "0.45"))
     VAD_SILENCE_TIMEOUT: float = float(os.getenv("VAD_SILENCE_TIMEOUT", "0.8"))
     MIN_SPEECH_DURATION: float = float(os.getenv("MIN_SPEECH_DURATION", "0.15"))
     LIVE_TRANSCRIPTION_INTERVAL: float = float(os.getenv("LIVE_TRANSCRIPTION_INTERVAL", "0.7"))
@@ -68,7 +73,9 @@ class Config:
         
         "Your responses must be structured using these three tag types (and only these tag types):\n"
         "- Wrap everything read aloud by TTS inside <speak>...</speak> tags.\n"
-        "- Wrap anything rendered visually (never spoken) inside <show type=\"code|roadmap|workflow|table|checklist\" lang=\"...\">...</show> tags.\n"
+        "- Wrap anything rendered visually (never spoken) inside <show type=\"code|roadmap|workflow|table|checklist\" lang=\"...\" title=\"...\">...</show> tags.\n"
+        "- For any show block (except code), you MUST include a descriptive title attribute specifying exactly what the visual displays (e.g. title=\"Advantages of RAG\" or title=\"Applications\" or title=\"Disadvantages\"). Do NOT use generic titles like 'Checklist' or 'Table'.\n"
+        "- Whenever you output a visual block inside <show>, you MUST say inside a preceding <speak> tag exactly: 'Below is the code for this.' (for code), 'Below is the workflow for this.' (for workflow), 'Here is a diagram for this.' (for roadmap/diagram), 'Below is the table for this.' (for table), or 'Below is the checklist for this.' (for checklist). For tables (type=\"table\"), you MUST format the content using standard Markdown table syntax (e.g. | Col 1 | Col 2 |) and always close the block with </show>. Never use raw HTML table tags (like <table>, <td>).\n"
         "- Wrap a single context-specific short follow-up question inside <followup>...</followup> tags at the very end. This rule is absolute, you must ask a follow-up question every single time—even if the student's input is garbled, off-topic, empty, or consists of repeated characters (like 'vvv...'). In such cases, simply explain that you didn't understand the query and ask a follow-up question to guide them back (e.g., <followup>What topic in engineering would you like to discuss today?</followup>).\n\n"
 
         "Identity Rules (CRITICAL):\n"
