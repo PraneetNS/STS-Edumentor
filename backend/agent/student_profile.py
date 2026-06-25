@@ -60,6 +60,36 @@ _TOPIC_KEYWORDS: dict = {
     "System Design":       ["system design", "scalability", "microservices", "load balancer", "cache"],
     "Git":                 ["git", "github", "commit", "branch", "pull request", "merge"],
     "Career":              ["job", "resume", "interview", "career", "salary", "company", "hiring"],
+    "Electrical Engineering": ["electrical", "impedance", "capacitor", "inductor", "resistor", "thevenin", "op-amp"],
+    "Electronics Engineering": ["electronics", "antenna", "signal processing", "modulation", "multiplexing", "ece"],
+    "Mechanical Engineering": ["mechanical", "torque", "tensile strength", "thermodynamics", "reynolds", "stress-strain"],
+    "Civil Engineering": ["civil", "concrete", "structural", "beam", "foundation", "slab", "rcc"],
+    "Chemical Engineering": ["chemical", "distillation", "stoichiometry", "mass transfer", "reactor"],
+    "Aerospace Engineering": ["aerospace", "aerodynamics", "thrust", "propulsion", "wing", "stall", "lift coefficient"],
+}
+
+# Maps canonical topic names to discipline keys in engineering_vocab.json
+TOPIC_TO_DISCIPLINE: dict = {
+    "Python": "cse",
+    "JavaScript": "cse",
+    "Data Structures": "cse",
+    "Algorithms": "cse",
+    "Machine Learning": "cse",
+    "Deep Learning": "cse",
+    "Web Development": "cse",
+    "Databases": "cse",
+    "DSA": "cse",
+    "Computer Science": "cse",
+    "Sentiment Analysis": "cse",
+    "System Design": "cse",
+    "Git": "cse",
+    "Career": "cse",
+    "Electrical Engineering": "eee",
+    "Electronics Engineering": "ece",
+    "Mechanical Engineering": "mech",
+    "Civil Engineering": "civil",
+    "Chemical Engineering": "chemical",
+    "Aerospace Engineering": "aerospace",
 }
 
 
@@ -76,8 +106,14 @@ def _detect_topics(text: str) -> List[str]:
     text_lower = text.lower()
     detected = []
     for topic, keywords in _TOPIC_KEYWORDS.items():
-        if any(kw in text_lower for kw in keywords):
-            detected.append(topic)
+        for kw in keywords:
+            # Match whole words using word boundaries
+            pattern = r'\b' + re.escape(kw.strip()) + r'\b'
+            if kw.endswith(" "):
+                pattern = r'\b' + re.escape(kw.strip()) + r'\s'
+            if re.search(pattern, text_lower):
+                detected.append(topic)
+                break
     return detected
 
 
@@ -125,6 +161,8 @@ _DEFAULT_PROFILE = {
     "weak_topics": [],
     "preferred_style": "examples",
     "session_count": 0,
+    "discipline": "cse",
+    "active_topics": [],
 }
 
 
@@ -162,6 +200,24 @@ class StudentProfileManager:
         """
         return self._profile
 
+    def get_active_topic(self, student_id: Optional[str] = None) -> str:
+        """
+        Return the currently active topic or last learning topic, defaulting to 'general'.
+        """
+        profile = self.get_profile()
+        if profile.active_topics:
+            return profile.active_topics[0]
+        elif profile.learning_topics:
+            return profile.learning_topics[-1]
+        return "general"
+
+    def get_discipline(self, student_id: Optional[str] = None) -> str:
+        """
+        Return the active engineering discipline (e.g. 'cse', 'eee', etc.), defaulting to 'cse'.
+        """
+        profile = self.get_profile()
+        return profile.discipline or "cse"
+
     def update_from_turn(
         self,
         user_text: str,
@@ -191,6 +247,17 @@ class StudentProfileManager:
                 existing.add(topic)
                 changed = True
                 logger.info("[PROFILE] New topic detected: %s", topic)
+
+        if new_topics:
+            self._profile.active_topics = new_topics
+            for t in new_topics:
+                disc = TOPIC_TO_DISCIPLINE.get(t)
+                if disc:
+                    if self._profile.discipline != disc:
+                        self._profile.discipline = disc
+                        logger.info("[PROFILE] Discipline updated: %s", disc)
+                    break
+            changed = True
 
         # ── Weak topic detection (frustrated/confused emotion) ────────────────
         if emotion in (Emotion.FRUSTRATED, Emotion.CONFUSED):
