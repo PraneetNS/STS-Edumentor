@@ -44,6 +44,7 @@ from utils.audio import int16_bytes_to_float32, is_sentence_complete
 import time
 from agent.models import ConversationState, Emotion
 from speech.stabilizer import TranscriptStabilizer
+from speech.domain_corrector import DomainCorrector
 
 # Agent layer imports
 from agent import (
@@ -101,13 +102,15 @@ kokoro_engine:     Optional[KokoroEngine]         = None
 agent_controller:  Optional[AgentController]      = None
 interrupt_manager: Optional[InterruptManager]     = None
 db_manager:        Optional[DatabaseManager]      = None
+profile_manager:   Optional[StudentProfileManager] = None
+domain_corrector:  Optional[DomainCorrector]      = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load all ML models and agent components once at startup; release on shutdown."""
     global whisper_engine, llm_engine, kokoro_engine, silero_vad_model
-    global agent_controller, interrupt_manager, db_manager
+    global agent_controller, interrupt_manager, db_manager, profile_manager, domain_corrector
 
     logger.info("=" * 60)
     logger.info("  EduMentor Voice -- Starting up")
@@ -151,6 +154,9 @@ async def lifespan(app: FastAPI):
             profile_path = Config.STUDENT_PROFILE_PATH,
         )
         profile_manager.increment_session_count()
+
+        from speech.domain_corrector import domain_corrector as dc
+        domain_corrector = dc
 
         agent_controller = AgentController(
             llm_engine          = llm_engine,
@@ -267,6 +273,23 @@ async def voice_endpoint(websocket: WebSocket):
     await websocket.accept()
     logger.info("Client connected: %s", websocket.client)
     session_id = websocket.query_params.get("session_id") or f"{websocket.client.host}:{websocket.client.port}"
+    user_id = websocket.query_params.get("user_id") or session_id
+
+    # Convert session_id and user_id to UUID
+    user_uuid = None
+    session_uuid = None
+    if agent_controller:
+        user_uuid = agent_controller._to_uuid(user_id)
+        session_uuid = agent_controller._to_uuid(session_id)
+
+    # Pre-fetch user speech corrections from database
+    user_corrections = []
+    if db_manager and db_manager.enabled and user_uuid:
+        try:
+            user_corrections = await db_manager.fetch_user_corrections(user_uuid)
+            logger.info("Pre-fetched %d speech corrections for user_id=%s", len(user_corrections), user_id)
+        except Exception as exc:
+            logger.error("Failed to pre-fetch user corrections: %s", exc)
 
     import numpy as np
     loop = asyncio.get_running_loop()
@@ -310,10 +333,14 @@ async def voice_endpoint(websocket: WebSocket):
                 if current_len > 0:
                     new_bytes = b"".join(audio_chunks[:current_len])
                     audio_array = int16_bytes_to_float32(new_bytes)
+                    discipline = "cse"
+                    if profile_manager:
+                        discipline = profile_manager.get_discipline()
+                    initial_prompt = whisper_engine.get_prompt_for_discipline(discipline, user_corrections)
+
                     live_text = await loop.run_in_executor(
                         None,
-                        whisper_engine.transcribe,
-                        audio_array
+                        lambda: whisper_engine.transcribe(audio_array, initial_prompt=initial_prompt)
                     )
                     if live_text:
                         # Apply speech correction normalization
@@ -366,7 +393,7 @@ async def voice_endpoint(websocket: WebSocket):
     async def _run_pipeline_wrapper(raw_pcm: bytes, pre_transcribed: Optional[str] = None):
         nonlocal is_pipeline_running
         try:
-            await _run_pipeline(websocket, raw_pcm, set_state, pre_transcribed)
+            await _run_pipeline(websocket, raw_pcm, set_state, pre_transcribed, user_corrections)
         except asyncio.CancelledError:
             logger.info("Pipeline execution cancelled.")
         except Exception as e:
@@ -564,7 +591,8 @@ async def _run_pipeline(
     websocket: WebSocket,
     raw_pcm: bytes,
     set_state,
-    pre_transcribed_text: Optional[str] = None
+    pre_transcribed_text: Optional[str] = None,
+    user_corrections: Optional[list[str]] = None
 ) -> None:
     """
     Execute the full STT → LLM → TTS pipeline for one user utterance.
@@ -588,8 +616,15 @@ async def _run_pipeline(
     session_id = websocket.query_params.get("session_id") or f"{websocket.client.host}:{websocket.client.port}"
     user_id = websocket.query_params.get("user_id") or session_id
 
+    user_uuid = None
+    session_uuid = None
+    if agent_controller:
+        user_uuid = agent_controller._to_uuid(user_id)
+        session_uuid = agent_controller._to_uuid(session_id)
+
     # ── 1. STT ───────────────────────────────────────────────────────────────
     audio_array = int16_bytes_to_float32(raw_pcm)
+    min_avg_logprob = 0.0
     try:
         if pre_transcribed_text:
             transcript = pre_transcribed_text
@@ -598,9 +633,17 @@ async def _run_pipeline(
         else:
             logger.info("Transcribing %.1f seconds of audio …", len(audio_array) / Config.AUDIO_SAMPLE_RATE)
 
+            discipline = "cse"
+            if profile_manager:
+                discipline = profile_manager.get_discipline()
+            initial_prompt = whisper_engine.get_prompt_for_discipline(discipline, user_corrections)
+
             # Run blocking Whisper in a thread to keep the event loop free
-            transcript: str = await loop.run_in_executor(
-                None, whisper_engine.transcribe, audio_array
+            transcript, min_avg_logprob = await loop.run_in_executor(
+                None,
+                lambda: whisper_engine.transcribe_with_confidence(
+                    audio_array, initial_prompt=initial_prompt
+                )
             )
             latency_metrics["whisper_done"] = round(time.time() - start_time, 2)
     except Exception as stt_exc:
@@ -629,9 +672,74 @@ async def _run_pipeline(
         await websocket.send_json({"type": "done"})
         return
 
-    # ── 1.5 Speech Normalization ─────────────────────────────────────────────
+    # ── 1.5 Speech Normalization & Domain Correction ─────────────────────────
     from speech.normalizer import speech_normalizer
-    normalized_transcript = speech_normalizer.normalize(transcript, session_id=session_id)
+    normalized = speech_normalizer.normalize(transcript, session_id=session_id)
+
+    discipline = "cse"
+    active_topic = "general"
+    if profile_manager:
+        discipline = profile_manager.get_discipline()
+        active_topic = profile_manager.get_active_topic()
+
+    corrected_transcript, changes = domain_corrector.correct_sentence(normalized, discipline)
+
+    # Check for low confidence to trigger context-aware LLM correction pass
+    if not pre_transcribed_text and min_avg_logprob < Config.WHISPER_CORRECTION_THRESHOLD:
+        logger.info("Confidence low (min_avg_logprob=%.2f < %.2f). Triggering LLM correction pass...", 
+                    min_avg_logprob, Config.WHISPER_CORRECTION_THRESHOLD)
+
+        CORRECTION_PROMPT = (
+            f"You are a transcription correction tool for engineering students.\n"
+            f"Active topic: {active_topic}\n"
+            f"Discipline: {discipline}\n\n"
+            f"Raw transcript: \"{corrected_transcript}\"\n\n"
+            f"Rewrite ONLY correcting clear speech-to-text errors in technical terms "
+            f"(e.g. \"chace\" -> \"cache\", \"colonel\" -> \"kernel\", \"reynolds number\" stays as is if correct).\n"
+            f"Do NOT change meaning, grammar, or add words. Return ONLY the corrected sentence."
+        )
+
+        messages = [
+            {"role": "system", "content": "You are a transcription correction tool for engineering students."},
+            {"role": "user", "content": CORRECTION_PROMPT}
+        ]
+
+        llm_corrected = await llm_engine.get_completion(
+            messages,
+            max_tokens=Config.WHISPER_CORRECTION_MAX_TOKENS,
+            timeout=Config.WHISPER_CORRECTION_TIMEOUT
+        )
+
+        if llm_corrected:
+            llm_corrected_clean = llm_corrected.strip('"\'')
+            if llm_corrected_clean and llm_corrected_clean != corrected_transcript:
+                logger.info("LLM correction applied: %r -> %r", corrected_transcript, llm_corrected_clean)
+
+                # Log to Postgres
+                if db_manager and db_manager.enabled and user_uuid:
+                    asyncio.create_task(
+                        db_manager.write_speech_correction(
+                            user_uuid, session_uuid, corrected_transcript, llm_corrected_clean, source="session"
+                        )
+                    )
+                # Cache locally for biasing
+                if user_corrections is not None and llm_corrected_clean not in user_corrections:
+                    user_corrections.append(llm_corrected_clean)
+
+                corrected_transcript = llm_corrected_clean
+
+    elif changes:
+        if db_manager and db_manager.enabled and user_uuid:
+            for raw, corr in changes:
+                asyncio.create_task(
+                    db_manager.write_speech_correction(
+                        user_uuid, session_uuid, raw, corr, source="session"
+                    )
+                )
+                if user_corrections is not None and corr not in user_corrections:
+                    user_corrections.append(corr)
+
+    normalized_transcript = corrected_transcript
 
     if not normalized_transcript:
         logger.info("Empty normalized transcript — skipping pipeline.")
@@ -756,8 +864,8 @@ async def _stream_llm_and_tts(
                     # Flush on any sentence ending punctuation if minimum length (3 chars) is met (handles quotes/brackets)
                     if len(stripped) >= 3 and re.search(r"(?<=\S{2})[.!?]+['\"`’”\]\)]*(?:\s|$)", stripped):
                         should_flush = True
-                    # Flush on comma/clause ending punctuation without the 15 char minimum (handles quotes/brackets)
-                    elif len(stripped) >= 3 and re.search(r"(?<=\S{2})[,;:—\n\r]+['\"`’”\]\)]*(?:\s|$)", stripped):
+                    # Flush on comma/clause ending punctuation only if minimum context length (20 chars) is met
+                    elif len(stripped) >= 20 and re.search(r"(?<=\S{2})[,;:—\n\r]+['\"`’”\]\)]*(?:\s|$)", stripped):
                         should_flush = True
                     # Flush on space/word boundary if we've accumulated at least 30 characters (fast phrase split)
                     elif len(stripped) >= 30 and (raw_token and (raw_token.isspace() or any(char in raw_token for char in ".,!?;:-—"))):
