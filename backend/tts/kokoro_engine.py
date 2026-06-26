@@ -160,7 +160,7 @@ class KokoroEngine:
 
         return text.strip()
 
-    def synthesize(self, text: str, speed: float = 1.0, voice: Optional[str] = None) -> bytes:
+    def synthesize(self, text: str, speed: float = 1.0, voice: Optional[str] = None, student_id: Optional[str] = None) -> Optional[bytes]:
         """
         Synthesize a text string to WAV bytes with dynamic speed and voice.
 
@@ -171,14 +171,21 @@ class KokoroEngine:
             text: The sentence or text fragment to speak.
             speed: Speed multiplier.
             voice: Optional custom voice name. Fallback to Config.KOKORO_VOICE if None.
+            student_id: Optional student ID to check and record TTS character quota.
 
         Returns:
             Raw WAV file bytes (PCM 24 kHz mono), ready to send over WebSocket.
-            Returns empty bytes on failure or empty input.
+            Returns None if quota is exceeded. Returns empty bytes on failure or empty input.
         """
         text = text.strip()
         if not text:
             return b""
+
+        if student_id is not None:
+            from tts.tts_quota import tts_quota
+            if not tts_quota.check_budget(student_id):
+                logger.warning("TTS quota exceeded for student_id=%s. Skipping synthesis.", student_id)
+                return None
 
         # Preprocess text to improve Kokoro pronunciation
         text = self._preprocess_text(text)
@@ -204,6 +211,11 @@ class KokoroEngine:
             # Combine all audio chunks into a single array
             combined = np.concatenate(audio_chunks)
 
+            # Record usage
+            if student_id is not None:
+                from tts.tts_quota import tts_quota
+                tts_quota.record_usage(student_id, len(text))
+
             # Encode to WAV in-memory (no disk I/O)
             buf = io.BytesIO()
             sf.write(buf, combined, self.sample_rate, format="WAV", subtype="PCM_16")
@@ -218,3 +230,4 @@ class KokoroEngine:
         except Exception as exc:
             logger.exception("Kokoro synthesis error for %r using voice %s: %s", text[:60], selected_voice, exc)
             return b""
+
