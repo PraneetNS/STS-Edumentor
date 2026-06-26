@@ -34,6 +34,7 @@ class LLMEngine:
             timeout=httpx.Timeout(connect=10.0, read=Config.LLM_TIMEOUT, write=10.0, pool=10.0),
             headers={"Content-Type": "application/json"},
         )
+        self.last_usage = None
         logger.info("[OK] LLM engine ready -> %s", self.base_url)
 
     async def stream_tokens(self, user_text: str) -> AsyncIterator[str]:
@@ -98,46 +99,90 @@ class LLMEngine:
             ),
         )
 
+        from llm.circuit_breaker import llm_circuit, CircuitOpenError
+        import time
+
+        async def call_llama_server():
+            req = self.client.build_request("POST", "/v1/chat/completions", json=payload)
+            resp = await self.client.send(req, stream=True)
+            resp.raise_for_status()
+            return resp
+
         try:
-            async with self.client.stream(
-                "POST", "/v1/chat/completions", json=payload
-            ) as response:
-                response.raise_for_status()
+            response = await llm_circuit.call(call_llama_server)
+        except CircuitOpenError:
+            from agent.security_logger import log_security_event
+            asyncio.create_task(log_security_event(None, "unknown", "circuit_breaker_open", "LLM circuit breaker is open"))
+            logger.warning("[LLM] Circuit breaker is open — returning offline message")
+            yield (
+                "<speak>I'm currently offline, but the team is actively working to bring me "
+                "back up. Thank you so much for your patience — I'll be with you very soon!</speak>"
+            )
+            return
+        except (asyncio.TimeoutError, httpx.TimeoutException):
+            logger.warning("[LLM] Request timed out")
+            yield (
+                "<speak>I'm currently offline, but the team is actively working to bring me "
+                "back up. Thank you so much for your patience — I'll be with you very soon!</speak>"
+            )
+            return
+        except (httpx.ConnectError, httpx.RemoteProtocolError, ConnectionRefusedError):
+            logger.warning("[LLM] Cannot reach LLM server — returning offline message")
+            yield (
+                "<speak>I'm currently offline, but the team is actively working to bring me "
+                "back up. Thank you so much for your patience — I'll be with you very soon!</speak>"
+            )
+            return
+        except Exception as exc:
+            logger.exception("[LLM] Unexpected error before streaming: %s", exc)
+            yield (
+                "<speak>I'm currently offline, but the team is actively working to bring me "
+                "back up. Thank you so much for your patience — I'll be with you very soon!</speak>"
+            )
+            return
 
-                async for raw_line in response.aiter_lines():
-                    # SSE lines look like:  data: {...}
-                    if not raw_line.startswith("data: "):
-                        continue
+        try:
+            async for raw_line in response.aiter_lines():
+                # SSE lines look like:  data: {...}
+                if not raw_line.startswith("data: "):
+                    continue
 
-                    data_str = raw_line[6:].strip()
-                    if data_str == "[DONE]":
-                        logger.info("LLM generation complete.")
-                        return
+                data_str = raw_line[6:].strip()
+                if data_str == "[DONE]":
+                    logger.info("LLM generation complete.")
+                    return
 
-                    try:
-                        chunk = json.loads(data_str)
-                    except json.JSONDecodeError:
-                        continue
+                try:
+                    chunk = json.loads(data_str)
+                except json.JSONDecodeError:
+                    continue
 
-                    choices = chunk.get("choices", [])
-                    if not choices:
-                        continue
-
+                choices = chunk.get("choices", [])
+                if choices:
                     delta = choices[0].get("delta", {})
                     token = delta.get("content", "")
                     if token:
                         yield token
 
-        except httpx.ConnectError:
-            logger.error(
-                "Cannot connect to llama.cpp server at %s. "
-                "Make sure run_llm_server.bat is running.",
-                self.base_url,
-            )
-            yield "<speak>I am sorry, but I cannot connect to my local LLM brain server right now. Please check if the llama.cpp server is running on port 8080.</speak>"
+                if "usage" in chunk and chunk["usage"]:
+                    self.last_usage = chunk["usage"]
+
         except Exception as exc:
-            logger.exception("LLM streaming error: %s", exc)
-            yield f"<speak>I encountered an error while thinking: {exc}. Please verify that the local LLM server is running and reachable.</speak>"
+            # Track stream reading failures toward circuit breaker threshold
+            llm_circuit.failure_count += 1
+            llm_circuit.last_failure_time = time.time()
+            if llm_circuit.failure_count >= llm_circuit.failure_threshold:
+                llm_circuit.state = "open"
+                logger.warning("[CIRCUIT BREAKER] Opened after %d failures", llm_circuit.failure_count)
+            logger.exception("[LLM] Streaming error: %s", exc)
+            yield (
+                "<speak>I'm currently offline, but the team is actively working to bring me "
+                "back up. Thank you so much for your patience — I'll be with you very soon!</speak>"
+            )
+        finally:
+            # Always close the streaming connection (httpx Response from send(stream=True)
+            # does NOT support async-with; close it manually here instead)
+            await response.aclose()
 
     async def get_completion(
         self,
@@ -159,8 +204,11 @@ class LLMEngine:
             "repeat_penalty": Config.LLM_REPEAT_PENALTY,
             "stop": ["<|im_end|>", "<|im_start|>", "<|endoftext|>"],
         }
-        try:
-            response = await asyncio.wait_for(
+
+        from llm.circuit_breaker import llm_circuit
+
+        async def call_llama_server_non_stream():
+            resp = await asyncio.wait_for(
                 self.client.post(
                     "/v1/chat/completions",
                     json=payload,
@@ -168,8 +216,11 @@ class LLMEngine:
                 ),
                 timeout=timeout
             )
-            response.raise_for_status()
-            res_data = response.json()
+            resp.raise_for_status()
+            return resp.json()
+
+        try:
+            res_data = await llm_circuit.call(call_llama_server_non_stream)
             choices = res_data.get("choices", [])
             if choices:
                 return choices[0].get("message", {}).get("content", "").strip()
@@ -181,4 +232,5 @@ class LLMEngine:
     async def aclose(self) -> None:
         """Gracefully close the HTTP client on shutdown."""
         await self.client.aclose()
+
 
