@@ -1,4 +1,7 @@
 import React from 'react';
+import { ThinkingIndicator } from './ThinkingIndicator';
+import { sanitizeAssistantText } from '../utils/sanitizeAssistantText';
+import { wrapTextByWordCount } from '../utils/formatMessageText';
 
 // Simple custom markdown renderer for rendering markdown content nicely
 export function parseInlineMarkdown(text) {
@@ -86,36 +89,19 @@ export function parseInlineMarkdown(text) {
 
 // Clean custom XML/HTML tags and parse lists safely without breaking mathematical operators
 export function cleanXmlTags(text) {
-  if (!text) return '';
-  let cleaned = text;
-
-  // Replace item/step/entry/li tags with markdown bullet points
-  cleaned = cleaned.replace(/<(?:item|step|entry|li)>/gi, '\n- ');
-  cleaned = cleaned.replace(/\{\s*(?:item|step|entry|li)\s*\}/gi, '\n- ');
-
-  // Remove other closing tags of list items
-  cleaned = cleaned.replace(/<\/(?:item|step|entry|li)>/gi, '');
-  cleaned = cleaned.replace(/\{\/\s*(?:item|step|entry|li)\s*\}/gi, '');
-
-  // Strip wrapping tags: checklist, speak, show, followup, ul, ol
-  cleaned = cleaned.replace(/<\/?(?:checklist|speak|followup|ul|ol)(?:\s+[^>]*)?>/gi, '');
-  cleaned = cleaned.replace(/\{\/?(?:checklist|speak|followup|ul|ol)(?:\s+[^}]*)?\}/gi, '');
-
-  // Strip broken/incomplete tag leaks
-  cleaned = cleaned.replace(/<(?:speak|show|followup|checklist|item|step|entry|li)\b[^>]*>?/gi, '');
-  cleaned = cleaned.replace(/<(?:spe|sho|fol|che|ite|ste|ent)\b[^>]*>?/gi, '');
-  cleaned = cleaned.replace(/\{(?:speak|show|followup|checklist|item|step|entry|li)\b[^}]*\}?/gi, '');
-  cleaned = cleaned.replace(/\{(?:spe|sho|fol|che|ite|ste|ent)\b[^}]*\}?/gi, '');
-
-  // Fallback: Strip any remaining standard tag-like structures, excluding math comparisons
-  cleaned = cleaned.replace(/<\/?[a-zA-Z][^>]*>/g, '');
-
-  return cleaned.trim();
+  return sanitizeAssistantText(text);
 }
 
-export function MarkdownViewer({ text }) {
-  if (!text) return null;
-  const lines = text.split('\n');
+export function MarkdownViewer({ text, isStreaming = false }) {
+  const cleaned = text ? cleanXmlTags(text) : '';
+  const hasVisibleContent = cleaned.trim().length > 0;
+
+  if (!hasVisibleContent) {
+    if (isStreaming) return <ThinkingIndicator />;
+    return null;
+  }
+
+  const lines = wrapTextByWordCount(cleaned).split('\n');
   let inCodeBlock = false;
   let codeContent = [];
   let renderedElements = [];
@@ -143,9 +129,6 @@ export function MarkdownViewer({ text }) {
       codeContent.push(line);
       continue;
     }
-
-    // Clean XML/HTML tags for any line outside of code blocks
-    line = cleanXmlTags(line);
 
     // Headings
     if (line.startsWith('# ')) {
@@ -212,12 +195,16 @@ export function MarkdownViewer({ text }) {
     // Paragraphs
     if (line.trim() !== '') {
       renderedElements.push(
-        <p key={`p-${key++}`} className="my-2.5 text-zinc-700 leading-relaxed">
+        <p key={`p-${key++}`} className="assistant-text-line text-zinc-700 leading-relaxed">
           {parseInlineMarkdown(line)}
         </p>
       );
     }
   }
 
-  return <div className="markdown-body">{renderedElements}</div>;
+  return (
+    <div className="markdown-body">
+      {renderedElements}
+    </div>
+  );
 }
