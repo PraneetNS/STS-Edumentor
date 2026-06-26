@@ -172,6 +172,11 @@ class AgentController:
                 refusal = "I cannot process that request. Ask me about your engineering studies or career and I will help."
                 return (processed_text, True, "prompt_injection", refusal)
 
+        from agent.safety_guard import check_input, get_refusal_message
+        safety_res = check_input(processed_text)
+        if not safety_res.allowed:
+            return (processed_text, True, safety_res.reason, get_refusal_message(safety_res))
+
         return (processed_text, False, None, None)
 
     def _run_post_guardrail(self, raw_response: str) -> tuple[str, bool, bool, Optional[str], Optional[str]]:
@@ -218,13 +223,16 @@ class AgentController:
         session_id: str,
         user_id: Optional[str] = None,
         audio_array: Optional[np.ndarray] = None,
-    ) -> AsyncIterator[str]:
+        ip_address: Optional[str] = None,
+    ) -> AsyncIterator[dict]:
         """
         Process a transcript and stream cleaned response tokens.
         """
         start_time = time.perf_counter()
         session_uuid = self._to_uuid(session_id)
-        user_uuid = self._to_uuid(user_id or session_id)
+        user_id = user_id or session_id
+        user_uuid = self._to_uuid(user_id)
+        ip_address = ip_address or "unknown"
 
         # Initialize turn tracking
         self._turn_state[session_id] = {
@@ -244,33 +252,64 @@ class AgentController:
         output_flagged = False
         flag_reason = None
         refusal_message = None
-        processed_text = user_text
 
-        # ── Subsystem 2: Pre-LLM Guardrail ──────────────────────────────────
+        # Redact PII in user input (existing logic)
+        from agent.safety_guard import EMAIL_RE, AADHAAR_RE, PHONE_RE, SSN_RE
+        pii_flagged = False
+        original_text = user_text
+        if EMAIL_RE.search(original_text) or AADHAAR_RE.search(original_text) or PHONE_RE.search(original_text) or SSN_RE.search(original_text):
+            pii_flagged = True
+
+        processed_text = original_text
+        processed_text = EMAIL_RE.sub("[redacted]", processed_text)
+        processed_text = AADHAAR_RE.sub("[redacted]", processed_text)
+        processed_text = PHONE_RE.sub("[redacted]", processed_text)
+        processed_text = SSN_RE.sub("[redacted]", processed_text)
+
+        if pii_flagged:
+            from agent.security_logger import log_security_event
+            asyncio.create_task(log_security_event(user_id, ip_address, "pii_detected", "PII detected and redacted in user input"))
+
+        # 1. Safety check on input (existing + Component 3 hardening)
         if self._safety_enabled:
             try:
                 import inspect
                 func = self._run_pre_guardrail
                 if inspect.iscoroutinefunction(func):
-                    coro = func(user_text)
+                    coro = func(processed_text)
                 else:
-                    coro = asyncio.to_thread(func, user_text)
-                # Enforce a 200ms timeout on the pre-LLM safety guardrail check
-                # to ensure latency remains low for real-time voice synthesis.
-                processed_text, is_blocked, block_reason, refusal = await asyncio.wait_for(
+                    coro = asyncio.to_thread(func, processed_text)
+                processed_text, pre_blocked, pre_reason, pre_refusal = await asyncio.wait_for(
                     coro,
                     timeout=0.2
                 )
-                if is_blocked:
+                if pre_blocked:
                     input_flagged = True
-                    flag_reason = block_reason
-                    refusal_message = refusal
+                    flag_reason = pre_reason
+                    refusal_message = pre_refusal
             except asyncio.TimeoutError:
                 logger.warning("[SAFETY PRE-LLM] Timeout (200ms) exceeded. Failing open.")
                 input_flagged = True
                 flag_reason = "timeout"
+            except Exception as pre_exc:
+                logger.error("Pre-LLM safety guardrail error: %s", pre_exc)
 
-            if refusal_message:
+            if input_flagged and flag_reason != "timeout":
+                from agent.security_logger import log_security_event
+                from agent.rate_limiter import rate_limiter
+                
+                asyncio.create_task(log_security_event(
+                    user_id, ip_address, "jailbreak_attempt", flag_reason or "unsafe_input"
+                ))
+                
+                violation_count = rate_limiter.record_violation(user_id)
+                if violation_count >= 3:
+                    rate_limiter.apply_strict_limit(user_id, duration_seconds=3600)
+                    asyncio.create_task(log_security_event(
+                        user_id, ip_address, "repeated_violation",
+                        f"{violation_count} violations in 10 min"
+                    ))
+
                 latency_ms = int((time.perf_counter() - start_time) * 1000)
                 asyncio.create_task(
                     self._db_manager.write_log(
@@ -285,12 +324,72 @@ class AgentController:
                         latency_ms=latency_ms
                     )
                 )
-                log_written = True
                 async for token in self._stream_refusal(refusal_message, session_id):
                     yield token
                 return
 
-        # ── Subsystem 3: Rolling Context Memory ──────────────────────────────
+        # 2. Non-Latin / off-topic routing (Component 3)
+        from agent.safety_guard import get_non_latin_ratio
+        non_latin_ratio = get_non_latin_ratio(processed_text)
+        intent_result = await self._intent_classifier.classify(processed_text)
+
+        if non_latin_ratio > 0.4 and intent_result.intent == Intent.OFF_TOPIC:
+            from agent.security_logger import log_security_event
+            asyncio.create_task(log_security_event(
+                user_id, ip_address, "jailbreak_attempt",
+                f"Non-Latin script ratio {non_latin_ratio:.2f} with off-topic intent"
+            ))
+            # Route to manual review: flag and block
+            refusal_message = "I noticed something unusual in that message. Let me flag this for review and get back to you."
+            latency_ms = int((time.perf_counter() - start_time) * 1000)
+            asyncio.create_task(
+                self._db_manager.write_log(
+                    user_id=user_uuid,
+                    session_id=session_uuid,
+                    query_text=original_text,
+                    response_text=refusal_message,
+                    intent_category="UNSAFE",
+                    input_flagged=True,
+                    output_flagged=False,
+                    flag_reason="non_latin_off_topic",
+                    latency_ms=latency_ms
+                )
+            )
+            async for token in self._stream_refusal(refusal_message, session_id):
+                yield token
+            return
+
+        # 3. Token budget check (Component 4) — before context assembly
+        from agent.token_budget import token_budget
+        if not token_budget.check_daily_budget(user_id):
+            from agent.security_logger import log_security_event
+            asyncio.create_task(log_security_event(
+                user_id, ip_address, "daily_limit_hit", "Daily token budget exceeded"
+            ))
+            refusal_message = "You've used up your question budget for today. Come back tomorrow or ask your instructor about extending it."
+            latency_ms = int((time.perf_counter() - start_time) * 1000)
+            asyncio.create_task(
+                self._db_manager.write_log(
+                    user_id=user_uuid,
+                    session_id=session_uuid,
+                    query_text=original_text,
+                    response_text=refusal_message,
+                    intent_category="UNSAFE",
+                    input_flagged=True,
+                    output_flagged=False,
+                    flag_reason="daily_token_budget_exceeded",
+                    latency_ms=latency_ms
+                )
+            )
+            async for token in self._stream_refusal(refusal_message, session_id):
+                yield token
+            return
+
+        # Get context string and enforce limit
+        context_str = self._memory.get_context(session_id)
+        enforced_context_str = token_budget.enforce_context_limit(context_str)
+
+        # Retrieve history messages
         history_messages = []
         db_rows = await self._db_manager.fetch_history(user_uuid, limit=10)
         db_rows_reversed = list(reversed(db_rows))
@@ -298,20 +397,12 @@ class AgentController:
             history_messages.append({"role": "user", "content": r["query_text"]})
             history_messages.append({"role": "assistant", "content": r["response_text"]})
 
-        def get_total_tokens(msg_list: list) -> int:
-            return sum(self._count_tokens(m["content"]) for m in msg_list)
-
-        while get_total_tokens(history_messages) > 1500 and len(history_messages) > 3:
-            history_messages.pop(0)
-
-        # ── Intent Classification & RAG Routing ──────────────────────────────
-        intent_result: IntentResult = await self._intent_classifier.classify(processed_text)
-        full_history = self._memory.get_session(session_id)
+        # Assemble dialogue context and prompt
         profile = self._profile_manager.get_profile()
         session_summary = self._summarizer.get_summary(session_id)
         knowledge_route = self._knowledge_router.route(intent_result.intent, processed_text)
 
-        retrieved_docs: Optional[str] = None
+        retrieved_docs = None
         if knowledge_route.use_rag:
             retrieved_docs = self._knowledge_router.retrieve(knowledge_route, processed_text)
 
@@ -323,23 +414,32 @@ class AgentController:
             except Exception as exc:
                 logger.warning("Failed to detect audio emotion: %s", exc)
 
-        # ── Build Dialogue Context & Prompt ──────────────────────────────────
-        context: AgentContext = self._dialogue_manager.build_context(
+        context_obj = self._dialogue_manager.build_context(
             session_id      = session_id,
             user_text       = processed_text,
             intent_result   = intent_result,
-            history         = full_history,
+            history         = self._memory.get_session(session_id),
             session_summary = session_summary,
             profile         = profile,
             knowledge_route = knowledge_route,
             retrieved_docs  = retrieved_docs,
             audio_emotion   = audio_emotion,
         )
-        context.history_messages = history_messages
-        messages = self._prompt_builder.build_messages(context)
+        context_obj.history_messages = history_messages
+        messages = self._prompt_builder.build_messages(context_obj)
 
-        emotion_result = context.emotion
-        topic = self._dialogue_manager.get_topic_from_history(full_history) or processed_text[:50]
+        # Truncate prompt context if total tokens exceeds budget by popping oldest turns
+        while len(history_messages) > 3:
+            msg_text = "\n".join(m["content"] for m in messages)
+            total_est_tokens = token_budget.estimate_tokens(msg_text)
+            if total_est_tokens <= token_budget.MAX_CONTEXT_TOKENS:
+                break
+            history_messages.pop(0)
+            context_obj.history_messages = history_messages
+            messages = self._prompt_builder.build_messages(context_obj)
+
+        emotion_result = context_obj.emotion
+        topic = self._dialogue_manager.get_topic_from_history(self._memory.get_session(session_id)) or processed_text[:50]
         self._turn_state[session_id]["last_topic"] = topic
 
         latency_ms = (time.perf_counter() - start_time) * 1000
@@ -352,30 +452,49 @@ class AgentController:
             latency_ms,
         )
 
-        # ── Step 11: Call LLM & Stream tokens in real time ──────────────────
+        # 4. LLM call through circuit breaker (Component 5) & 5. Streaming PII filter (Component 6)
+        from agent.safety_guard import StreamingPIIFilter
+        pii_filter = StreamingPIIFilter()
+        
         from agent.realtime_parser import RealtimeStreamingParser
         parser = RealtimeStreamingParser()
+        
         full_raw_response_list = []
         is_blocked = False
 
         try:
+            # We call the wrapped LLM engine which implements CircuitBreaker internally
             async for raw_token in self._llm.stream_tokens_from_messages(messages):
                 full_raw_response_list.append(raw_token)
                 
-                # Feed the raw token to the realtime parser
-                for event in parser.feed(raw_token):
-                    raw_chunk = event["raw"]
-                    planned_chunk = event["planned"]
-                    
-                    if raw_chunk or planned_chunk:
-                        self._turn_state[session_id]["partial_response"] += raw_chunk
-                        self._interrupt.track_chars_sent(session_id, len(raw_chunk))
-                        cleaned_planned = self._response_planner._clean_token(planned_chunk) if planned_chunk else ""
-                        yield {"raw": raw_chunk, "planned": cleaned_planned}
+                # Filter PII across token boundaries
+                safe_text = pii_filter.process_token(raw_token)
+                if safe_text:
+                    for event in parser.feed(safe_text):
+                        raw_chunk = event["raw"]
+                        planned_chunk = event["planned"]
+                        
+                        if raw_chunk or planned_chunk:
+                            self._turn_state[session_id]["partial_response"] += raw_chunk
+                            self._interrupt.track_chars_sent(session_id, len(raw_chunk))
+                            cleaned_planned = self._response_planner._clean_token(planned_chunk) if planned_chunk else ""
+                            yield {"raw": raw_chunk, "planned": cleaned_planned}
         except Exception as exc:
-            logger.exception("LLM generation error: %s", exc)
+            logger.exception("LLM generation error in controller: %s", exc)
             err_msg = f"I encountered an error while processing your request: {exc}. Please try again."
             yield {"raw": err_msg, "planned": err_msg}
+
+        # Flush the PII filter
+        final_safe = pii_filter.flush()
+        if final_safe:
+            for event in parser.feed(final_safe):
+                raw_chunk = event["raw"]
+                planned_chunk = event["planned"]
+                if raw_chunk or planned_chunk:
+                    self._turn_state[session_id]["partial_response"] += raw_chunk
+                    self._interrupt.track_chars_sent(session_id, len(raw_chunk))
+                    cleaned_planned = self._response_planner._clean_token(planned_chunk) if planned_chunk else ""
+                    yield {"raw": raw_chunk, "planned": cleaned_planned}
             
         # Finalize the parser
         for event in parser.finalize():
@@ -387,18 +506,50 @@ class AgentController:
                 cleaned_planned = self._response_planner._clean_token(planned_chunk) if planned_chunk else ""
                 yield {"raw": raw_chunk, "planned": cleaned_planned}
 
-        # ── Finalization, Safety Guardrails, Logging, and Memory ─────────────
-        raw_response = "".join(full_raw_response_list)
-        post_processed_response = raw_response
-        
+        full_raw_response = "".join(full_raw_response_list)
+        post_processed_response = full_raw_response
+
+        # Check if PII was redacted in output
+        from agent.safety_guard import redact_pii
+        if redact_pii(full_raw_response) != full_raw_response:
+            from agent.security_logger import log_security_event
+            asyncio.create_task(log_security_event(user_id, ip_address, "pii_detected", "PII detected and redacted in LLM response"))
+
+        # 6. Record token usage (Component 4)
+        prompt_tokens = 0
+        completion_tokens = 0
+        last_usage = getattr(self._llm, "last_usage", None)
+        if last_usage:
+            prompt_tokens = last_usage.get("prompt_tokens", 0)
+            completion_tokens = last_usage.get("completion_tokens", 0)
+        else:
+            # Fallback estimation
+            prompt_tokens = token_budget.estimate_tokens("\n".join(m["content"] for m in messages))
+            completion_tokens = token_budget.estimate_tokens(full_raw_response)
+        token_budget.record_usage(user_id, prompt_tokens, completion_tokens)
+
+        # 7. Hedging check on full assembled response (Component 6)
+        from agent.safety_guard import check_hedging
+        hedge_reason = check_hedging(full_raw_response)
+        if hedge_reason:
+            asyncio.create_task(
+                self._db_manager.log_low_confidence_response(
+                    student_id=user_id,
+                    session_id=session_id,
+                    response_text=full_raw_response,
+                    matched_hedging=hedge_reason
+                )
+            )
+
+        # Post-LLM safety checks (existing guardrail compliance)
         try:
             if self._safety_enabled:
                 import inspect
                 func = self._run_post_guardrail
                 if inspect.iscoroutinefunction(func):
-                    coro = func(raw_response)
+                    coro = func(full_raw_response)
                 else:
-                    coro = asyncio.to_thread(func, raw_response)
+                    coro = asyncio.to_thread(func, full_raw_response)
                 post_processed_response, blocked, flagged, reason, refusal = await asyncio.wait_for(
                     coro,
                     timeout=0.2
@@ -436,7 +587,7 @@ class AgentController:
             emotion         = emotion_result.emotion,
         )
 
-        # ── Log turns to database ──────────────────────────
+        # Log turns to database
         if not log_written:
             latency_ms = int((time.perf_counter() - start_time) * 1000)
             asyncio.create_task(
@@ -461,10 +612,6 @@ class AgentController:
             len(post_processed_response),
             total_ms,
         )
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # Interrupt state access (called from main.py's interrupt handler)
-    # ─────────────────────────────────────────────────────────────────────────
 
     def get_current_topic(self, session_id: str) -> str:
         """
