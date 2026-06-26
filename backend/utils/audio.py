@@ -105,3 +105,21 @@ def split_into_sentences(text: str) -> List[str]:
         if cleaned:
             sentences.append(cleaned)
     return sentences or [text.strip()]
+
+
+def validate_audio_chunk(chunk: bytes) -> bool:
+    """
+    Validate that the incoming binary frame does not exceed Config.MAX_AUDIO_CHUNK_BYTES.
+    """
+    from config import Config
+    return len(chunk) <= Config.MAX_AUDIO_CHUNK_BYTES
+
+
+def validate_utterance_duration(duration_seconds: float) -> bool:
+    """
+    Validate that the accumulated speech duration falls within the allowed range.
+    Below MIN_UTTERANCE_MS/1000 is treated as noise, above MAX_UTTERANCE_SECONDS is forced cutoff.
+    """
+    from config import Config
+    return Config.MIN_UTTERANCE_MS / 1000 <= duration_seconds <= Config.MAX_UTTERANCE_SECONDS
+
