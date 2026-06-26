@@ -1,38 +1,59 @@
 # EduMentor Voice
 
+# --- Python build / cache ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+
+# --- Virtual environments ---
+.venv/
+.venv310/
+venv/
+env/
+
+# --- Large model weights ---
 *.gguf
 *.bin
 *.pt
 *.pth
-__pycache__/
-*.pyc
-*.pyo
+
+# --- Secrets & environment ---
 .env
-*.egg-info/
+.env.*
+
+# --- Node / frontend build ---
+node_modules/
 dist/
 build/
-.venv/
-.venv310/
-venv/
-node_modules/
 frontend/dist/
+
+# --- OS artefacts ---
 .DS_Store
 Thumbs.db
-# Logs
+
+# --- Logs ---
 *.log
 backend/logs/
 
-# Gemini generated images
+# --- Gemini generated images ---
 Gemini_Generated_Image_*.png
 
-# Mascot previews and raw assets
+# --- Mascot previews and raw assets ---
 frontend/public/mascot_preview_*
 frontend/public/mascot.png
 frontend/public/mascot.jpg
 
-# Python script helpers
+# --- Root-level scratch / helper scripts (never commit) ---
+test_realtime_parser.py
+inspect_db_logs.py
 crop_standing.py
 inspect_circle.py
+help.txt
+engineering_vocab.json
+create_db.py
 
-# Tests
-
+# --- Verification / one-off scripts inside tests ---
+backend/tests/verify_sse.py
