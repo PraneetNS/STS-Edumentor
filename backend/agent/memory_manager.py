@@ -338,3 +338,14 @@ class MemoryManager:
             Total turn count (including pruned turns).
         """
         return self._backend.count(session_id)
+
+    def get_context(self, session_id: str) -> str:
+        """
+        Reconstruct all conversation turns in the session as a single string context.
+        """
+        turns = self.get_session(session_id)
+        context_str = ""
+        for turn in turns:
+            context_str += f"User: {turn.user}\nAssistant: {turn.assistant}\n"
+        return context_str
+
