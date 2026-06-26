@@ -12,6 +12,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { sanitizeAssistantText } from '../utils/sanitizeAssistantText';
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/voice';
 const SAMPLE_RATE = 16000; // Must match backend Config.AUDIO_SAMPLE_RATE
@@ -436,12 +437,13 @@ export function useVoicePipeline({
           break;
         case 'assistant_text_delta':
           generatedTextBufferRef.current += msg.text;
-          setAssistantText(generatedTextBufferRef.current);
+          const displayText = sanitizeAssistantText(generatedTextBufferRef.current);
+          setAssistantText(displayText);
           if (fallbackToTokenStreamingRef.current) {
             setIsSpeakingTextSync(false);
           }
           if (onTextUpdateRef.current) {
-            onTextUpdateRef.current(generatedTextBufferRef.current);
+            onTextUpdateRef.current(displayText);
           }
           break;
         case 'audio_chunk':
@@ -456,7 +458,7 @@ export function useVoicePipeline({
               fallbackToTokenStreamingRef.current = true;
               setIsSpeakingTextSync(false);
               if (onTextUpdateRef.current) {
-                onTextUpdateRef.current(generatedTextBufferRef.current);
+                onTextUpdateRef.current(sanitizeAssistantText(generatedTextBufferRef.current));
               }
             }
             
@@ -486,7 +488,7 @@ export function useVoicePipeline({
             fallbackToTokenStreamingRef.current = true;
             setIsSpeakingTextSync(false);
             if (onTextUpdateRef.current) {
-              onTextUpdateRef.current(generatedTextBufferRef.current);
+              onTextUpdateRef.current(sanitizeAssistantText(generatedTextBufferRef.current));
             }
           }
           // Only transition to IDLE if the audio queue has finished playing
