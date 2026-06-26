@@ -5,7 +5,8 @@
  * and the active word as the audio plays.
  */
 import React, { memo, useMemo } from 'react';
-import { cleanXmlTags } from './MarkdownViewer';
+import { sanitizeAssistantText } from '../utils/sanitizeAssistantText';
+import { ThinkingIndicator } from './ThinkingIndicator';
 
 export const SpeakingText = memo(function SpeakingText({
   text = '',
@@ -13,7 +14,7 @@ export const SpeakingText = memo(function SpeakingText({
   isSpeakingTextSync = true,
   isStreaming = false,
 }) {
-  const cleanedText = useMemo(() => cleanXmlTags(text), [text]);
+  const cleanedText = useMemo(() => sanitizeAssistantText(text), [text]);
 
   // Split text into words, preserving spaces
   const words = useMemo(() => {
@@ -53,7 +54,7 @@ export const SpeakingText = memo(function SpeakingText({
             </span>
           );
         })}
-        {isStreaming && <span className="stream-cursor" />}
+        {isStreaming && words.length === 0 && <ThinkingIndicator />}
       </span>
     );
   }
@@ -62,7 +63,7 @@ export const SpeakingText = memo(function SpeakingText({
   return (
     <span className="leading-relaxed" style={{ color: '#18181B', overflowWrap: 'break-word', wordBreak: 'normal' }}>
       {cleanedText}
-      {isStreaming && <span className="stream-cursor" />}
+      {isStreaming && !cleanedText && <ThinkingIndicator />}
     </span>
   );
 });
