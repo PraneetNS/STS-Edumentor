@@ -5,73 +5,11 @@
 import React, { useEffect, useRef, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User } from 'lucide-react';
-import { SpeakingText } from './SpeakingText';
 import { MentorCharacter } from './MentorCharacter';
 import { MarkdownViewer } from './MarkdownViewer';
+import { UserMessageText } from './UserMessageText';
 
-/**
- * StreamingContent — Smart renderer for in-progress assistant messages.
- *
- * Splits text on markdown "show block" boundaries (lines starting with ###, ```, 
- * or numbered lists after a blank line) so that the spoken portion gets 
- * word-by-word SpeakingText highlighting while roadmaps/code render via 
- * MarkdownViewer instead of showing raw markdown syntax.
- */
-const SHOW_BLOCK_SPLIT = /(\n\n(?:#{1,3} |```|\d+\. |\- ))/;
-
-function StreamingContent({ text, currentWordIndex, isSpeakingTextSync }) {
-  if (!text) return null;
-
-  // Split on double-newline followed by a markdown block marker
-  const parts = text.split(SHOW_BLOCK_SPLIT);
-
-  // Recombine: every odd index is the separator that got captured; 
-  // join it back with the following segment.
-  const segments = [];
-  let i = 0;
-  while (i < parts.length) {
-    if (i + 1 < parts.length && SHOW_BLOCK_SPLIT.test(parts[i + 1])) {
-      // The next part is a separator — merge it with the part after
-      segments.push({ type: 'text', content: parts[i] });
-      segments.push({ type: 'markdown', content: parts[i + 1] + (parts[i + 2] || '') });
-      i += 3;
-    } else {
-      segments.push({ type: 'text', content: parts[i] });
-      i += 1;
-    }
-  }
-
-  // Count words in all plain-text segments before each, to maintain word index offsets
-  let wordsBefore = 0;
-  return (
-    <span className="speaking-active" style={{ display: 'block' }}>
-      {segments.map((seg, idx) => {
-        if (seg.type === 'markdown') {
-          return (
-            <div key={idx} className="mt-2">
-              <MarkdownViewer text={seg.content} />
-            </div>
-          );
-        }
-        // Plain-text spoken segment
-        const segWords = seg.content ? seg.content.split(' ').length : 0;
-        const offsetIndex = wordsBefore;
-        wordsBefore += segWords;
-        return (
-          <SpeakingText
-            key={idx}
-            text={seg.content}
-            currentWordIndex={currentWordIndex - offsetIndex}
-            isSpeakingTextSync={isSpeakingTextSync}
-            isStreaming={true}
-          />
-        );
-      })}
-    </span>
-  );
-}
-
-const Message = memo(function Message({ 
+const Message = memo(function Message({
   msg, 
   currentSpokenWordIndex, 
   isSpeakingTextSync,
@@ -114,34 +52,15 @@ const Message = memo(function Message({
       </div>
 
       {/* Content */}
-      <div className="flex flex-col gap-1" style={{ maxWidth: 'calc(100% - 50px)' }}>
+      <div className="message-content flex flex-col gap-1">
         <div className={`msg-label ${isUser ? 'text-right' : ''}`}>
           {labelText}
         </div>
-        <div className="msg-bubble glass">
+        <div className={`msg-bubble glass${isStreaming && !msg.text?.trim() ? ' msg-bubble--thinking' : ''}${isStreaming && msg.text?.trim() ? ' streaming-text' : ''}`}>
           {isStreaming ? (
-            msg.text ? (
-              <StreamingContent
-                text={msg.text}
-                currentWordIndex={currentSpokenWordIndex}
-                isSpeakingTextSync={isSpeakingTextSync}
-              />
-            ) : (
-              // Thinking dots
-              <div className="flex items-center gap-1.5 h-5 my-0.5" style={{ display: 'flex' }}>
-                {[0,1,2].map(i => (
-                  <motion.span
-                    key={i}
-                    className="w-2 h-2 rounded-full"
-                    style={{ backgroundColor: 'var(--accent-indigo)', display: 'inline-block' }}
-                    animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.2, 0.8] }}
-                    transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
-                  />
-                ))}
-              </div>
-            )
+            <MarkdownViewer text={msg.text || ''} isStreaming={true} />
           ) : (
-            isUser ? msg.text : <MarkdownViewer text={msg.text} />
+            isUser ? <UserMessageText text={msg.text} /> : <MarkdownViewer text={msg.text} />
           )}
         </div>
       </div>
