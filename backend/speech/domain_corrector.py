@@ -36,7 +36,7 @@ class DomainCorrector:
             )
 
         try:
-            with open(vocab_path, "r", encoding="utf-8") as f:
+            with open(vocab_path, "r", encoding="utf-8-sig") as f:
                 self.raw_vocab = json.load(f)
             logger.info("Loaded vocabulary from %s for domain correction.", vocab_path)
         except Exception as e:
