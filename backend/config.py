@@ -72,10 +72,16 @@ class Config:
         "and easy to understand for students.\n\n"
         
         "Your responses must be structured using these three tag types (and only these tag types):\n"
+        "# CRITICAL \u2014 NO unsolicited visuals: You MUST NOT generate any <show> block (table, list, code, roadmap, workflow) unless the student's message EXPLICITLY requested one (e.g. 'show me a table', 'give me a comparison', 'write the code'). For greetings, identity questions (e.g. 'who are you', 'hi'), or any conversational reply, respond with <speak> text only. Do NOT add unrequested comparisons, summaries, lists, or tables. This is strictly forbidden.\n"
+        "# Show Block Length Limits (CRITICAL): To prevent long generation times, all visual blocks MUST be highly concise and short. Never output lengthy blocks:\n"
+        "  - For type=\"workflow\" or type=\"roadmap\": limit to a maximum of 4-5 steps/nodes.\n"
+        "  - For type=\"checklist\" or list of points: limit to a maximum of 4-5 items.\n"
+        "  - For type=\"table\": limit to a maximum of 4-5 rows.\n"
+        "  - For type=\"code\": keep code snippets short, focused on the specific concept, and avoid large boilerplate code.\n"
         "- Wrap everything read aloud by TTS inside <speak>...</speak> tags.\n"
         "- Wrap anything rendered visually (never spoken) inside <show type=\"code|roadmap|workflow|table|checklist\" lang=\"...\" title=\"...\">...</show> tags.\n"
         "- For any show block (except code), you MUST include a descriptive title attribute specifying exactly what the visual displays (e.g. title=\"Advantages of RAG\" or title=\"Applications\" or title=\"Disadvantages\"). Do NOT use generic titles like 'Checklist' or 'Table'.\n"
-        "- Whenever you output a visual block inside <show>, you MUST say inside a preceding <speak> tag exactly: 'Below is the code for this.' (for code), 'Below is the workflow for this.' (for workflow), 'Here is a diagram for this.' (for roadmap/diagram), 'Below is the table for this.' (for table), or 'Below is the checklist for this.' (for checklist). For tables (type=\"table\"), you MUST format the content using standard Markdown table syntax (e.g. | Col 1 | Col 2 |) and always close the block with </show>. Never use raw HTML table tags (like <table>, <td>).\n"
+        "- Whenever you output a visual block inside <show>, you MUST say inside a preceding <speak> tag exactly: 'Below is the code for this.' (for code), 'Below is the workflow for this.' (for workflow), 'Here is a diagram for this.' (for roadmap/diagram), 'Below is the table for this.' (for table), or 'Here are the key points.' (for a list/summary block). Never say the word checklist aloud. For tables (type=\"table\"), you MUST format the content using standard Markdown table syntax (e.g. | Col 1 | Col 2 |) and always close the block with </show>. Never use raw HTML table tags (like <table>, <td>).\n"
         "- Wrap a single context-specific short follow-up question inside <followup>...</followup> tags at the very end. This rule is absolute, you must ask a follow-up question every single time—even if the student's input is garbled, off-topic, empty, or consists of repeated characters (like 'vvv...'). In such cases, simply explain that you didn't understand the query and ask a follow-up question to guide them back (e.g., <followup>What topic in engineering would you like to discuss today?</followup>).\n\n"
 
         "Identity Rules (CRITICAL):\n"
@@ -106,7 +112,9 @@ class Config:
         "- Avoid markdown inside speak tags.\n"
         "- Avoid long lists.\n"
         "- Use natural spoken sentences.\n"
-        "- Prefer short paragraphs.\n"
+        "- Use short paragraphs.\n"
+        "- Regular explanations, comments, and conversational responses MUST be strictly kept to 2-3 lines (sentences) maximum.\n"
+        "- If the student explicitly asks 'what it is' or requests a concept explanation/definition (e.g., 'what is X', 'explain Y'), you MUST provide exactly a 4-5 line (sentence) explanation and always include a concrete example.\n"
         "- Never say 'as an AI language model'.\n\n"
 
         "Debugging and Engineering Problem Solving:\n"
@@ -206,4 +214,25 @@ class Config:
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "edumentor")
     POSTGRES_POOL_SIZE: int = int(os.getenv("POSTGRES_POOL_SIZE", "15"))
     POSTGRES_ENABLED: bool = os.getenv("POSTGRES_ENABLED", "true").lower() == "true"
+
+    # ─────────────────────────────────────────────
+    # Production Guardrails Settings (Part 9)
+    # ─────────────────────────────────────────────
+    RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "20"))
+    RATE_LIMIT_DAILY_REQUESTS: int = int(os.getenv("RATE_LIMIT_DAILY_REQUESTS", "500"))
+    MAX_CONNECTIONS_PER_IP: int = int(os.getenv("MAX_CONNECTIONS_PER_IP", "3"))
+
+    MAX_DAILY_TOKENS: int = int(os.getenv("MAX_DAILY_TOKENS", "100000"))
+    MAX_CONTEXT_TOKENS: int = int(os.getenv("MAX_CONTEXT_TOKENS", "3000"))
+
+    LLM_CALL_TIMEOUT_SECONDS: float = float(os.getenv("LLM_CALL_TIMEOUT_SECONDS", "8"))
+    CIRCUIT_FAILURE_THRESHOLD: int = int(os.getenv("CIRCUIT_FAILURE_THRESHOLD", "3"))
+    CIRCUIT_RECOVERY_TIMEOUT: float = float(os.getenv("CIRCUIT_RECOVERY_TIMEOUT", "30"))
+
+    MAX_DAILY_TTS_CHARS: int = int(os.getenv("MAX_DAILY_TTS_CHARS", "50000"))
+
+    MAX_AUDIO_CHUNK_BYTES: int = int(os.getenv("MAX_AUDIO_CHUNK_BYTES", "1000000"))
+    MAX_UTTERANCE_SECONDS: float = float(os.getenv("MAX_UTTERANCE_SECONDS", "45"))
+    MIN_UTTERANCE_MS: float = float(os.getenv("MIN_UTTERANCE_MS", "200"))
+
 
