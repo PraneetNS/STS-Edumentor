@@ -204,6 +204,75 @@ _OUTPUT_CHECKERS: List[_BaseChecker] = [
 # Public API
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Known Limitation: The safety guard injection regex patterns are English-only.
+# Highly multi-lingual jailbreak attempts or non-Latin queries might bypass English regexes.
+# To mitigate this, we calculate the ratio of non-Latin characters and check the intent classifier's off_topic label.
+
+BASE64_PAT = re.compile(r'\b[A-Za-z0-9+/]{8,}=*\b')
+LEET_MAP = str.maketrans("13405@", "ieaosa")
+
+# PII Detection Patterns
+AADHAAR_RE = re.compile(r"\b\d{4}[-\s]?\d{4}[-\s]?\d{4}\b")
+EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+PHONE_RE = re.compile(r"\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}[-.\s]?\d{4}")
+SSN_RE = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
+
+HEDGING_PATTERNS = ["i think", "probably", "i'm not entirely sure", "might be"]
+
+
+def normalize_leetspeak(text: str) -> str:
+    """Normalize common leetspeak substitutions (e.g. 1->i, 3->e, 4->a, 0->o, 5->s, @->a)."""
+    return text.translate(LEET_MAP)
+
+
+def decode_base64_substrings(text: str) -> List[str]:
+    """Base64-decode any suspicious-looking base64 substrings in the transcript."""
+    import base64
+    decoded_texts = []
+    for match in BASE64_PAT.finditer(text):
+        candidate = match.group(0)
+        # Pad candidate if needed
+        missing_padding = len(candidate) % 4
+        if missing_padding:
+            candidate += '=' * (4 - missing_padding)
+        try:
+            decoded = base64.b64decode(candidate).decode('utf-8', errors='ignore')
+            if decoded.strip():
+                decoded_texts.append(decoded)
+        except Exception:
+            pass
+    return decoded_texts
+
+
+def get_non_latin_ratio(text: str) -> float:
+    """Calculate the ratio of non-Latin alphabetic characters in the text."""
+    alphas = [c for c in text if c.isalpha()]
+    if not alphas:
+        return 0.0
+    non_latin = [c for c in alphas if not (
+        (65 <= ord(c) <= 90) or (97 <= ord(c) <= 122) or (192 <= ord(c) <= 255) or (384 <= ord(c) <= 591)
+    )]
+    return len(non_latin) / len(alphas)
+
+
+def redact_pii(text: str) -> str:
+    """Redact email patterns to your.email@example.com and phone/SSN/Aadhaar to XXX-XXX-XXXX."""
+    text = EMAIL_RE.sub("your.email@example.com", text)
+    text = PHONE_RE.sub("XXX-XXX-XXXX", text)
+    text = AADHAAR_RE.sub("XXX-XXX-XXXX", text)
+    text = SSN_RE.sub("XXX-XXX-XXXX", text)
+    return text
+
+
+def check_hedging(text: str) -> Optional[str]:
+    """Check if the text contains hedging patterns indicating low confidence."""
+    text_lower = text.lower()
+    for pattern in HEDGING_PATTERNS:
+        if pattern in text_lower:
+            return pattern
+    return None
+
+
 def check_input(text: str) -> SafetyResult:
     """
     Run the full input safety scan on user-provided text.
@@ -221,6 +290,7 @@ def check_input(text: str) -> SafetyResult:
     if not text or not text.strip():
         return SafetyResult.safe()
 
+    # 1. Check standard input checkers
     for checker in _INPUT_CHECKERS:
         match = checker.check(text)
         if match is not None:
@@ -229,6 +299,32 @@ def check_input(text: str) -> SafetyResult:
                 checker.category.value, match, text[:60]
             )
             return SafetyResult.blocked(checker.category, details=match)
+
+    # 2. Check leetspeak substitutions
+    normalized_leet = normalize_leetspeak(text)
+    if normalized_leet != text:
+        for checker in _INPUT_CHECKERS:
+            match = checker.check(normalized_leet)
+            if match is not None:
+                logger.warning(
+                    "[SAFETY INPUT LEETSPEAK BLOCKED] category=%s match=%r text=%r",
+                    checker.category.value, match, text[:60]
+                )
+                return SafetyResult.blocked(checker.category, details=f"Leetspeak: {match}")
+
+    # 3. Check base64 obfuscation
+    decoded_texts = decode_base64_substrings(text)
+    for decoded_text in decoded_texts:
+        res = check_input(decoded_text)
+        if not res.allowed:
+            logger.warning(
+                "[SAFETY INPUT BASE64 BLOCKED] text=%r decoded=%r reason=%s",
+                text[:60], decoded_text[:60], res.reason
+            )
+            return SafetyResult.blocked(
+                SafetyCategory(res.reason) if res.reason else SafetyCategory.JAILBREAK,
+                details=f"Base64: {res.details}"
+            )
 
     return SafetyResult.safe()
 
@@ -259,6 +355,43 @@ def check_output(text: str) -> SafetyResult:
             return SafetyResult.blocked(checker.category, details=match)
 
     return SafetyResult.safe()
+
+
+class StreamingPIIFilter:
+    def __init__(self, lookback_chars: int = 40):
+        self.buffer = ""
+        self.lookback_chars = lookback_chars
+        self.released_length = 0
+
+    def process_token(self, token: str) -> str:
+        """
+        Returns the text that is now safe to release downstream.
+        Holds back the last `lookback_chars` of the buffer on
+        every call so a pattern split across token boundaries
+        is always checked as a whole before release.
+        """
+        self.buffer += token
+
+        # Don't release the tail — PII might still be forming
+        safe_to_check = self.buffer[:-self.lookback_chars] if len(self.buffer) > self.lookback_chars else ""
+
+        if not safe_to_check:
+            return ""
+
+        redacted = redact_pii(safe_to_check)
+
+        release_length = len(safe_to_check)
+        new_release = redacted[self.released_length:] if self.released_length < len(redacted) else redacted
+        self.released_length = release_length
+
+        return new_release
+
+    def flush(self) -> str:
+        """Call when stream ends — release everything remaining"""
+        redacted = redact_pii(self.buffer)
+        remaining = redacted[self.released_length:]
+        self.released_length = len(redacted)
+        return remaining
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -318,3 +451,4 @@ def get_refusal_message(safety_result: SafetyResult) -> str:
     if safety_result.reason:
         return _REFUSAL_MESSAGES.get(safety_result.reason, _DEFAULT_REFUSAL)
     return _DEFAULT_REFUSAL
+
