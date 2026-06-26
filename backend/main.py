@@ -39,7 +39,7 @@ from config import Config
 from stt.whisper_engine import WhisperEngine
 from llm.llm_engine import LLMEngine
 from tts.kokoro_engine import KokoroEngine
-from utils.audio import int16_bytes_to_float32, is_sentence_complete
+from utils.audio import int16_bytes_to_float32, is_sentence_complete, validate_audio_chunk, validate_utterance_duration
 
 import time
 from agent.models import ConversationState, Emotion
@@ -270,7 +270,18 @@ async def voice_endpoint(websocket: WebSocket):
         - JSON: {"type": "error",          "text": "..."}  — pipeline error
         - Binary frames: WAV audio chunks (24 kHz PCM_16) for playback
     """
+    # Connection limit check (Part 1)
+    from agent.rate_limiter import rate_limiter
+    client_ip = websocket.client.host if websocket.client else "unknown"
+    registered_connection = False
+    if not rate_limiter.check_connection_limit(client_ip):
+        await websocket.accept()
+        await websocket.close(code=1008, reason="too many connections")
+        return
+
     await websocket.accept()
+    rate_limiter.register_connection(client_ip)
+    registered_connection = True
     logger.info("Client connected: %s", websocket.client)
     session_id = websocket.query_params.get("session_id") or f"{websocket.client.host}:{websocket.client.port}"
     user_id = websocket.query_params.get("user_id") or session_id
@@ -413,6 +424,15 @@ async def voice_endpoint(websocket: WebSocket):
             # ── Binary audio frame ──────────────────────────────────────────
             if "bytes" in message and message["bytes"]:
                 chunk = message["bytes"]
+                
+                # Audio chunk size check (Part 2)
+                if not validate_audio_chunk(chunk):
+                    logger.warning("Dropped audio chunk exceeding size limit (%d bytes)", len(chunk))
+                    from agent.security_logger import log_security_event
+                    client_ip = websocket.client.host if websocket.client else "unknown"
+                    asyncio.create_task(log_security_event(user_id, client_ip, "payload_too_large", f"Audio chunk exceeding size limit ({len(chunk)} bytes)"))
+                    continue
+
                 audio_chunks.append(chunk)
 
                 if silero_vad_model is not None:
@@ -433,6 +453,16 @@ async def voice_endpoint(websocket: WebSocket):
                         if speech_prob > Config.VAD_THRESHOLD:
                             speech_duration += 0.032  # 512 samples = 32ms
                             silence_duration = 0.0
+                            
+                            # Forced transcription cutoff (Part 2)
+                            if speech_duration >= Config.MAX_UTTERANCE_SECONDS:
+                                logger.info("VAD: Max utterance duration reached (%.2fs). Auto-triggering pipeline.", speech_duration)
+                                speech_started = False
+                                speech_duration = 0.0
+                                silence_duration = 0.0
+                                await trigger_pipeline(is_vad_trigger=True)
+                                continue
+
                             if not speech_started and speech_duration >= Config.MIN_SPEECH_DURATION:
                                 speech_started = True
                                 logger.info("VAD: Speech start detected.")
@@ -567,6 +597,9 @@ async def voice_endpoint(websocket: WebSocket):
             pass
     finally:
         logger.info("Cleaning up WebSocket session for client: %s", websocket.client)
+        # Release connection (Part 1)
+        if "registered_connection" in locals() and registered_connection:
+            rate_limiter.release_connection(client_ip)
         # Save interruption state on unexpected disconnect to enable resuming
         if is_pipeline_running and agent_controller and pipeline_task and not pipeline_task.done():
             try:
@@ -616,6 +649,27 @@ async def _run_pipeline(
     session_id = websocket.query_params.get("session_id") or f"{websocket.client.host}:{websocket.client.port}"
     user_id = websocket.query_params.get("user_id") or session_id
 
+    # Connection ip-rate limits / daily limits (Part 1)
+    from agent.rate_limiter import rate_limiter
+    client_ip = websocket.client.host if websocket.client else "unknown"
+    if not rate_limiter.check_rate_limit(user_id):
+        from agent.security_logger import log_security_event
+        asyncio.create_task(log_security_event(user_id, client_ip, "rate_limit_hit", "Utterance rate limit per minute exceeded"))
+        await websocket.send_json({"type": "error", "text": "You're sending requests too fast. Slow down a bit."})
+        await set_state(ConversationState.IDLE)
+        await websocket.send_json({"type": "done"})
+        return
+    
+    if not rate_limiter.check_daily_limit(user_id):
+        from agent.security_logger import log_security_event
+        asyncio.create_task(log_security_event(user_id, client_ip, "daily_limit_hit", "Daily request limit exceeded"))
+        await websocket.send_json({"type": "error", "text": "You've hit your daily usage limit. Come back tomorrow."})
+        await set_state(ConversationState.IDLE)
+        await websocket.send_json({"type": "done"})
+        return
+        
+    rate_limiter.increment_daily(user_id)
+
     user_uuid = None
     session_uuid = None
     if agent_controller:
@@ -624,6 +678,18 @@ async def _run_pipeline(
 
     # ── 1. STT ───────────────────────────────────────────────────────────────
     audio_array = int16_bytes_to_float32(raw_pcm)
+    
+    # Utterance duration cap and noise filter validation (Part 2)
+    duration_seconds = len(audio_array) / Config.AUDIO_SAMPLE_RATE
+    if not validate_utterance_duration(duration_seconds):
+        logger.warning("Utterance duration validation failed: %.2fs", duration_seconds)
+        if duration_seconds < Config.MIN_UTTERANCE_MS / 1000:
+            logger.info("Utterance too short (treated as noise) — skipping pipeline.")
+            await websocket.send_json({"type": "transcript", "text": "", "words": []})
+            await set_state(ConversationState.IDLE)
+            await websocket.send_json({"type": "done"})
+            return
+
     min_avg_logprob = 0.0
     try:
         if pre_transcribed_text:
@@ -786,14 +852,17 @@ async def _run_pipeline(
     await set_state(ConversationState.THINKING)
 
     # ── 3. LLM streaming + TTS ────────────────────────────────────────────────
+    client_ip = websocket.client.host if websocket.client else "unknown"
     if agent_controller is not None:
         # ── Agent path: full pipeline with intent, memory, safety, emotion ────
-        token_stream = agent_controller.stream(normalized_transcript, session_id, user_id=user_id, audio_array=audio_array)
-        await _stream_llm_and_tts(websocket, token_stream, loop, set_state, speed, voice, latency_metrics, start_time)
+        token_stream = agent_controller.stream(
+            normalized_transcript, session_id, user_id=user_id, audio_array=audio_array, ip_address=client_ip
+        )
+        await _stream_llm_and_tts(websocket, token_stream, loop, set_state, speed, voice, latency_metrics, start_time, student_id=user_id)
     else:
         # ── Legacy path: direct LLM call (AGENT_ENABLED=false) ───────────────
         token_stream = llm_engine.stream_tokens(normalized_transcript)
-        await _stream_llm_and_tts(websocket, token_stream, loop, set_state, speed, voice, latency_metrics, start_time)
+        await _stream_llm_and_tts(websocket, token_stream, loop, set_state, speed, voice, latency_metrics, start_time, student_id=user_id)
 
     # ── 4. Signal turn complete ───────────────────────────────────────────────
     await set_state(ConversationState.IDLE)
@@ -814,6 +883,7 @@ async def _stream_llm_and_tts(
     voice: str,
     latency_metrics: dict,
     start_time: float,
+    student_id: Optional[str] = None,
 ) -> None:
     """
     Simultaneously stream LLM tokens to the frontend AND generate TTS audio
@@ -828,74 +898,90 @@ async def _stream_llm_and_tts(
     async def llm_token_reader():
         nonlocal sentence_buffer
         is_first_chunk = True
+        legacy_parser = None
         try:
             async for token_data in token_stream:
                 # Record first LLM token latency
                 if latency_metrics["first_llm_token"] is None:
                     latency_metrics["first_llm_token"] = round(time.time() - start_time, 2)
-                
-                # Unpack raw and planned tokens
+
+                events = []
                 if isinstance(token_data, dict):
-                    raw_token = token_data.get("raw", "")
-                    planned_token = token_data.get("planned", "")
+                    events = [token_data]
                 elif isinstance(token_data, tuple):
-                    raw_token, planned_token = token_data
+                    events = [{"raw": token_data[0], "planned": token_data[1]}]
                 else:
-                    raw_token = token_data
-                    planned_token = token_data
+                    if legacy_parser is None:
+                        from agent.realtime_parser import RealtimeStreamingParser
+                        legacy_parser = RealtimeStreamingParser()
+                    for event in legacy_parser.feed(token_data):
+                        events.append(event)
 
-                # Forward raw token to frontend immediately
-                if raw_token:
-                    await websocket.send_json({"type": "assistant_text_delta", "text": raw_token})
-                
-                # Accumulate planned token for TTS
-                if planned_token:
-                    sentence_buffer += planned_token
+                for event in events:
+                    raw_token = event.get("raw", "") if isinstance(event, dict) else ""
+                    planned_token = event.get("planned", "") if isinstance(event, dict) else event
 
-                # Dynamic first-chunk optimization:
-                # For the first chunk, we flush aggressively to minimize Time-to-First-Audio (TTFA).
-                # We flush if length is >= 40 characters and we hit a word boundary (space) or punctuation,
-                # or if a complete sentence/clause is detected.
-                should_flush = False
-                stripped = sentence_buffer.strip()
-                
-                if is_first_chunk:
-                    import re
-                    # Flush on any sentence ending punctuation if minimum length (3 chars) is met (handles quotes/brackets)
-                    if len(stripped) >= 3 and re.search(r"(?<=\S{2})[.!?]+['\"`’”\]\)]*(?:\s|$)", stripped):
-                        should_flush = True
-                    # Flush on comma/clause ending punctuation only if minimum context length (20 chars) is met
-                    elif len(stripped) >= 20 and re.search(r"(?<=\S{2})[,;:—\n\r]+['\"`’”\]\)]*(?:\s|$)", stripped):
-                        should_flush = True
-                    # Flush on space/word boundary if we've accumulated at least 30 characters (fast phrase split)
-                    elif len(stripped) >= 30 and (raw_token and (raw_token.isspace() or any(char in raw_token for char in ".,!?;:-—"))):
-                        should_flush = True
-                else:
-                    # Standard chunking logic for subsequent sentences
-                    if is_sentence_complete(sentence_buffer) or len(sentence_buffer) > Config.TTS_CHUNK_CHARS:
-                        should_flush = True
+                    # Forward display-safe token to frontend immediately
+                    if raw_token:
+                        await websocket.send_json({"type": "assistant_text_delta", "text": raw_token})
 
-                if should_flush:
-                    sentence = sentence_buffer.strip()
-                    if sentence:
-                        sentence_buffer = ""
-                        is_first_chunk = False
-                        
-                        # Filter out diagrams, flowcharts, or roadmaps from TTS
-                        from agent.response_planner import is_diagram_or_roadmap
-                        if is_diagram_or_roadmap(sentence):
-                            logger.info("Skipping diagram/roadmap sentence for TTS: %r", sentence[:60])
-                            continue
-                        
-                        logger.debug("Enqueuing sentence for TTS: %r", sentence[:60])
-                        # This will block if tts_queue is full (size >= 3), implementing backpressure
-                        await tts_queue.put(sentence)
+                    # Accumulate planned token for TTS
+                    if planned_token:
+                        sentence_buffer += planned_token
+
+                    # Dynamic first-chunk optimization:
+                    # For the first chunk, we flush aggressively to minimize Time-to-First-Audio (TTFA).
+                    # We flush if length is >= 40 characters and we hit a word boundary (space) or punctuation,
+                    # or if a complete sentence/clause is detected.
+                    should_flush = False
+                    stripped = sentence_buffer.strip()
+
+                    if is_first_chunk:
+                        import re
+                        # Flush on any sentence ending punctuation if minimum length (3 chars) is met (handles quotes/brackets)
+                        if len(stripped) >= 3 and re.search(r"(?<=\S{2})[.!?]+['\"`’”\]\)]*(?:\s|$)", stripped):
+                            should_flush = True
+                        # Flush on comma/clause ending punctuation only if minimum context length (20 chars) is met
+                        elif len(stripped) >= 20 and re.search(r"(?<=\S{2})[,;:—\n\r]+['\"`’”\]\)]*(?:\s|$)", stripped):
+                            should_flush = True
+                        # Flush on space/word boundary if we've accumulated at least 30 characters (fast phrase split)
+                        elif len(stripped) >= 30 and (raw_token and (raw_token.isspace() or any(char in raw_token for char in ".,!?;:-—"))):
+                            should_flush = True
+                    else:
+                        # Standard chunking logic for subsequent sentences
+                        if is_sentence_complete(sentence_buffer) or len(sentence_buffer) > Config.TTS_CHUNK_CHARS:
+                            should_flush = True
+
+                    if should_flush:
+                        sentence = sentence_buffer.strip()
+                        if sentence:
+                            sentence_buffer = ""
+                            is_first_chunk = False
+
+                            # Filter out diagrams, flowcharts, or roadmaps from TTS
+                            from agent.response_planner import is_diagram_or_roadmap
+                            if is_diagram_or_roadmap(sentence):
+                                logger.info("Skipping diagram/roadmap sentence for TTS: %r", sentence[:60])
+                                continue
+
+                            logger.debug("Enqueuing sentence for TTS: %r", sentence[:60])
+                            # This will block if tts_queue is full (size >= 3), implementing backpressure
+                            await tts_queue.put(sentence)
         except asyncio.CancelledError:
             logger.info("LLM token reader cancelled.")
             raise
         except Exception as exc:
             logger.exception("LLM token reading error: %s", exc)
         finally:
+            if legacy_parser is not None:
+                for event in legacy_parser.finalize():
+                    raw_token = event.get("raw", "")
+                    planned_token = event.get("planned", "")
+                    if raw_token:
+                        await websocket.send_json({"type": "assistant_text_delta", "text": raw_token})
+                    if planned_token:
+                        sentence_buffer += planned_token
+
             final_sentence = sentence_buffer.strip()
             if final_sentence:
                 from agent.response_planner import is_diagram_or_roadmap
@@ -907,6 +993,7 @@ async def _stream_llm_and_tts(
 
     # ── TTS Synthesis Worker ────────────────────────────────────────────────
     async def tts_worker():
+        quota_exhausted_sent = False
         try:
             while True:
                 sentence = await tts_queue.get()
@@ -919,12 +1006,23 @@ async def _stream_llm_and_tts(
                 logger.debug("TTS worker synthesizing: %r", sentence[:60])
                 # Synthesize sentence using dynamic speed and voice with fail-safe logic
                 try:
-                    wav_bytes = await loop.run_in_executor(None, lambda: kokoro_engine.synthesize(sentence, speed, voice))
+                    wav_bytes = await loop.run_in_executor(None, lambda: kokoro_engine.synthesize(sentence, speed, voice, student_id))
+                    
+                    if wav_bytes is None:
+                        # Fallback to text-only (Part 7)
+                        wav_bytes = b""
+                        if not quota_exhausted_sent:
+                            quota_exhausted_sent = True
+                            notice = "You've used up today's voice budget — I'll keep responding in text for now."
+                            await websocket.send_json({"type": "assistant_text_delta", "text": "\n\n" + notice})
                     
                     # Estimate word timestamps using the alignment engine
                     from speech.alignment import estimate_word_timestamps
                     try:
-                        timestamps = estimate_word_timestamps(sentence, wav_bytes)
+                        if wav_bytes:
+                            timestamps = estimate_word_timestamps(sentence, wav_bytes)
+                        else:
+                            timestamps = []
                     except Exception as align_exc:
                         logger.warning("Alignment engine failed: %s", align_exc)
                         timestamps = []
