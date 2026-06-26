@@ -10,7 +10,7 @@ class RealtimeStreamingParser:
     """
     def __init__(self) -> None:
         self.buffer = ""
-        self.state = "OUTSIDE"  # OUTSIDE, SPEAK, SHOW, FOLLOWUP, CODE_MD
+        self.state = "OUTSIDE"  # OUTSIDE, SPEAK, SHOW, FOLLOWUP, CODE_MD, JSON
         self.verbalized_show = False
         self.show_buffer = ""
         self.show_type = "code"
@@ -30,6 +30,19 @@ class RealtimeStreamingParser:
             return
         
         self.buffer += chunk
+
+        # --- JSON format interceptor ---
+        # Buffer any `{...}` payload from the first brace until the closing brace.
+        stripped = self.buffer.strip()
+        if self.state == "JSON" or (self.state == "OUTSIDE" and stripped.startswith("{")):
+            if self.state != "JSON":
+                self.state = "JSON"
+            if not stripped.endswith("}"):
+                return
+            converted = self._convert_json_payload(stripped)
+            if converted is not None:
+                self.buffer = converted
+            self.state = "OUTSIDE"
 
         while self.buffer:
             # Check if the buffer starts with a potential tag
@@ -51,6 +64,12 @@ class RealtimeStreamingParser:
         """
         Flush any remaining buffer at the end of the stream.
         """
+        if self.state == "JSON" and self.buffer.strip():
+            converted = self._convert_json_payload(self.buffer.strip())
+            if converted is not None:
+                self.buffer = converted
+            self.state = "OUTSIDE"
+
         while self.buffer:
             matched_tag = self._check_complete_tag()
             if matched_tag:
@@ -303,7 +322,7 @@ class RealtimeStreamingParser:
                     elif self.show_type == "workflow":
                         planned_intro = "Below is the workflow for this. "
                     elif self.show_type == "checklist":
-                        planned_intro = "Below is the checklist for this. "
+                        planned_intro = "Here are the key points. "
                     elif self.show_type == "table":
                         planned_intro = "Below is the table for this. "
                     else:
@@ -395,6 +414,54 @@ class RealtimeStreamingParser:
             
         self.show_buffer = ""
         self.state = "OUTSIDE"
+
+    def _convert_json_payload(self, text: str) -> Optional[str]:
+        """Convert known JSON response shapes into parser XML tags."""
+        try:
+            import json as _json
+
+            data = _json.loads(text)
+        except Exception:
+            speech = self._extract_speech_field_regex(text)
+            if not speech:
+                return None
+            follow_up = self._extract_follow_up_field_regex(text)
+            rebuilt = f"<speak>{speech.strip()}</speak>"
+            if follow_up:
+                rebuilt += f"<followup>{follow_up.strip()}</followup>"
+            return rebuilt
+
+        speech = data.get("speech") or data.get("speak") or data.get("text") or ""
+        follow_up = data.get("follow_up") or data.get("followup") or data.get("question") or ""
+        if not speech:
+            return None
+
+        rebuilt = f"<speak>{speech.strip()}</speak>"
+        if follow_up:
+            rebuilt += f"<followup>{follow_up.strip()}</followup>"
+        return rebuilt
+
+    def _extract_speech_field_regex(self, text: str) -> str:
+        match = re.search(
+            r'["\'](?:speech|speak|text)["\']\s*:\s*["\']((?:\\.|[^"\'\\])*)["\']',
+            text,
+            re.IGNORECASE,
+        )
+        if not match:
+            return ""
+        raw = match.group(1)
+        return raw.replace("\\n", "\n").replace("\\t", "\t").replace("\\\"", '"').replace("\\'", "'")
+
+    def _extract_follow_up_field_regex(self, text: str) -> str:
+        match = re.search(
+            r'["\'](?:follow_up|followup|question)["\']\s*:\s*["\']((?:\\.|[^"\'\\])*)["\']',
+            text,
+            re.IGNORECASE,
+        )
+        if not match:
+            return ""
+        raw = match.group(1)
+        return raw.replace("\\n", "\n").replace("\\t", "\t").replace("\\\"", '"').replace("\\'", "'")
 
     def _handle_char(self, char: str) -> Generator[Dict[str, str], None, None]:
         """
