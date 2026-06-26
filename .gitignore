@@ -52,7 +52,10 @@ inspect_db_logs.py
 crop_standing.py
 inspect_circle.py
 help.txt
-engineering_vocab.json
+# Root-level vocab copy is a scratch file; the canonical copy lives in backend/speech/data/
+/engineering_vocab.json
+# Always track the package-level vocab data so CI can load it
+!backend/speech/data/engineering_vocab.json
 create_db.py
 
 # --- Verification / one-off scripts inside tests ---

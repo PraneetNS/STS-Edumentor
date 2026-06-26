@@ -25,13 +25,14 @@ class DomainCorrector:
     Corrects transcription errors scoped to the student's active engineering discipline.
     """
 
-    def __init__(self, vocab_path: str = "engineering_vocab.json") -> None:
+    def __init__(self, vocab_path: str = "data/engineering_vocab.json") -> None:
         self.raw_vocab: Dict[str, Dict[str, List[str]]] = {}
 
-        # Resolve path relative to backend root if relative
+        # Resolve path relative to this file's directory (backend/speech/) so
+        # the vocab travels with the package regardless of the working directory.
         if not os.path.isabs(vocab_path):
             vocab_path = os.path.abspath(
-                os.path.join(os.path.dirname(__file__), "..", "..", vocab_path)
+                os.path.join(os.path.dirname(__file__), vocab_path)
             )
 
         try:
