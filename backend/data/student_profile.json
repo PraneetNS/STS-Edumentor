@@ -14,17 +14,23 @@
     "Git",
     "Sentiment Analysis",
     "Aerospace Engineering",
-    "Civil Engineering"
+    "Civil Engineering",
+    "Mechanical Engineering"
   ],
   "weak_topics": [
     "Python",
     "Machine Learning",
     "Web Development",
     "Computer Science",
-    "Data Structures"
+    "Data Structures",
+    "Sentiment Analysis",
+    "Civil Engineering",
+    "Aerospace Engineering",
+    "Algorithms",
+    "DSA"
   ],
   "preferred_style": "examples",
-  "session_count": 48,
+  "session_count": 58,
   "discipline": "civil",
   "active_topics": [
     "Civil Engineering"
