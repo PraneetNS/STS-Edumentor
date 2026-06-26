@@ -871,6 +871,12 @@ body,
   align-self: flex-start;
 }
 
+.message-content {
+  max-width: calc(100% - 50px);
+  min-width: 0;
+  flex: 1;
+}
+
 /* Mini avatar icon */
 .msg-avatar {
   width: 30px;
@@ -908,6 +914,7 @@ body,
   transition: box-shadow 0.3s ease;
   overflow-wrap: break-word;
   word-break: break-word;
+  overflow: hidden;
 }
 
 .message.user .msg-bubble {
@@ -924,6 +931,20 @@ body,
   color: #18181B;
   border-radius: 4px 16px 16px 16px;
   box-shadow: var(--shadow-sm);
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.msg-bubble--thinking {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 100%;
 }
 
 .message.assistant:has(.speaking-active) .msg-bubble {
@@ -950,8 +971,98 @@ body,
 }
 
 /* ═══════════════════════════════════════════════════
-   STREAMING CURSOR
+   THINKING INDICATOR (replaces blinking stream cursor)
 ═══════════════════════════════════════════════════ */
+.thinking-indicator {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 2px 0;
+  min-height: 20px;
+  white-space: normal;
+  width: auto;
+  line-height: 1.4;
+}
+
+.thinking-indicator-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-style: italic;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.thinking-indicator-dots {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.thinking-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-indigo);
+  animation: thinkingPulse 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.thinking-dot.dot-1 { animation-delay: 0s; }
+.thinking-dot.dot-2 { animation-delay: 0.2s; }
+.thinking-dot.dot-3 { animation-delay: 0.4s; }
+
+@keyframes thinkingPulse {
+  0%, 60%, 100% {
+    transform: scale(0.75);
+    opacity: 0.35;
+  }
+
+  30% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   STREAMING TEXT ANIMATION
+═══════════════════════════════════════════════════ */
+@keyframes streamingAppear {
+  0% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Cursor for streaming text */
+@keyframes streamingCursor {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.msg-bubble.streaming-text::after {
+  content: '▌';
+  display: inline;
+  animation: streamingCursor 1s step-end infinite;
+  color: var(--accent-indigo);
+  margin-left: 2px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* Legacy stream cursor — kept for backwards compatibility, unused */
 .stream-cursor {
   display: inline-block;
   width: 2px;
@@ -2086,6 +2197,30 @@ body,
 .markdown-body {
   font-family: var(--font-sans);
   color: var(--text-secondary);
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+
+.markdown-body .assistant-text-line,
+.message-text-line {
+  margin: 0 0 0.4em;
+  line-height: 1.65;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.markdown-body .assistant-text-line:last-child,
+.message-text-line:last-child {
+  margin-bottom: 0;
+}
+
+.user-message-text {
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .markdown-body h1,
