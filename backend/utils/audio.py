@@ -107,12 +107,22 @@ def split_into_sentences(text: str) -> List[str]:
     return sentences or [text.strip()]
 
 
+import logging
+
+logger = logging.getLogger("edumentor.utils.audio")
+
 def validate_audio_chunk(chunk: bytes) -> bool:
     """
     Validate that the incoming binary frame does not exceed Config.MAX_AUDIO_CHUNK_BYTES.
     """
     from config import Config
-    return len(chunk) <= Config.MAX_AUDIO_CHUNK_BYTES
+    is_valid = len(chunk) <= Config.MAX_AUDIO_CHUNK_BYTES
+    if not is_valid:
+        logger.warning(
+            "[AUDIO_VALIDATION] Audio chunk size exceeded limits: %d bytes (limit: %d)",
+            len(chunk), Config.MAX_AUDIO_CHUNK_BYTES
+        )
+    return is_valid
 
 
 def validate_utterance_duration(duration_seconds: float) -> bool:
