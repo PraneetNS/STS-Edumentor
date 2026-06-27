@@ -55,6 +55,8 @@ from agent import (
     StudentProfileManager,
 )
 from agent.database import DatabaseManager
+from agent.access_control import AccessControl
+from agent.integrity_check import verify_model_integrity, verify_requirements_pinned, IntegrityError
 
 silero_vad_model = None
 
@@ -118,6 +120,32 @@ async def lifespan(app: FastAPI):
 
     # Set up agent file logger
     _setup_agent_file_logger()
+
+    # ── GAP 4 (LLM03/LLM04): Supply chain & model integrity checks ──────────
+    # Run BEFORE loading any model into memory. A hash mismatch aborts startup.
+    logger.info("Running supply chain and model integrity checks...")
+    req_path = os.path.join(os.path.dirname(__file__), "requirements.txt")
+    verify_requirements_pinned(req_path)
+
+    # Verify model files if they exist (graceful skip during development
+    # when hashes are not yet pinned — verify_model_integrity() logs a
+    # WARNING and returns True when EXPECTED_HASHES[key] is empty string).
+    try:
+        model_gguf_path = Config.LLM_MODEL_PATH if hasattr(Config, "LLM_MODEL_PATH") else ""
+        if model_gguf_path and os.path.isfile(model_gguf_path):
+            verify_model_integrity(model_gguf_path, "EduMentor-Qwen3-Q6_K.gguf")
+        else:
+            logger.info(
+                "[INTEGRITY] GGUF model path not configured or not found. "
+                "Skipping hash verification (configure Config.LLM_MODEL_PATH to enable)."
+            )
+    except IntegrityError as ie:
+        logger.critical(
+            "[INTEGRITY] Model integrity check FAILED: %s", ie
+        )
+        raise SystemExit(1) from ie
+
+    logger.info("[OK] Integrity checks complete.")
 
     # Load database pool
     db_manager = DatabaseManager()
