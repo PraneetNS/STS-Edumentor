@@ -119,3 +119,15 @@ def test_to_sse():
     
     e_followup = {"type": "followup", "content": "More?"}
     assert to_sse(e_followup) == "event: followup\ndata: More?\n\n"
+
+
+def test_show_tag_full_attributes():
+    parser = StreamingDualParser()
+    events = parser.feed('<show type="checklist" lang="markdown" title="RAG Advantages">Item 1</show>')
+    assert len(events) == 1
+    assert events[0]["type"] == "show"
+    assert events[0]["show_type"] == "checklist"
+    assert events[0]["lang"] == "markdown"
+    assert events[0]["title"] == "RAG Advantages"
+    assert events[0]["content"] == "Item 1"
+
