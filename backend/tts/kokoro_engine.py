@@ -146,6 +146,17 @@ class KokoroEngine:
             r"\bcss\b": "c s s",
             r"\bJS\b": "J S",
             r"\bjs\b": "j s",
+            r"\bJSON\b": "J S O N",
+            r"\bjson\b": "J S O N",
+            r"\bHTTP\b": "H T T P",
+            r"\bhttp\b": "H T T P",
+            r"\bTCP\b": "T C P",
+            r"\btcp\b": "T C P",
+            r"\bIP\b": "I P",
+            r"\bRAM\b": "R A M",
+            r"\bram\b": "R A M",
+            r"\bCPU\b": "C P U",
+            r"\bcpu\b": "C P U",
         }
 
         for pattern, replacement in acronyms.items():
