@@ -131,5 +131,13 @@ def validate_utterance_duration(duration_seconds: float) -> bool:
     Below MIN_UTTERANCE_MS/1000 is treated as noise, above MAX_UTTERANCE_SECONDS is forced cutoff.
     """
     from config import Config
-    return Config.MIN_UTTERANCE_MS / 1000 <= duration_seconds <= Config.MAX_UTTERANCE_SECONDS
+    min_dur = Config.MIN_UTTERANCE_MS / 1000
+    max_dur = Config.MAX_UTTERANCE_SECONDS
+    is_valid = min_dur <= duration_seconds <= max_dur
+    if not is_valid:
+        logger.warning(
+            "[AUDIO_VALIDATION] Utterance duration out of range: %.2fs (min: %.2fs, max: %.2fs)",
+            duration_seconds, min_dur, max_dur
+        )
+    return is_valid
 
