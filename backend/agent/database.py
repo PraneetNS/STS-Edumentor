@@ -126,6 +126,9 @@ class DatabaseManager:
             timestamp    TIMESTAMP DEFAULT NOW()
         );
         """
+        query_index_sec = """
+        CREATE INDEX IF NOT EXISTS idx_sec_student_event ON security_events (student_id, event_type);
+        """
         query_low_conf_table = """
         CREATE TABLE IF NOT EXISTS low_confidence_responses (
             id              BIGSERIAL PRIMARY KEY,
@@ -145,6 +148,7 @@ class DatabaseManager:
                 await conn.execute(query_corr_table)
                 await conn.execute(query_index_corr)
                 await conn.execute(query_sec_table)
+                await conn.execute(query_index_sec)
                 await conn.execute(query_low_conf_table)
                 logger.info("[OK] PostgreSQL database schema and indexes verified.")
         except Exception as e:
