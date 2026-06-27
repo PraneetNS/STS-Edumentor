@@ -27,6 +27,15 @@ from agent.models           import (
     KnowledgeRoute,
 )
 
+# Security modules
+from agent.access_control   import AccessControl
+from agent.integrity_check  import (
+    verify_model_integrity,
+    verify_requirements_pinned,
+    IntegrityError,
+)
+from agent.knowledge_router import sanitize_rag_content, ContentRejectedError
+
 __all__ = [
     # Main classes
     "AgentController",
@@ -47,4 +56,11 @@ __all__ = [
     "StudentProfile",
     "MemoryTurn",
     "KnowledgeRoute",
+    # Security
+    "AccessControl",
+    "verify_model_integrity",
+    "verify_requirements_pinned",
+    "IntegrityError",
+    "sanitize_rag_content",
+    "ContentRejectedError",
 ]
