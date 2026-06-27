@@ -32,6 +32,102 @@ from typing import Optional
 
 from agent.models import Intent, KnowledgeRoute, KnowledgeSource
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LLM01: RAG Content Sanitization
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class ContentRejectedError(ValueError):
+    """
+    Raised when RAG document content is rejected by the injection scanner.
+
+    The document must NOT be indexed into ChromaDB or passed to the LLM.
+    Log the rejection event and surface an appropriate error to the caller.
+    """
+    pass
+
+
+# Instruction-format tokens that should never appear in legitimate course
+# content. Their presence indicates a document has been crafted to inject
+# commands into the LLM's context window.
+_RAG_INSTRUCTION_PATTERNS = [
+    r"(?i)ignore (previous|all|your) instructions",
+    r"(?i)you are now",
+    r"(?i)system prompt:",
+    r"(?i)\[INST\]|\[/INST\]",             # Llama instruction format tokens
+    r"(?i)<\|im_start\|>|<\|im_end\|>",   # ChatML / Qwen chat template tokens
+    r"(?i)<\|system\|>|<\|user\|>|<\|assistant\|>",  # Phi / Mistral tokens
+]
+_RAG_INSTRUCTION_COMPILED = [
+    re.compile(p, re.IGNORECASE) for p in _RAG_INSTRUCTION_PATTERNS
+]
+
+
+def sanitize_rag_content(raw_text: str) -> str:
+    """
+    Run injection detection and strip instruction-format tokens from any
+    document destined for the ChromaDB knowledge base or direct RAG context.
+
+    Documents are a larger attack surface than live chat because they persist
+    and affect EVERY future student who triggers a retrieval match.
+
+    This function must be called on ALL content returned by RAGBackend.retrieve()
+    before it is passed to PromptBuilder. The call-site is in
+    KnowledgeRouter.retrieve(), which is the SOLE authorised path.
+
+    Args:
+        raw_text: Raw document text from the retrieval backend.
+
+    Returns:
+        Sanitized text with instruction tokens redacted.
+
+    Raises:
+        ContentRejectedError: If safety_guard detects a direct injection
+                              pattern. The document must be discarded.
+    """
+    if not raw_text or not raw_text.strip():
+        return raw_text
+
+    # Step 1: Run the same injection detection used on live transcripts
+    from agent.safety_guard import check_input
+    injection_check = check_input(raw_text)
+    if not injection_check.allowed:
+        from agent.security_logger import log_security_event
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(log_security_event(
+                    None, "system", "rag_content_injection_attempt",
+                    f"document flagged: category={injection_check.reason} "
+                    f"details={injection_check.details}"
+                ))
+        except RuntimeError:
+            pass  # No event loop — log to stderr
+        logger.warning(
+            "[RAG SANITIZE] Document rejected by injection scanner. "
+            "category=%r details=%r",
+            injection_check.reason, injection_check.details
+        )
+        raise ContentRejectedError(
+            f"RAG document rejected: {injection_check.reason} — {injection_check.details}"
+        )
+
+    # Step 2: Strip instruction-format tokens even if the pattern scan passed
+    # (belt-and-suspenders: the safety_guard may not catch every variant)
+    sanitized = raw_text
+    for pattern in _RAG_INSTRUCTION_COMPILED:
+        sanitized = pattern.sub("[redacted]", sanitized)
+
+    if sanitized != raw_text:
+        logger.info(
+            "[RAG SANITIZE] Instruction-format tokens redacted from document "
+            "(%d chars removed).", len(raw_text) - len(sanitized)
+        )
+
+    return sanitized
+
 logger = logging.getLogger("edumentor.agent.knowledge_router")
 
 
@@ -47,6 +143,16 @@ class RAGBackend:
       1. Subclass RAGBackend
       2. Implement retrieve()
       3. Set it via KnowledgeRouter.set_backend()
+
+    SECURITY (LLM01 — Indirect Prompt Injection):
+      All concrete subclasses MUST return raw, unsanitized text from this
+      method. Sanitization (injection scanning + instruction token stripping)
+      is the exclusive responsibility of KnowledgeRouter.retrieve(), which
+      is the SOLE authorised call-site for all retrieval.
+
+      A future implementation that calls a ChromaDB client directly,
+      bypassing KnowledgeRouter.retrieve(), will skip the sanitizer and
+      silently reopen LLM01. Always route through KnowledgeRouter.
     """
 
     def retrieve(self, query: str, source: KnowledgeSource) -> Optional[str]:
@@ -187,13 +293,22 @@ class KnowledgeRouter:
             route.source.value, query[:60]
         )
 
+        # SECURITY (LLM01): sanitize_rag_content() MUST be called on all
+        # docs returned by the backend before they reach the prompt builder.
+        # Do NOT move retrieval to a different call-site that bypasses this
+        # sanitization step — doing so silently reopens indirect prompt injection.
         try:
             docs = self._backend.retrieve(query, route.source)
             if docs:
-                logger.info("[RETRIEVE] Got %d chars of context.", len(docs))
+                logger.info("[RETRIEVE] Got %d chars of context. Running sanitizer...", len(docs))
+                docs = sanitize_rag_content(docs)
+                logger.info("[RETRIEVE] Sanitized document: %d chars.", len(docs))
             else:
                 logger.info("[RETRIEVE] Backend returned no documents.")
             return docs
+        except ContentRejectedError as cre:
+            logger.warning("[RETRIEVE] Document rejected by sanitizer: %s", cre)
+            return None  # Treat rejected doc as no-result rather than crashing
         except Exception as exc:
             logger.exception("[RETRIEVE] Backend error: %s", exc)
             return None
