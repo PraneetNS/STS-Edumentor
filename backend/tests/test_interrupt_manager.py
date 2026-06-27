@@ -106,3 +106,14 @@ def test_long_response_is_truncated(manager):
     state = manager.get_state("session-9")
     # Should be capped at 500 chars
     assert len(state.interrupted_response) <= 500
+
+
+def test_clear_non_existent_session(manager):
+    """
+    Ensure clearing/resetting non-existent session IDs does not raise exceptions.
+    """
+    # Should complete without error
+    manager.clear_session("non-existent-session-id-1234")
+    manager.clear_state("non-existent-session-id-5678")
+    assert not manager.was_interrupted("non-existent-session-id-1234")
+
