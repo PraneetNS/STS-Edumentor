@@ -72,7 +72,7 @@ def test_history_injected_as_alternating_roles(builder):
 def test_rag_context_injected_as_system(builder):
     ctx = make_context(retrieved_docs="Page 3: Sorting algorithms include bubble sort.")
     messages = builder.build_messages(ctx)
-    rag_messages = [m for m in messages if m["role"] == "system" and "DOCUMENT CONTEXT" in m["content"]]
+    rag_messages = [m for m in messages if m["role"] == "system" and "REFERENCE MATERIAL" in m["content"]]
     assert len(rag_messages) == 1
 
 
