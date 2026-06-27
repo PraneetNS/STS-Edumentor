@@ -10,48 +10,61 @@
 #
 #  For GPU (CUDA) support, install PyTorch with CUDA FIRST:
 #    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+#
+#  SUPPLY CHAIN SECURITY (LLM04):
+#    All dependencies are pinned to exact versions (==) to prevent a
+#    compromised PyPI release from being silently installed on the next deploy.
+#    Before updating any version, verify the new release's checksums.
+#
+#  DEPLOYMENT CHECKLIST:
+#    pip install pip-audit
+#    pip-audit -r requirements.txt
+#    (must show 0 known vulnerabilities before any production deploy)
 # ──────────────────────────────────────────────────────────────────
 
 # ── Web framework ──────────────────────────────────────────────────
-fastapi>=0.111.0
-uvicorn[standard]>=0.29.0
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
 
 # ── WebSocket support ──────────────────────────────────────────────
-websockets>=12.0
+websockets==12.0
 
 # ── HTTP client for llama.cpp OpenAI API (async SSE streaming) ────
-httpx>=0.27.0
+httpx==0.27.0
 
 # ── Speech-to-Text ─────────────────────────────────────────────────
-faster-whisper>=1.0.0
+faster-whisper==1.0.0
 
 # ── Text-to-Speech ─────────────────────────────────────────────────
 # kokoro 0.7.x is the latest version available on PyPI.
 # It auto-downloads model weights from HuggingFace on first run (~300 MB).
 # For espeak-ng (non-English voices) install: choco install espeak-ng
-kokoro>=0.7.16
+kokoro==0.7.16
 
 # ── Audio processing ───────────────────────────────────────────────
-soundfile>=0.12.1
-numpy>=1.26.0
+soundfile==0.12.1
+numpy==1.26.0
 
 # ── Environment variables ──────────────────────────────────────────
-python-dotenv>=1.0.0
-asyncpg>=0.29.0
+python-dotenv==1.0.0
+asyncpg==0.29.0
 
 
 # ── PyTorch (CPU wheel) ────────────────────────────────────────────
 # For GPU, replace with:
 #   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-torch>=2.2.0
+torch==2.2.0
 
 # ── Testing ────────────────────────────────────────────────────────
-pytest>=8.0.0
-pytest-asyncio>=0.23.0
+pytest==8.0.0
+pytest-asyncio==0.23.0
+# Supply chain audit — run against this file before every production deploy:
+#   pip install pip-audit && pip-audit -r requirements.txt
+pip-audit==2.7.3
 
 # ── Speech Intelligence Layer ──────────────────────────────────────
-rapidfuzz>=3.0.0
-librosa>=0.10.0
-jellyfish>=1.1.0
+rapidfuzz==3.0.0
+librosa==0.10.0
+jellyfish==1.1.0
 
 
