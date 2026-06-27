@@ -6,8 +6,8 @@ logger = logging.getLogger(__name__)
 # Non-greedy matching pattern for <speak>...</speak>
 SPEAK_RE = re.compile(r"<speak>(.*?)</speak>", re.DOTALL)
 
-# Non-greedy matching pattern for <show type="..." lang="...">...</show>
-SHOW_RE = re.compile(r'<show(?:\s+type="([^"]*)")?(?:\s+lang="([^"]*)")?>(.*?)</show>', re.DOTALL)
+# Non-greedy matching pattern for <show ...>...</show>
+SHOW_RE = re.compile(r"<show(?:\s+([^>]*))?>(.*?)</show>", re.DOTALL)
 
 # Non-greedy matching for <followup>...</followup>
 FOLLOWUP_RE = re.compile(r"<followup>(.*?)</followup>", re.DOTALL)
@@ -88,16 +88,33 @@ class StreamingDualParser:
                     "content": cleaned_content
                 })
             elif match_type == "show":
-                show_type = best_match.group(1) or ""
-                lang = best_match.group(2) or ""
-                content = best_match.group(3)
+                attrs_str = best_match.group(1) or ""
+                content = best_match.group(2)
+
+                show_type = ""
+                lang = ""
+                title = ""
+
+                type_match = re.search(r'type="([^"]*)"', attrs_str)
+                if type_match:
+                    show_type = type_match.group(1)
+
+                lang_match = re.search(r'lang="([^"]*)"', attrs_str)
+                if lang_match:
+                    lang = lang_match.group(1)
+
+                title_match = re.search(r'title="([^"]*)"', attrs_str)
+                if title_match:
+                    title = title_match.group(1)
+
                 cleaned_content = self._clean_show_text(content)
-                logger.debug("Matched show tag, type: %s, lang: %s", show_type, lang)
+                logger.debug("Matched show tag, type: %s, lang: %s, title: %s", show_type, lang, title)
                 events.append({
                     "type": "show",
                     "content": cleaned_content,
                     "show_type": show_type,
-                    "lang": lang
+                    "lang": lang,
+                    "title": title
                 })
             elif match_type == "followup":
                 content = best_match.group(1)
@@ -136,6 +153,7 @@ def to_sse(event: dict) -> str:
         payload = {
             "type": event.get("show_type", ""),
             "lang": event.get("lang", ""),
+            "title": event.get("title", ""),
             "content": event.get("content", "")
         }
         return f"event: show\ndata: {json.dumps(payload)}\n\n"
