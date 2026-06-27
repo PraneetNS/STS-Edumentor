@@ -56,6 +56,7 @@ from agent.response_planner import ResponsePlanner
 from agent.safety_guard import check_input, check_output, get_refusal_message
 from agent.session_summarizer import SessionSummarizer
 from agent.student_profile import StudentProfileManager
+from agent.access_control import AccessControl
 
 logger = logging.getLogger("edumentor.agent.controller")
 
@@ -233,6 +234,28 @@ class AgentController:
         user_id = user_id or session_id
         user_uuid = self._to_uuid(user_id)
         ip_address = ip_address or "unknown"
+
+        # ── STEP 0: Session ownership verification (LLM08) ───────────────────
+        # This MUST be first — before safety checks, memory reads, or intent
+        # classification, all of which touch per-student data.
+        # Runs on EVERY request, not just at WebSocket connection time.
+        db_pool = getattr(self._db_manager, "pool", None)
+        session_owned = await AccessControl.verify_session_ownership(
+            session_id, user_id, db_pool
+        )
+        if not session_owned:
+            from agent.security_logger import log_security_event
+            asyncio.create_task(log_security_event(
+                user_id, ip_address, "session_ownership_violation",
+                f"session {session_id!r} claimed by mismatched student_id {user_id!r}"
+            ))
+            refusal = (
+                "Something's off with this session. "
+                "Please refresh and try again."
+            )
+            async for token in self._stream_refusal(refusal, session_id):
+                yield token
+            return
 
         # Initialize turn tracking
         self._turn_state[session_id] = {
@@ -529,7 +552,7 @@ class AgentController:
         token_budget.record_usage(user_id, prompt_tokens, completion_tokens)
 
         # 7. Hedging check on full assembled response (Component 6)
-        from agent.safety_guard import check_hedging
+        from agent.safety_guard import check_hedging, check_output_for_system_leak
         hedge_reason = check_hedging(full_raw_response)
         if hedge_reason:
             asyncio.create_task(
@@ -540,6 +563,38 @@ class AgentController:
                     matched_hedging=hedge_reason
                 )
             )
+
+        # 7b. Output-stage system prompt leak detection (LLM07)
+        # Catches system config extraction regardless of how the input was crafted:
+        # roleplay, translation, hypothetical, or direct ask all land here.
+        if self._safety_enabled and check_output_for_system_leak(full_raw_response):
+            from agent.security_logger import log_security_event
+            asyncio.create_task(log_security_event(
+                user_id, ip_address, "system_leak_attempt",
+                f"input preview: {user_text[:200]!r}"
+            ))
+            leak_refusal = (
+                "<speak>I am Edi, your AI engineering mentor at EduMentor. "
+                "Let's get back to what you're working on.</speak>"
+                "<followup>What engineering topic would you like to explore?</followup>"
+            )
+            yield {"raw": leak_refusal, "planned": leak_refusal}
+            # Log the blocked turn and return — do not continue to post-guardrail
+            latency_ms = int((time.perf_counter() - start_time) * 1000)
+            asyncio.create_task(
+                self._db_manager.write_log(
+                    user_id=user_uuid,
+                    session_id=session_uuid,
+                    query_text=processed_text,
+                    response_text=leak_refusal,
+                    intent_category="UNSAFE",
+                    input_flagged=False,
+                    output_flagged=True,
+                    flag_reason="system_leak_detected",
+                    latency_ms=latency_ms
+                )
+            )
+            return
 
         # Post-LLM safety checks (existing guardrail compliance)
         try:
