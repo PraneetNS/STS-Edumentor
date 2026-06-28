@@ -68,6 +68,48 @@ const Message = memo(function Message({
   );
 });
 
+// FIX 6 — Loading skeleton shown while messages array is null/undefined
+function MessageListSkeleton() {
+  return (
+    <div className="message-area" role="status" aria-label="Loading conversation">
+      {[1, 2, 3].map((i) => (
+        <div
+          key={i}
+          style={{
+            height: '48px',
+            borderRadius: '12px',
+            background: 'rgba(0,0,0,0.06)',
+            margin: '8px 16px',
+            animation: 'pulse 1.5s ease-in-out infinite',
+            opacity: 0.5,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// FIX 6 — Empty state shown when messages array is present but empty
+function MessageListEmpty() {
+  return (
+    <div
+      className="message-area"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'var(--text-muted)',
+        fontSize: '14px',
+        padding: '2rem',
+        textAlign: 'center',
+      }}
+      aria-label="No messages yet"
+    >
+      Ask me anything about your engineering studies
+    </div>
+  );
+}
+
 export const MessageList = memo(function MessageList({
   messages,
   currentSpokenWordIndex,
@@ -79,40 +121,43 @@ export const MessageList = memo(function MessageList({
 }) {
   const bottomRef = useRef(null);
 
+  // FIX 6 — Guard: null/undefined during initial load → loading skeleton
+  if (messages == null) return <MessageListSkeleton />;
+
   // Auto-scroll to the bottom of the timeline whenever a new message is added
   // or when an existing streaming assistant message receives new token updates.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     const el = bottomRef.current;
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length, messages[messages.length - 1]?.text]);
 
-  const hasContent = messages.length > 0;
-  
+  // FIX 6 — Guard: empty array → friendly empty state
+  if (messages.length === 0) return <MessageListEmpty />;
+
   // The last assistant message is the "active" one for animation purposes
   const lastAssistantMsgIndex = [...messages].reverse().findIndex(m => m.role === 'assistant');
-  const activeMessageId = lastAssistantMsgIndex !== -1 
-    ? messages[messages.length - 1 - lastAssistantMsgIndex].id 
+  const activeMessageId = lastAssistantMsgIndex !== -1
+    ? messages[messages.length - 1 - lastAssistantMsgIndex].id
     : null;
 
   return (
     <div className="message-area" role="log" aria-live="polite">
-      {hasContent && (
-        <AnimatePresence initial={false}>
-          {messages.map(msg => (
-            <Message
-              key={msg.id}
-              msg={msg}
-              currentSpokenWordIndex={currentSpokenWordIndex}
-              isSpeakingTextSync={isSpeakingTextSync}
-              analyserNode={analyserNode}
-              conversationState={conversationState}
-              isActiveMessage={msg.id === activeMessageId}
-              defaultAvatarUrl={defaultAvatarUrl}
-              onSnapshot={onSnapshot}
-            />
-          ))}
-        </AnimatePresence>
-      )}
+      <AnimatePresence initial={false}>
+        {messages.map(msg => (
+          <Message
+            key={msg.id}
+            msg={msg}
+            currentSpokenWordIndex={currentSpokenWordIndex}
+            isSpeakingTextSync={isSpeakingTextSync}
+            analyserNode={analyserNode}
+            conversationState={conversationState}
+            isActiveMessage={msg.id === activeMessageId}
+            defaultAvatarUrl={defaultAvatarUrl}
+            onSnapshot={onSnapshot}
+          />
+        ))}
+      </AnimatePresence>
 
       <div ref={bottomRef} className="h-4" />
     </div>
