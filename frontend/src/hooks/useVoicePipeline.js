@@ -1,21 +1,81 @@
 /**
  * useVoicePipeline — Custom React hook for the EduMentor Voice pipeline.
  *
- * Manages:
- *  - WebSocket connection to the FastAPI backend
+ * Resilience additions (production-grade):
+ *  FIX 2 — Explicit reconnection state machine with exponential backoff.
+ *           'connecting' | 'connected' | 'reconnecting' | 'failed' | 'disconnected'
+ *           Exposes connectionState + manualReconnect for StatusBar.
+ *  FIX 4 — Module-level singleton registry prevents duplicate WebSocket
+ *           connections on React StrictMode double-invoke and remounts.
+ *           Tab-level duplicate detection via BroadcastChannel (tabCoordination).
+ *  FIX 3 — Mic permission state machine with Permissions API + onchange listener.
+ *           Catches mid-session permission revocation without a page refresh.
+ *  FIX 5 — Audio queue state machine with response_id discard of stale chunks.
+ *           States: IDLE | PLAYING | INTERRUPTING | FLUSHING
+ *
+ * Original capabilities preserved:
+ *  - WebSocket to FastAPI backend
  *  - Microphone capture via AudioContext + AudioWorklet
- *  - Streaming raw PCM Int16 audio to the backend
- *  - Receiving JSON events (transcript, text deltas, audio chunks with timestamps)
- *  - Dual AnalyserNodes: visualizing mic input without feedback vs speaker output
+ *  - Streaming raw PCM Int16 to the backend
+ *  - JSON event handling (transcript, text deltas, audio chunks with timestamps)
+ *  - Dual AnalyserNodes: mic vs speaker, no feedback
  *  - Word timing queues and timeout schedulers for speech text sync
- *  - Gapless sequential audio playback via a queued AudioBufferSourceNode chain
+ *  - Gapless sequential audio playback via queued AudioBufferSourceNode chain
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { sanitizeAssistantText } from '../utils/sanitizeAssistantText';
+import { registerSession, unregisterSession } from '../utils/tabCoordination';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/voice';
-const SAMPLE_RATE = 16000; // Must match backend Config.AUDIO_SAMPLE_RATE
+// ── Constants ──────────────────────────────────────────────────────────────
+
+const WS_URL        = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/voice';
+const SAMPLE_RATE   = 16000; // Must match backend Config.AUDIO_SAMPLE_RATE
+
+// FIX 2 — Reconnect parameters
+const RECONNECT_BASE_DELAY    = 1000;
+const RECONNECT_MAX_DELAY     = 16000;
+const MAX_RECONNECT_ATTEMPTS  = 8;
+
+// FIX 5 — Audio queue state machine values
+const AudioQueueState = {
+  IDLE:         'idle',
+  PLAYING:      'playing',
+  INTERRUPTING: 'interrupting',
+  FLUSHING:     'flushing',
+};
+
+// ── FIX 4 — Module-level connection registry ───────────────────────────────
+// Persists across component remounts and React StrictMode double-invocations.
+// Key: sessionId → WebSocket instance
+const activeConnections = new Map();
+
+function getOrCreateConnection(sessionId, wsUrl) {
+  const existing = activeConnections.get(sessionId);
+  if (
+    existing &&
+    (existing.readyState === WebSocket.OPEN ||
+      existing.readyState === WebSocket.CONNECTING)
+  ) {
+    return { ws: existing, reused: true };
+  }
+  // Stale entry — remove before creating fresh
+  if (existing) activeConnections.delete(sessionId);
+
+  const ws = new WebSocket(wsUrl);
+  ws.binaryType = 'arraybuffer';
+  activeConnections.set(sessionId, ws);
+  return { ws, reused: false };
+}
+
+function releaseConnection(sessionId, ws) {
+  const registered = activeConnections.get(sessionId);
+  if (registered === ws) {
+    activeConnections.delete(sessionId);
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function base64ToArrayBuffer(base64) {
   const binaryString = window.atob(base64);
@@ -35,74 +95,126 @@ export function useVoicePipeline({
   onInterrupt,
   conversationId,
 }) {
-  // ── State ─────────────────────────────────────────────────────────────────
-  const [isRecording, setIsRecording]     = useState(false);
-  const [isProcessing, setIsProcessing]   = useState(false);
-  const [isPlaying, setIsPlaying]         = useState(false);
-  const [isInterrupted, setIsInterrupted] = useState(false);
-  const [status, setStatus]               = useState('disconnected');
-  const [transcript, setTranscript]       = useState('');
-  const [assistantText, setAssistantText] = useState('');
-  const [liveWords, setLiveWords]         = useState([]); // Word array with statuses
-  const [currentSpokenWordIndex, setCurrentSpokenWordIndex] = useState(-1); // Active word index
+  // ── State ────────────────────────────────────────────────────────────────
+  const [isRecording, setIsRecording]         = useState(false);
+  const [isProcessing, setIsProcessing]       = useState(false);
+  const [isPlaying, setIsPlaying]             = useState(false);
+  const [isInterrupted, setIsInterrupted]     = useState(false);
+  const [status, setStatus]                   = useState('disconnected');
+  const [transcript, setTranscript]           = useState('');
+  const [assistantText, setAssistantText]     = useState('');
+  const [liveWords, setLiveWords]             = useState([]);
+  const [currentSpokenWordIndex, setCurrentSpokenWordIndex] = useState(-1);
   const [conversationState, setConversationState] = useState('IDLE');
   const [isSpeakingTextSync, setIsSpeakingTextSync] = useState(true);
 
-  // ── Refs ──────────────────────────────────────────────────────────────────
+  // FIX 2 — Explicit connection state for StatusBar
+  const [connectionState, setConnectionState] = useState('connecting');
+
+  // FIX 3 — Mic permission state machine
+  const [micPermission, setMicPermission] = useState('prompt');
+  // 'prompt' | 'granted' | 'denied' | 'unsupported'
+
+  // FIX 4 — Duplicate tab detection
+  const [isDuplicateTab, setIsDuplicateTab] = useState(false);
+
+  // ── Refs ─────────────────────────────────────────────────────────────────
   const currentTranscriptRef      = useRef('');
   const currentAssistantTextRef   = useRef('');
   const assistantCharsDeliveredRef = useRef(0);
-  const clientSilenceTimerRef     = useRef(null);  // Client-side auto-stop timer
-  const clientInactivityTimerRef  = useRef(null);  // Client-side absolute inactivity timer
-  const hasSpeechRef              = useRef(false);  // True once live transcript arrives
+  const clientSilenceTimerRef     = useRef(null);
+  const clientInactivityTimerRef  = useRef(null);
+  const hasSpeechRef              = useRef(false);
 
   const onTranscriptRef = useRef(onTranscript);
-  const onThinkingRef = useRef(onThinking);
+  const onThinkingRef   = useRef(onThinking);
   const onTextUpdateRef = useRef(onTextUpdate);
-  const onFinishedRef = useRef(onFinished);
-  const onInterruptRef = useRef(onInterrupt);
+  const onFinishedRef   = useRef(onFinished);
+  const onInterruptRef  = useRef(onInterrupt);
 
   // Decoupled streaming state
-  const generatedTextBufferRef = useRef('');
-  const fallbackToTokenStreamingRef = useRef(false);
-  const hasReceivedAudioWithTimestampsRef = useRef(false);
-  const retryCountRef = useRef(0);
-  const isManualDisconnectRef = useRef(false);
+  const generatedTextBufferRef              = useRef('');
+  const fallbackToTokenStreamingRef         = useRef(false);
+  const hasReceivedAudioWithTimestampsRef   = useRef(false);
+
+  // FIX 2 — Reconnect counters
+  const reconnectAttemptsRef    = useRef(0);
+  const reconnectTimeoutRef     = useRef(null);
+  const isManualDisconnectRef   = useRef(false);
+
+  // FIX 5 — Response ID for stale audio chunk discard
+  const activeResponseIdRef   = useRef(null);
+  const audioQueueStateRef    = useRef(AudioQueueState.IDLE);
+
+  const wsRef           = useRef(null);
+  const audioCtxRef     = useRef(null);
+  const workletNodeRef  = useRef(null);
+  const streamRef       = useRef(null);
+  const sourceNodeRef   = useRef(null);
+  const workletLoadedRef = useRef(false);
+
+  const analyserRef     = useRef(null);
+  const micAnalyserRef  = useRef(null);
+  const activeSourceRef = useRef(null);
+
+  const playbackQueueRef  = useRef([]);
+  const isPlayingRef      = useRef(false);
+  const nextPlayTimeRef   = useRef(0);
+  const activeTimeoutsRef = useRef([]);
+  const totalEnqueuedWordsRef    = useRef(0);
+  const hasFinishedStreamingRef  = useRef(false);
 
   useEffect(() => {
     onTranscriptRef.current = onTranscript;
-    onThinkingRef.current = onThinking;
+    onThinkingRef.current   = onThinking;
     onTextUpdateRef.current = onTextUpdate;
-    onFinishedRef.current = onFinished;
-    onInterruptRef.current = onInterrupt;
+    onFinishedRef.current   = onFinished;
+    onInterruptRef.current  = onInterrupt;
   }, [onTranscript, onThinking, onTextUpdate, onFinished, onInterrupt]);
 
-  const wsRef          = useRef(null);   // WebSocket
-  const reconnectTimerRef = useRef(null); // Auto-reconnect timer
-  const audioCtxRef    = useRef(null);   // AudioContext
-  const workletNodeRef = useRef(null);   // AudioWorkletNode
-  const streamRef      = useRef(null);   // MediaStream
-  const sourceNodeRef  = useRef(null);   // MediaStreamSourceNode
-  const workletLoadedRef = useRef(false); // Guard: addModule only once per AudioContext
+  // ── FIX 3 — Mic permission state machine ──────────────────────────────────
+  useEffect(() => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setMicPermission('unsupported');
+      return;
+    }
+    if (!navigator.permissions) return;
 
-  // Visualizer AnalyserNodes
-  const analyserRef    = useRef(null);   // Playback analyser (destined to speakers)
-  const micAnalyserRef = useRef(null);   // Mic analyser (isolated)
-  const activeSourceRef = useRef(null);   // Currently playing source node ref
+    navigator.permissions
+      .query({ name: 'microphone' })
+      .then((permissionStatus) => {
+        setMicPermission(permissionStatus.state); // 'prompt' | 'granted' | 'denied'
 
-  // Audio playback queue
-  const playbackQueueRef = useRef([]);     // Array<{ audioBuffer, wordTimestamps }>
-  const isPlayingRef     = useRef(false);  // Stable playback flag
-  const nextPlayTimeRef  = useRef(0);      // Scheduled play cursor (seconds)
+        // Critical: fires when the user revokes permission mid-session via browser
+        // chrome — catches the "silent failure" case without requiring a page refresh.
+        permissionStatus.onchange = () => {
+          setMicPermission(permissionStatus.state);
+          if (permissionStatus.state === 'denied' && streamRef.current) {
+            // Permission revoked while recording — stop immediately
+            cleanupMic();
+            setIsRecording(false);
+            setStatus('connected');
+          }
+        };
+      })
+      .catch(() => {
+        // Permissions API not supported in this browser — will fall back
+        // to try/catch on actual getUserMedia call.
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Timestamps sync state
-  const activeTimeoutsRef      = useRef([]); // Outstanding setTimeout IDs for highlights
-  const totalEnqueuedWordsRef  = useRef(0);  // Total word count processed this turn
-  const hasFinishedStreamingRef = useRef(false);
+  // ── FIX 4 — Tab coordination ───────────────────────────────────────────
+  useEffect(() => {
+    if (!conversationId) return;
+    registerSession(conversationId, () => {
+      setIsDuplicateTab(true);
+    });
+    return () => unregisterSession();
+  }, [conversationId]);
 
-  // ── Timers Cleanup ────────────────────────────────────────────────────────
+  // ── Timer helpers ──────────────────────────────────────────────────────
   const clearTimeouts = useCallback(() => {
-    activeTimeoutsRef.current.forEach(t => clearTimeout(t));
+    activeTimeoutsRef.current.forEach((t) => clearTimeout(t));
     activeTimeoutsRef.current = [];
     setCurrentSpokenWordIndex(-1);
   }, []);
@@ -124,48 +236,84 @@ export function useVoicePipeline({
   const cleanupMic = useCallback(() => {
     clearClientSilenceTimer();
     clearClientInactivityTimer();
-    // Disconnect the audio graph nodes before stopping tracks
     try { sourceNodeRef.current?.disconnect(); } catch (_) {}
     try { workletNodeRef.current?.disconnect(); } catch (_) {}
-    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current?.getTracks().forEach((t) => t.stop());
     workletNodeRef.current = null;
     sourceNodeRef.current  = null;
     streamRef.current      = null;
   }, [clearClientSilenceTimer, clearClientInactivityTimer]);
 
-  // ── WebSocket connection ──────────────────────────────────────────────────
-  // Connect to the backend FastAPI WebSocket server. Handles automatic reconnections
-  // with exponential backoff and cleanup on connection failure or disconnect.
-  const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+  // ── FIX 2 — Reconnect with exponential backoff ────────────────────────
+  const scheduleReconnect = useCallback(() => {
+    if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+      setConnectionState('failed');
+      setStatus('Connection lost');
+      return;
+    }
 
+    const attempt = reconnectAttemptsRef.current;
+    setConnectionState('reconnecting');
+    setStatus(`reconnecting:${attempt + 1}`);
+
+    const delay = Math.min(
+      RECONNECT_BASE_DELAY * Math.pow(2, attempt),
+      RECONNECT_MAX_DELAY,
+    );
+    reconnectAttemptsRef.current += 1;
+
+    reconnectTimeoutRef.current = setTimeout(() => {
+      reconnectTimeoutRef.current = null;
+      connectWS(); // eslint-disable-line no-use-before-define
+    }, delay);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── WebSocket connect ─────────────────────────────────────────────────
+  const connectWS = useCallback(() => {
+    // Guard: don't open a second socket if one is already live
+    if (
+      wsRef.current?.readyState === WebSocket.OPEN ||
+      wsRef.current?.readyState === WebSocket.CONNECTING
+    ) return;
+
+    setConnectionState('connecting');
     setStatus('connecting');
     isManualDisconnectRef.current = false;
 
-    // Build WebSocket URL with persistent session query parameters for resuming
+    // Build URL with stable session_id so backend can resume context
     const wsUrlObj = new URL(WS_URL);
     if (conversationId) {
       wsUrlObj.searchParams.set('session_id', conversationId);
       wsUrlObj.searchParams.set('user_id', conversationId);
     }
 
-    console.log(`[WS] Connecting with session_id: ${conversationId}`);
-    const ws = new WebSocket(wsUrlObj.toString());
-    ws.binaryType = 'arraybuffer';
+    // FIX 4 — reuse existing connection if one is already open for this session
+    const { ws, reused } = getOrCreateConnection(
+      conversationId || '_default',
+      wsUrlObj.toString(),
+    );
     wsRef.current = ws;
 
-    ws.onmessage = (event) => {
-      handleMessageRef.current(event);
-    };
+    if (reused) {
+      // Socket is already open — just re-attach our handlers and mark connected
+      setConnectionState('connected');
+      setStatus('connected');
+      reconnectAttemptsRef.current = 0;
+      ws.onmessage = (event) => handleMessageRef.current(event);
+      return;
+    }
+
+    ws.onmessage = (event) => handleMessageRef.current(event);
 
     ws.onopen = () => {
-      console.log('[WS] Connected successfully.');
+      setConnectionState('connected');
       setStatus('connected');
-      retryCountRef.current = 0; // Reset retries on successful connection
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
+      reconnectAttemptsRef.current = 0;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
+      // Keep-alive ping every 25s
       ws._pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'ping' }));
@@ -173,85 +321,59 @@ export function useVoicePipeline({
       }, 25_000);
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       clearInterval(ws._pingInterval);
+      releaseConnection(conversationId || '_default', ws);
       setIsRecording(false);
       setIsProcessing(false);
       cleanupMic();
       clearTimeouts();
 
-      // If manual disconnect occurred (switching chat, logout), do not auto-reconnect
       if (isManualDisconnectRef.current) {
-        console.log('[WS] Manual disconnect. Skipping auto-reconnect.');
+        // Normal closure (tab close, explicit disconnect) — no reconnect
+        setConnectionState('disconnected');
         setStatus('disconnected');
         return;
       }
 
-      // Calculate exponential backoff: delay starts at 1s, grows up to a maximum of 15s
-      const delay = Math.min(15000, 1000 * Math.pow(1.5, retryCountRef.current));
-      console.warn(`[WS] Connection dropped. Reconnecting in ${Math.round(delay)}ms (retry #${retryCountRef.current + 1})...`);
-      setStatus(`disconnected: reconnecting in ${Math.round(delay / 1000)}s...`);
-
-      if (!reconnectTimerRef.current) {
-        reconnectTimerRef.current = setTimeout(() => {
-          reconnectTimerRef.current = null;
-          connect();
-        }, delay);
-        retryCountRef.current += 1;
-      }
+      scheduleReconnect();
     };
 
-    ws.onerror = (err) => {
-      console.error('[WS] Error detected', err);
+    ws.onerror = () => {
+      // onclose fires after onerror — all reconnect logic lives there
       setStatus('error');
-      ws.close();
     };
-  }, [clearTimeouts, cleanupMic, conversationId]);
+  }, [conversationId, cleanupMic, clearTimeouts, scheduleReconnect]);
 
   const disconnect = useCallback(() => {
-    console.log('[WS] Disconnecting manually...');
     isManualDisconnectRef.current = true;
-    if (reconnectTimerRef.current) {
-      clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
     }
-    wsRef.current?.close();
+    wsRef.current?.close(1000, 'component unmounting');
     wsRef.current = null;
     clearTimeouts();
   }, [clearTimeouts]);
 
-  // Auto-connect on mount and reconnect on conversationId changes
-  useEffect(() => {
-    retryCountRef.current = 0; // Reset retries for new conversation session
-    connect();
-    return () => disconnect();
-  }, [connect, disconnect]);
-
-  // ── Audio playback helpers ────────────────────────────────────────────────
-  const resetPlayback = useCallback(() => {
-    if (activeSourceRef.current) {
-      try {
-        activeSourceRef.current.stop();
-      } catch (e) {
-        // Ignore
-      }
-      activeSourceRef.current = null;
+  // FIX 2 — Manual reconnect resets attempt counter before retrying
+  const manualReconnect = useCallback(() => {
+    reconnectAttemptsRef.current = 0;
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
     }
-    playbackQueueRef.current = [];
-    isPlayingRef.current = false;
-    nextPlayTimeRef.current = 0;
-    setIsPlaying(false);
-    clearTimeouts();
-    hasFinishedStreamingRef.current = false;
+    connectWS();
+  }, [connectWS]);
 
-    // Reset progressive sync state
-    setIsSpeakingTextSync(true);
-    fallbackToTokenStreamingRef.current = false;
-    hasReceivedAudioWithTimestampsRef.current = false;
-    generatedTextBufferRef.current = '';
-  }, [clearTimeouts]);
+  // Auto-connect on mount; disconnect on unmount
+  useEffect(() => {
+    reconnectAttemptsRef.current = 0;
+    connectWS();
+    return () => disconnect();
+  }, [connectWS, disconnect]);
 
-  // Clear pipeline state and stop playback when changing conversation sessions
+  // Reset pipeline when switching conversation sessions
   useEffect(() => {
     setTranscript('');
     setLiveWords([]);
@@ -259,23 +381,19 @@ export function useVoicePipeline({
     setIsRecording(false);
     setIsProcessing(false);
     cleanupMic();
-    resetPlayback();
-  }, [conversationId, resetPlayback, cleanupMic]);
+  }, [conversationId, cleanupMic]);
 
-  // Lazily create / resume AudioContext
+  // ── Audio context ──────────────────────────────────────────────────────
   const getAudioContext = useCallback(() => {
     if (!audioCtxRef.current) {
       audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)({
         sampleRate: SAMPLE_RATE,
       });
-
-      // 1. Playback Analyser (sends to speakers)
       const analyser = audioCtxRef.current.createAnalyser();
       analyser.fftSize = 256;
       analyser.connect(audioCtxRef.current.destination);
       analyserRef.current = analyser;
 
-      // 2. Mic Analyser (isolated, does NOT connect to destination to avoid feedback)
       const micAnalyser = audioCtxRef.current.createAnalyser();
       micAnalyser.fftSize = 256;
       micAnalyserRef.current = micAnalyser;
@@ -286,34 +404,73 @@ export function useVoicePipeline({
     return audioCtxRef.current;
   }, []);
 
-  // Sequential playback loop
+  // ── FIX 5 — Audio queue state machine ──────────────────────────────────
+  // Explicit states prevent race conditions when barge-in and new TTS chunks
+  // arrive simultaneously.
+
+  const resetPlayback = useCallback(() => {
+    audioQueueStateRef.current = AudioQueueState.INTERRUPTING;
+
+    if (activeSourceRef.current) {
+      try { activeSourceRef.current.pause?.(); } catch (_) {}
+      try { activeSourceRef.current.stop(); }  catch (_) {}
+      activeSourceRef.current = null;
+    }
+
+    playbackQueueRef.current = [];
+    audioQueueStateRef.current = AudioQueueState.FLUSHING;
+
+    isPlayingRef.current  = false;
+    nextPlayTimeRef.current = 0;
+    setIsPlaying(false);
+    clearTimeouts();
+    hasFinishedStreamingRef.current = false;
+
+    setIsSpeakingTextSync(true);
+    fallbackToTokenStreamingRef.current        = false;
+    hasReceivedAudioWithTimestampsRef.current  = false;
+    generatedTextBufferRef.current             = '';
+
+    // Allow new audio to be enqueued immediately after flush
+    audioQueueStateRef.current = AudioQueueState.IDLE;
+  }, [clearTimeouts]);
+
   const drainPlaybackQueue = useCallback(async () => {
-    if (playbackQueueRef.current.length === 0) {
+    if (
+      playbackQueueRef.current.length === 0 ||
+      audioQueueStateRef.current === AudioQueueState.INTERRUPTING ||
+      audioQueueStateRef.current === AudioQueueState.FLUSHING
+    ) {
       isPlayingRef.current = false;
       setIsPlaying(false);
+      audioQueueStateRef.current = AudioQueueState.IDLE;
 
       if (hasFinishedStreamingRef.current) {
         hasFinishedStreamingRef.current = false;
-        // Perfect cleanup of visual state
         setIsSpeakingTextSync(false);
         setConversationState('IDLE');
         setStatus('connected');
         setIsProcessing(false);
         setIsRecording(false);
         cleanupMic();
-        if (onFinishedRef.current) {
-          onFinishedRef.current();
-        }
+        if (onFinishedRef.current) onFinishedRef.current();
       }
       return;
     }
 
+    audioQueueStateRef.current = AudioQueueState.PLAYING;
     isPlayingRef.current = true;
     setIsPlaying(true);
 
     try {
       const ctx = await getAudioContext();
-      const { audioBuffer, wordTimestamps } = playbackQueueRef.current.shift();
+      const { audioBuffer, wordTimestamps, responseId } = playbackQueueRef.current.shift();
+
+      // FIX 5 — discard stale chunks from an interrupted response
+      if (responseId && activeResponseIdRef.current && responseId !== activeResponseIdRef.current) {
+        drainPlaybackQueue();
+        return;
+      }
 
       const source = ctx.createBufferSource();
       source.buffer = audioBuffer;
@@ -323,33 +480,29 @@ export function useVoicePipeline({
       } else {
         source.connect(ctx.destination);
       }
-
       activeSourceRef.current = source;
 
-      const now = ctx.currentTime;
-      let startTime = nextPlayTimeRef.current;
-      if (startTime < now) {
-        startTime = now;
-      }
+      const now       = ctx.currentTime;
+      let startTime   = nextPlayTimeRef.current;
+      if (startTime < now) startTime = now;
 
-      // Schedule highlight timings
       wordTimestamps.forEach((word) => {
         const delayMs = (startTime + word.start - ctx.currentTime) * 1000;
-        const timeoutId = setTimeout(() => {
+        const tid = setTimeout(() => {
           setCurrentSpokenWordIndex(word.absoluteIndex);
           assistantCharsDeliveredRef.current += word.word.length + 1;
         }, Math.max(0, delayMs));
-        activeTimeoutsRef.current.push(timeoutId);
+        activeTimeoutsRef.current.push(tid);
       });
 
-      const chunkDuration = audioBuffer.duration;
-      nextPlayTimeRef.current = startTime + chunkDuration;
+      nextPlayTimeRef.current = startTime + audioBuffer.duration;
 
       source.onended = () => {
-        if (activeSourceRef.current === source) {
-          activeSourceRef.current = null;
-        }
-        if (isPlayingRef.current) {
+        if (activeSourceRef.current === source) activeSourceRef.current = null;
+        if (
+          audioQueueStateRef.current !== AudioQueueState.INTERRUPTING &&
+          audioQueueStateRef.current !== AudioQueueState.FLUSHING
+        ) {
           drainPlaybackQueue();
         }
       };
@@ -359,19 +512,33 @@ export function useVoicePipeline({
       console.error('[Playback] Error in drainPlaybackQueue', e);
       isPlayingRef.current = false;
       setIsPlaying(false);
+      audioQueueStateRef.current = AudioQueueState.IDLE;
     }
   }, [getAudioContext, cleanupMic]);
 
-  // Decode audio segment and enqueue it
-  const enqueueAudio = useCallback(async (arrayBuffer, wordTimestamps) => {
+  const enqueueAudio = useCallback(async (arrayBuffer, wordTimestamps, responseId) => {
+    // FIX 5 — drop chunks that belong to an already-interrupted response
+    if (
+      responseId &&
+      activeResponseIdRef.current &&
+      responseId !== activeResponseIdRef.current
+    ) {
+      return;
+    }
+
+    // Also drop if queue is being flushed right now
+    if (
+      audioQueueStateRef.current === AudioQueueState.INTERRUPTING ||
+      audioQueueStateRef.current === AudioQueueState.FLUSHING
+    ) {
+      return;
+    }
+
     try {
-      const ctx = await getAudioContext();
-      // Decode WAV data
-      const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-      
-      playbackQueueRef.current.push({ audioBuffer, wordTimestamps });
-      
-      if (!isPlayingRef.current) {
+      const ctx    = await getAudioContext();
+      const buffer = await ctx.decodeAudioData(arrayBuffer);
+      playbackQueueRef.current.push({ audioBuffer: buffer, wordTimestamps, responseId });
+      if (audioQueueStateRef.current === AudioQueueState.IDLE) {
         drainPlaybackQueue();
       }
     } catch (e) {
@@ -379,11 +546,12 @@ export function useVoicePipeline({
     }
   }, [getAudioContext, drainPlaybackQueue]);
 
-  // Handle incoming JSON messages from the backend
+  // ── WebSocket message handler ─────────────────────────────────────────
   const handleMessage = useCallback((event) => {
     try {
       const msg = JSON.parse(event.data);
       switch (msg.type) {
+
         case 'state':
           setConversationState(msg.state);
           if (msg.state === 'LISTENING' || msg.state === 'THINKING') {
@@ -393,25 +561,19 @@ export function useVoicePipeline({
           if (msg.state === 'THINKING') {
             setIsProcessing(true);
             setStatus('processing');
-            if (onThinkingRef.current) {
-              onThinkingRef.current();
-            }
+            if (onThinkingRef.current) onThinkingRef.current();
           }
           break;
+
         case 'live_transcript':
           setTranscript(msg.text);
-          if (msg.words) {
-            setLiveWords(msg.words);
-          }
-          // Client-side silence watchdog: reset 1.2s auto-stop timer on every live transcript
-          if (msg.text && msg.text.trim()) {
+          if (msg.words) setLiveWords(msg.words);
+          if (msg.text?.trim()) {
             hasSpeechRef.current = true;
             clearClientInactivityTimer();
             clearClientSilenceTimer();
             clientSilenceTimerRef.current = setTimeout(() => {
-              // Only auto-stop if still recording and not already processing
               if (streamRef.current) {
-                console.log('[VAD] Client silence watchdog: auto-stopping mic after 1.2s of silence');
                 cleanupMic();
                 setIsRecording(false);
                 setIsProcessing(true);
@@ -423,58 +585,59 @@ export function useVoicePipeline({
             }, 1200);
           }
           break;
+
         case 'transcript':
           setTranscript(msg.text);
           currentTranscriptRef.current = msg.text;
-          if (msg.words) {
-            setLiveWords(msg.words);
-          }
+          if (msg.words) setLiveWords(msg.words);
           setIsProcessing(true);
           setStatus('processing');
-          if (onTranscriptRef.current) {
-            onTranscriptRef.current(msg.text);
-          }
+          if (onTranscriptRef.current) onTranscriptRef.current(msg.text);
+          // FIX 5 — assign a new response ID for this turn
+          activeResponseIdRef.current = msg.response_id || crypto.randomUUID();
           break;
+
         case 'assistant_text_delta':
           generatedTextBufferRef.current += msg.text;
-          const displayText = sanitizeAssistantText(generatedTextBufferRef.current);
-          setAssistantText(displayText);
-          if (fallbackToTokenStreamingRef.current) {
-            setIsSpeakingTextSync(false);
-          }
-          if (onTextUpdateRef.current) {
-            onTextUpdateRef.current(displayText);
+          {
+            const displayText = sanitizeAssistantText(generatedTextBufferRef.current);
+            setAssistantText(displayText);
+            if (fallbackToTokenStreamingRef.current) setIsSpeakingTextSync(false);
+            if (onTextUpdateRef.current) onTextUpdateRef.current(displayText);
           }
           break;
+
         case 'audio_chunk':
           if (msg.audio) {
-            const arrayBuffer = base64ToArrayBuffer(msg.audio);
-            const rawTimestamps = msg.word_timestamps || [];
-            
+            const arrayBuffer    = base64ToArrayBuffer(msg.audio);
+            const rawTimestamps  = msg.word_timestamps || [];
+            const chunkResponseId = msg.response_id || activeResponseIdRef.current;
+
             if (rawTimestamps.length > 0) {
               hasReceivedAudioWithTimestampsRef.current = true;
             } else if (!hasReceivedAudioWithTimestampsRef.current) {
-              // Trigger fallback to token streaming immediately if no timestamps are present
               fallbackToTokenStreamingRef.current = true;
               setIsSpeakingTextSync(false);
               if (onTextUpdateRef.current) {
                 onTextUpdateRef.current(sanitizeAssistantText(generatedTextBufferRef.current));
               }
             }
-            
-            // Map offsets to absolute offsets
+
             const absoluteWords = rawTimestamps.map((w) => ({
               ...w,
               absoluteIndex: totalEnqueuedWordsRef.current + w.index,
             }));
             totalEnqueuedWordsRef.current += rawTimestamps.length;
-            
-            enqueueAudio(arrayBuffer, absoluteWords);
+
+            // FIX 5 — pass responseId so stale chunks can be discarded
+            enqueueAudio(arrayBuffer, absoluteWords, chunkResponseId);
           }
           break;
+
         case 'tts_start':
           setIsPlaying(true);
           break;
+
         case 'vad_end_of_speech':
           clearClientSilenceTimer();
           cleanupMic();
@@ -482,6 +645,7 @@ export function useVoicePipeline({
           setIsProcessing(true);
           setStatus('processing');
           break;
+
         case 'assistant_finished':
           hasFinishedStreamingRef.current = true;
           if (!hasReceivedAudioWithTimestampsRef.current) {
@@ -491,7 +655,6 @@ export function useVoicePipeline({
               onTextUpdateRef.current(sanitizeAssistantText(generatedTextBufferRef.current));
             }
           }
-          // Only transition to IDLE if the audio queue has finished playing
           if (!isPlayingRef.current) {
             hasFinishedStreamingRef.current = false;
             setIsSpeakingTextSync(false);
@@ -500,11 +663,10 @@ export function useVoicePipeline({
             setIsProcessing(false);
             setIsRecording(false);
             cleanupMic();
-            if (onFinishedRef.current) {
-              onFinishedRef.current();
-            }
+            if (onFinishedRef.current) onFinishedRef.current();
           }
           break;
+
         case 'interrupt':
           resetPlayback();
           setIsProcessing(false);
@@ -512,24 +674,25 @@ export function useVoicePipeline({
           setStatus('interrupted');
           setAssistantText('');
           currentAssistantTextRef.current = '';
-          if (onInterruptRef.current) {
-            onInterruptRef.current();
-          }
+          if (onInterruptRef.current) onInterruptRef.current();
           break;
+
         case 'error':
           console.error('[Pipeline Error]', msg.text);
           setStatus(`error: ${msg.text}`);
           setIsProcessing(false);
           break;
+
         case 'pong':
           break;
+
         default:
           break;
       }
     } catch (e) {
       console.error('[WS] Failed to parse message JSON', e);
     }
-  }, [enqueueAudio, resetPlayback, cleanupMic]);
+  }, [enqueueAudio, resetPlayback, cleanupMic, clearClientSilenceTimer, clearClientInactivityTimer]);
 
   const handleMessageRef = useRef(handleMessage);
   useEffect(() => {
@@ -544,46 +707,8 @@ export function useVoicePipeline({
     return false;
   }, []);
 
-  // ── Recording controls ────────────────────────────────────────────────────
-  const startRecording = useCallback(async () => {
-    if (wsRef.current?.readyState !== WebSocket.OPEN) {
-      setStatus('Reconnecting…');
-      connect();
-      await new Promise(resolve => setTimeout(resolve, 800));
-    }
-
-    // Interruption handling
-    if (isPlaying || isProcessing) {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-          type: 'interrupt',
-          context: {
-            chars_sent:    assistantCharsDeliveredRef.current,
-            audio_playing: isPlaying,
-          },
-        }));
-      }
-      resetPlayback();
-      setIsProcessing(false);
-      setIsInterrupted(true);
-      if (onInterruptRef.current) {
-        onInterruptRef.current();
-      }
-    }
-
-    // Reset states for new turn
-    totalEnqueuedWordsRef.current = 0;
-    hasSpeechRef.current = false;
-    clearClientSilenceTimer();
-    clearTimeouts();
-    hasFinishedStreamingRef.current = false;
-
-    // Reset progressive sync state
-    setIsSpeakingTextSync(true);
-    fallbackToTokenStreamingRef.current = false;
-    hasReceivedAudioWithTimestampsRef.current = false;
-    generatedTextBufferRef.current = '';
-
+  // ── FIX 3 — Mic request with permission state update ──────────────────
+  const requestMicStream = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -594,72 +719,116 @@ export function useVoicePipeline({
           autoGainControl: true,
         },
       });
-      streamRef.current = stream;
-
-      const ctx = getAudioContext();
-
-      // Load AudioWorklet module only once per AudioContext lifetime
-      if (!workletLoadedRef.current) {
-        await ctx.audioWorklet.addModule('/audio-processor.js');
-        workletLoadedRef.current = true;
-      }
-
-      const sourceNode = ctx.createMediaStreamSource(stream);
-      const workletNode = new AudioWorkletNode(ctx, 'audio-processor');
-
-      // Connect sourceNode to isolated mic analyser for canvas waveform
-      if (micAnalyserRef.current) {
-        sourceNode.connect(micAnalyserRef.current);
-      }
-
-      workletNode.port.onmessage = (event) => {
-        // Only stream microphone data to the backend if the assistant is not currently speaking.
-        // This prevents acoustic feedback/echo from triggering accidental barge-ins or muddying Whisper STT.
-        if (wsRef.current?.readyState === WebSocket.OPEN && !isPlayingRef.current) {
-          wsRef.current.send(event.data);
-        }
-      };
-
-      // IMPORTANT: Do NOT connect workletNode to ctx.destination.
-      // The worklet's only job is to forward PCM to the WebSocket.
-      // Connecting it to destination would keep the audio hardware
-      // active after cleanupMic(), causing the mic indicator to stay on.
-      sourceNode.connect(workletNode);
-
-      sourceNodeRef.current  = sourceNode;
-      workletNodeRef.current = workletNode;
-
-      setIsRecording(true);
-      setTranscript('');
-      setAssistantText('');
-      setLiveWords([]);
-      currentTranscriptRef.current = '';
-      currentAssistantTextRef.current = '';
-      assistantCharsDeliveredRef.current = 0;
-      resetPlayback();
-      setStatus('recording');
-
-      // Start 5-second absolute inactivity watchdog to auto-close mic if no speech is detected
-      clientInactivityTimerRef.current = setTimeout(() => {
-        if (!hasSpeechRef.current) {
-          console.log('[VAD] Client inactivity watchdog: no speech detected for 5s, stopping mic.');
-          cleanupMic();
-          setIsRecording(false);
-          setStatus('connected');
-        }
-      }, 5000);
+      setMicPermission('granted');
+      return stream;
     } catch (err) {
-      console.error('[Mic] error', err);
-      setStatus('Mic access denied');
+      setMicPermission('denied');
+      return null;
     }
-  }, [connect, getAudioContext, isPlaying, isProcessing, resetPlayback, clearTimeouts, clearClientSilenceTimer, clearClientInactivityTimer, cleanupMic]);
+  }, []);
+
+  // ── Recording controls ────────────────────────────────────────────────
+  const startRecording = useCallback(async () => {
+    // FIX 3 — block recording if permission denied or mic unsupported
+    if (micPermission === 'denied' || micPermission === 'unsupported') {
+      console.warn('[Mic] Cannot start recording — permission:', micPermission);
+      return;
+    }
+
+    // FIX 4 — don't allow recording in duplicate tab
+    if (isDuplicateTab) {
+      console.warn('[Tab] Duplicate tab — recording blocked.');
+      return;
+    }
+
+    if (wsRef.current?.readyState !== WebSocket.OPEN) {
+      setStatus('Reconnecting…');
+      connectWS();
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+
+    if (isPlaying || isProcessing) {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: 'interrupt',
+          context: { chars_sent: assistantCharsDeliveredRef.current, audio_playing: isPlaying },
+        }));
+      }
+      resetPlayback();
+      setIsProcessing(false);
+      setIsInterrupted(true);
+      if (onInterruptRef.current) onInterruptRef.current();
+    }
+
+    // Reset per-turn state
+    totalEnqueuedWordsRef.current             = 0;
+    hasSpeechRef.current                      = false;
+    hasFinishedStreamingRef.current           = false;
+    fallbackToTokenStreamingRef.current       = false;
+    hasReceivedAudioWithTimestampsRef.current = false;
+    generatedTextBufferRef.current            = '';
+    activeResponseIdRef.current               = null;
+    clearClientSilenceTimer();
+    clearTimeouts();
+    setIsSpeakingTextSync(true);
+
+    const stream = await requestMicStream();
+    if (!stream) {
+      setStatus('Mic access denied');
+      return;
+    }
+
+    streamRef.current = stream;
+    const ctx = getAudioContext();
+
+    if (!workletLoadedRef.current) {
+      await ctx.audioWorklet.addModule('/audio-processor.js');
+      workletLoadedRef.current = true;
+    }
+
+    const sourceNode  = ctx.createMediaStreamSource(stream);
+    const workletNode = new AudioWorkletNode(ctx, 'audio-processor');
+
+    if (micAnalyserRef.current) sourceNode.connect(micAnalyserRef.current);
+
+    workletNode.port.onmessage = (event) => {
+      if (wsRef.current?.readyState === WebSocket.OPEN && !isPlayingRef.current) {
+        wsRef.current.send(event.data);
+      }
+    };
+
+    sourceNode.connect(workletNode);
+    sourceNodeRef.current  = sourceNode;
+    workletNodeRef.current = workletNode;
+
+    setIsRecording(true);
+    setTranscript('');
+    setAssistantText('');
+    setLiveWords([]);
+    currentTranscriptRef.current        = '';
+    currentAssistantTextRef.current     = '';
+    assistantCharsDeliveredRef.current  = 0;
+    resetPlayback();
+    setStatus('recording');
+
+    clientInactivityTimerRef.current = setTimeout(() => {
+      if (!hasSpeechRef.current) {
+        cleanupMic();
+        setIsRecording(false);
+        setStatus('connected');
+      }
+    }, 5000);
+  }, [
+    micPermission, isDuplicateTab, isPlaying, isProcessing,
+    connectWS, getAudioContext, resetPlayback,
+    clearTimeouts, clearClientSilenceTimer, cleanupMic, requestMicStream,
+  ]);
 
   const stopRecording = useCallback(() => {
     cleanupMic();
     setIsRecording(false);
     setIsProcessing(true);
     setStatus('processing');
-
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'end_of_speech' }));
     }
@@ -670,10 +839,7 @@ export function useVoicePipeline({
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({
           type: 'interrupt',
-          context: {
-            chars_sent:    assistantCharsDeliveredRef.current,
-            audio_playing: isPlaying,
-          },
+          context: { chars_sent: assistantCharsDeliveredRef.current, audio_playing: isPlaying },
         }));
       }
       resetPlayback();
@@ -682,20 +848,16 @@ export function useVoicePipeline({
       setIsProcessing(false);
       setIsInterrupted(true);
       setStatus('connected');
-      if (onInterruptRef.current) {
-        onInterruptRef.current();
-      }
+      if (onInterruptRef.current) onInterruptRef.current();
     } else {
-      if (isRecording) {
-        stopRecording();
-      } else {
-        startRecording();
-      }
+      if (isRecording) stopRecording();
+      else startRecording();
     }
   }, [isRecording, isPlaying, isProcessing, startRecording, stopRecording, resetPlayback, cleanupMic]);
 
-  // ── Public API ────────────────────────────────────────────────────────────
+  // ── Public API ────────────────────────────────────────────────────────
   return {
+    // Pipeline state
     isRecording,
     isProcessing,
     isPlaying,
@@ -703,13 +865,21 @@ export function useVoicePipeline({
     status,
     transcript,
     assistantText,
-    liveWords,                   // words with temporary/confirmed status
-    currentSpokenWordIndex,      // absolute word index currently highlighted
-    analyserNode: isRecording ? micAnalyserRef.current : analyserRef.current, // dynamic visualizer node
-    conversationState,           // current state from backend
+    liveWords,
+    currentSpokenWordIndex,
+    analyserNode: isRecording ? micAnalyserRef.current : analyserRef.current,
+    conversationState,
     isSpeakingTextSync,
+    // FIX 2 — connection state + manual reconnect
+    connectionState,
+    manualReconnect,
+    // FIX 3 — mic permission
+    micPermission,
+    // FIX 4 — duplicate tab flag
+    isDuplicateTab,
+    // Actions
     toggleRecording,
-    connect,
+    connect: connectWS,
     disconnect,
     sendWebSocketMessage,
   };

@@ -7,16 +7,33 @@ import { BookOpen, Trophy, Zap, Target } from 'lucide-react';
  * Generates dynamic context based on recent conversation text.
  */
 export function ContextCards({ messages = [] }) {
+  // FIX 6 — Guard: null/undefined messages → show skeleton cards instead of crash
+  if (!messages) {
+    return (
+      <div className="context-cards" aria-label="Loading context">
+        {[1, 2].map((i) => (
+          <div
+            key={i}
+            className="context-card"
+            style={{ opacity: 0.4, minWidth: '80px', height: '28px', background: 'rgba(0,0,0,0.06)', borderRadius: '8px' }}
+            aria-hidden="true"
+          />
+        ))}
+      </div>
+    );
+  }
+
   // Simple heuristic for learning context based on recent messages
   const getContext = () => {
-    if (!messages || messages.length === 0) {
+    if (messages.length === 0) {
       return [
         { id: 'start', icon: Target, label: 'Ready', text: 'Waiting for topic...' }
       ];
     }
 
     const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
-    const text = lastUserMsg ? lastUserMsg.text.toLowerCase() : '';
+    // FIX 6 — guard: lastUserMsg.text may be undefined during streaming
+    const text = lastUserMsg?.text ? lastUserMsg.text.toLowerCase() : '';
     
     const cards = [];
     

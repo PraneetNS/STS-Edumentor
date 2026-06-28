@@ -63,10 +63,10 @@ def test_history_injected_as_alternating_roles(builder):
     ]
     ctx = make_context(history=history)
     messages = builder.build_messages(ctx)
-    # system + user + assistant + user + assistant + current_user = 6
-    assert len(messages) == 6
-    assert messages[1]["role"] == "user"
-    assert messages[2]["role"] == "assistant"
+    # static_system (1) + dynamic_system (2) + 2 * history turns (4) + current_user (1) = 7
+    assert len(messages) == 7
+    assert messages[2]["role"] == "user"
+    assert messages[3]["role"] == "assistant"
 
 
 def test_rag_context_injected_as_system(builder):
@@ -83,7 +83,7 @@ def test_rag_context_injected_as_system(builder):
 def test_base_system_prompt_always_present(builder):
     ctx = make_context()
     messages = builder.build_messages(ctx)
-    system = messages[0]["content"]
+    system = "\n".join(m["content"] for m in messages if m["role"] == "system")
     assert "EduMentor" in system
     assert "markdown" in system.lower()
 
@@ -92,7 +92,7 @@ def test_student_profile_injected(builder):
     profile = StudentProfile(name="Praneet", level="beginner")
     ctx = make_context(profile=profile)
     messages = builder.build_messages(ctx)
-    system = messages[0]["content"]
+    system = "\n".join(m["content"] for m in messages if m["role"] == "system")
     assert "Praneet" in system
     assert "beginner" in system.lower()
 
@@ -101,7 +101,7 @@ def test_level_modifier_injected(builder):
     profile = StudentProfile(level="intermediate")
     ctx = make_context(profile=profile)
     messages = builder.build_messages(ctx)
-    system = messages[0]["content"]
+    system = "\n".join(m["content"] for m in messages if m["role"] == "system")
     assert "INTERMEDIATE" in system.upper() or "intermediate" in system.lower()
 
 
@@ -114,14 +114,14 @@ def test_session_summary_injected(builder):
     )
     ctx = make_context(session_summary=summary)
     messages = builder.build_messages(ctx)
-    system = messages[0]["content"]
+    system = "\n".join(m["content"] for m in messages if m["role"] == "system")
     assert "Sentiment Analysis" in system
 
 
 def test_intent_template_injected(builder):
     ctx = make_context(intent=Intent.QUIZ_REQUEST)
     messages = builder.build_messages(ctx)
-    system = messages[0]["content"]
+    system = "\n".join(m["content"] for m in messages if m["role"] == "system")
     assert "quiz" in system.lower() or "question" in system.lower()
 
 
@@ -129,14 +129,14 @@ def test_emotion_instruction_injected_for_frustrated(builder):
     emotion = EmotionResult(emotion=Emotion.FRUSTRATED, confidence=0.95, trigger_phrase="I don't get it")
     ctx = make_context(emotion=emotion)
     messages = builder.build_messages(ctx)
-    system = messages[0]["content"]
+    system = "\n".join(m["content"] for m in messages if m["role"] == "system")
     assert "frustrated" in system.lower() or "patient" in system.lower() or "encouraging" in system.lower()
 
 
 def test_bridge_instruction_injected_when_present(builder):
     ctx = make_context(safety_flags={"bridge_instruction": "[INTERRUPTION CONTEXT] You were explaining recursion"})
     messages = builder.build_messages(ctx)
-    system = messages[0]["content"]
+    system = "\n".join(m["content"] for m in messages if m["role"] == "system")
     assert "INTERRUPTION CONTEXT" in system
 
 
@@ -144,7 +144,7 @@ def test_weak_topics_injected(builder):
     profile = StudentProfile(weak_topics=["Recursion", "Dynamic Programming"])
     ctx = make_context(profile=profile)
     messages = builder.build_messages(ctx)
-    system = messages[0]["content"]
+    system = "\n".join(m["content"] for m in messages if m["role"] == "system")
     assert "Recursion" in system or "recursion" in system.lower()
 
 

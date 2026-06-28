@@ -486,8 +486,11 @@ class AgentController:
         is_blocked = False
 
         try:
-            # We call the wrapped LLM engine which implements CircuitBreaker internally
-            async for raw_token in self._llm.stream_tokens_from_messages(messages):
+            # We call the wrapped LLM engine which implements CircuitBreaker internally.
+            # session_id is forwarded so the engine pins this request to a deterministic
+            # KV cache slot, ensuring the cached system-prompt prefix accumulates across
+            # turns instead of being scattered or evicted by other sessions.
+            async for raw_token in self._llm.stream_tokens_from_messages(messages, session_id=session_id):
                 full_raw_response_list.append(raw_token)
                 
                 # Filter PII across token boundaries

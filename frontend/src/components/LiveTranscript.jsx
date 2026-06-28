@@ -15,8 +15,12 @@ export const LiveTranscript = memo(function LiveTranscript({
   liveWords = [],
   isRecording,
 }) {
+  // FIX 6 — Guard: ensure transcript is a string; SST may not have produced
+  // anything yet or the value may arrive as undefined before the first frame.
+  const safeTranscript = transcript != null ? String(transcript) : '';
+
   const hasWords = liveWords && liveWords.length > 0;
-  const hasText = isRecording && (hasWords || Boolean(transcript));
+  const hasText  = isRecording && (hasWords || Boolean(safeTranscript));
   const isActive = isRecording;
 
   // Check if transcript normalization is complete and successful
@@ -83,7 +87,7 @@ export const LiveTranscript = memo(function LiveTranscript({
                   );
                 })
               ) : (
-                <span>{transcript}</span>
+                <span>{safeTranscript}</span>
               )}
 
 

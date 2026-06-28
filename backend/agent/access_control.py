@@ -132,7 +132,7 @@ class AccessControl:
             return False
 
         # ── Path A: PostgreSQL is available ───────────────────────────────────
-        if db_pool is not None:
+        if db_pool is not None and hasattr(db_pool, "acquire"):
             return await AccessControl._verify_via_postgres(
                 session_id, claimed_student_id, db_pool
             )

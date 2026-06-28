@@ -266,6 +266,40 @@ async def health_check():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Client error logging (FIX 1 — ErrorBoundary fire-and-forget POST)
+# ─────────────────────────────────────────────────────────────────────────────
+
+from pydantic import BaseModel as PydanticBaseModel
+from typing import Optional as _Opt
+
+
+class ClientErrorReport(PydanticBaseModel):
+    message:        str
+    stack:          _Opt[str] = None
+    componentStack: _Opt[str] = None
+    timestamp:      _Opt[str] = None
+
+
+@app.post("/api/log-client-error", tags=["System"])
+async def log_client_error(report: ClientErrorReport):
+    """
+    Receive and log a React ErrorBoundary crash report.
+
+    Called fire-and-forget by the frontend ErrorBoundary — never raises,
+    never blocks UI recovery.  Logged at WARNING level so it surfaces in
+    production logs without being as noisy as ERROR level.
+    """
+    logger.warning(
+        "[CLIENT-ERROR] %s | stack: %s | component: %s | ts: %s",
+        report.message,
+        (report.stack or "")[:300],
+        (report.componentStack or "")[:300],
+        report.timestamp,
+    )
+    return {"status": "logged"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Persona Endpoints & Request Models
 # ─────────────────────────────────────────────────────────────────────────────
 

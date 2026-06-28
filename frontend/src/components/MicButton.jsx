@@ -1,21 +1,28 @@
 /**
  * MicButton — Premium voice control button.
  *
- * States: idle → recording → processing → speaking → idle
+ * FIX 3: Renders explicit states for mic permission:
+ *   prompt       → normal mic button (functional)
+ *   granted      → normal mic button (functional)
+ *   denied       → grayed-out mic, clear "blocked" message
+ *   unsupported  → grayed-out mic, browser recommendation message
  *
- * When assistant is speaking, clicking interrupts it.
- * Animated ring pulse on recording.
- * Smooth state transitions via Framer Motion.
+ * The critical protection here is that when the user denies permission via
+ * browser settings (or revokes it mid-session), this component reflects that
+ * state immediately rather than showing a normal-looking button that silently
+ * does nothing on press.
+ *
+ * micPermission is tracked upstream in useVoicePipeline via the Permissions
+ * API onchange listener, so UI updates fire without requiring a page refresh.
  */
 import React, { memo, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, MicOff, Loader2, Volume2 } from 'lucide-react';
+import { Mic, MicOff, Loader2, Volume2, AlertTriangle } from 'lucide-react';
 
 function getButtonState({ isRecording, isProcessing, isPlaying, conversationState }) {
-  if (conversationState === 'LISTENING') return 'recording';
+  if (conversationState === 'LISTENING')   return 'recording';
   if (conversationState === 'TRANSCRIBING' || conversationState === 'THINKING') return 'processing';
-  if (conversationState === 'SPEAKING') return 'playing';
-
+  if (conversationState === 'SPEAKING')    return 'playing';
   if (isRecording)  return 'recording';
   if (isProcessing) return 'processing';
   if (isPlaying)    return 'playing';
@@ -57,12 +64,30 @@ const STATE_CONFIG = {
   },
 };
 
+// FIX 3 — Permission-blocked overlay states
+const PERMISSION_CONFIG = {
+  denied: {
+    label:   'Microphone blocked',
+    sub:     'Enable it in browser settings to use voice mode.',
+    btnClass: 'processing', // re-use the disabled visual
+    icon:    AlertTriangle,
+    iconSize: 20,
+  },
+  unsupported: {
+    label:   'Voice not supported',
+    sub:     'Try Chrome, Edge, or Firefox.',
+    btnClass: 'processing',
+    icon:    MicOff,
+    iconSize: 20,
+  },
+};
+
 // Animated waveform bars shown when speaking
-function Waveform({ active }) {
+function WaveformBars({ active }) {
   if (!active) return null;
   return (
     <div className="waveform" style={{ color: 'var(--accent-indigo)' }}>
-      {[0,1,2,3,4,5,6].map(i => (
+      {[0, 1, 2, 3, 4, 5, 6].map((i) => (
         <motion.div
           key={i}
           className="waveform-bar"
@@ -85,32 +110,38 @@ export const MicButton = memo(function MicButton({
   isProcessing,
   isPlaying,
   conversationState,
+  micPermission = 'prompt',  // FIX 3
   onClick,
 }) {
-  const stateKey = getButtonState({ isRecording, isProcessing, isPlaying, conversationState });
-  const cfg      = STATE_CONFIG[stateKey];
-  const Icon     = cfg.icon;
+  // FIX 3 — if permission is denied or unsupported, show a distinct blocked state
+  const permBlocked = micPermission === 'denied' || micPermission === 'unsupported';
 
-  const isDisabled = stateKey === 'processing';
+  const stateKey  = getButtonState({ isRecording, isProcessing, isPlaying, conversationState });
+  const cfg       = permBlocked ? PERMISSION_CONFIG[micPermission] : STATE_CONFIG[stateKey];
+  const Icon      = cfg.icon;
+
+  const isDisabled = stateKey === 'processing' || permBlocked;
 
   return (
     <div className="voice-controls" role="group" aria-label="Voice controls">
-      {/* Mic button */}
       <div className="mic-btn-wrap">
         <motion.button
-          className={`mic-btn ${cfg.btnClass}`}
-          onClick={onClick}
+          className={`mic-btn ${cfg.btnClass}${permBlocked ? ' opacity-60' : ''}`}
+          onClick={permBlocked ? undefined : onClick}
           disabled={isDisabled}
           aria-label={cfg.label}
           aria-pressed={isRecording}
+          aria-disabled={permBlocked}
+          title={permBlocked ? cfg.sub : undefined}
           whileHover={!isDisabled ? { scale: 1.08 } : {}}
           whileTap={!isDisabled   ? { scale: 0.94 } : {}}
           transition={{ type: 'spring', stiffness: 400, damping: 17 }}
           id="mic-button"
+          style={permBlocked ? { cursor: 'not-allowed' } : undefined}
         >
           <AnimatePresence mode="wait">
             <motion.div
-              key={stateKey}
+              key={permBlocked ? micPermission : stateKey}
               initial={{ opacity: 0, scale: 0.7, rotate: -15 }}
               animate={{ opacity: 1, scale: 1,   rotate: 0 }}
               exit={{   opacity: 0, scale: 0.7, rotate: 15 }}
@@ -121,9 +152,8 @@ export const MicButton = memo(function MicButton({
           </AnimatePresence>
         </motion.button>
 
-        {/* Recording ring animation */}
         <AnimatePresence>
-          {cfg.showRing && (
+          {!permBlocked && cfg.showRing && (
             <motion.div
               className="mic-ring"
               initial={{ opacity: 0, scale: 0.8 }}
@@ -138,28 +168,32 @@ export const MicButton = memo(function MicButton({
       <div className="voice-status">
         <AnimatePresence mode="wait">
           <motion.div
-            key={stateKey}
+            key={permBlocked ? micPermission : stateKey}
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{   opacity: 0, y: -4 }}
             transition={{ duration: 0.15 }}
           >
-            <div className="voice-status-line">{cfg.label}</div>
+            <div
+              className="voice-status-line"
+              style={permBlocked ? { color: 'var(--accent-red, #ef4444)' } : undefined}
+            >
+              {cfg.label}
+            </div>
             <div className="voice-status-sub">{cfg.sub}</div>
           </motion.div>
         </AnimatePresence>
       </div>
 
-      {/* Waveform (speaking state) */}
       <AnimatePresence>
-        {isPlaying && (
+        {isPlaying && !permBlocked && (
           <motion.div
             initial={{ opacity: 0, width: 0 }}
             animate={{ opacity: 1, width: 'auto' }}
             exit={{   opacity: 0, width: 0 }}
             transition={{ duration: 0.2 }}
           >
-            <Waveform active />
+            <WaveformBars active />
           </motion.div>
         )}
       </AnimatePresence>

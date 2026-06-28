@@ -7,6 +7,22 @@
 #
 #  GPU offload: -ngl 9999 offloads all layers to GPU.
 #  Reduce -ngl if you get out-of-memory errors.
+#
+#  KV cache / prompt caching flags:
+#  -c 4096          Context window — must hold system prompt + history + new turn.
+#  --cache-reuse 256  Min token overlap for llama.cpp to reuse a cached prefix
+#                   segment instead of requiring a full-prefix match.
+#  --slots          Exposes /slots endpoint for cache verification:
+#                     curl http://localhost:8080/slots
+#                   Confirm n_past grows turn-over-turn (not resetting to ~0).
+#  -np 4            Four parallel KV slots — one per concurrent student session.
+#                   IMPORTANT: without -np > 1, every new connection competes for
+#                   the same single slot. A second student's request evicts the
+#                   first student's cached system prompt prefix, even though both
+#                   share the identical static system prompt. This is the most
+#                   common reason prompt caching silently fails in multi-user
+#                   deployments. Size -np to peak concurrent sessions, not total
+#                   user count (most students are idle between turns).
 # ==================================================================
 
 set -euo pipefail
@@ -34,4 +50,7 @@ llama-server \
   --temp 0.6 \
   --top-p 0.9 \
   --repeat-penalty 1.08 \
+  --cache-reuse 256 \
+  --slots \
+  -np 4 \
   --log-disable
