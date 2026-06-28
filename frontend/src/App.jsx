@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { PanelLeft, Home, X, BookOpen, ExternalLink, FileText } from 'lucide-react';
 
@@ -12,10 +12,12 @@ import { LiveTranscript } from './components/LiveTranscript';
 import { VoiceOrb } from './components/VoiceOrb';
 import { ContextCards } from './components/ContextCards';
 import { MentorCharacter } from './components/MentorCharacter';
+import ErrorBoundary from './components/ErrorBoundary';
 
 import './index.css';
 
 import { MarkdownViewer } from './components/MarkdownViewer';
+import { StatusBar } from './components/StatusBar';
 
 
 export default function App() {
@@ -110,6 +112,17 @@ export default function App() {
   // Active message ID ref to update the streaming assistant bubble in real-time
   const activeMsgIdRef = useRef(null);
 
+  // FIX 1 — Reset callback passed to the MessageList ErrorBoundary.
+  // Finalises any stuck streaming bubble so state is clean after recovery.
+  const resetMessageListRef = useRef(null);
+  const resetMessageList = useCallback(() => {
+    if (activeMsgIdRef.current) {
+      finishStreamingMessage(activeMsgIdRef.current);
+      activeMsgIdRef.current = null;
+    }
+  }, [finishStreamingMessage]);
+  resetMessageListRef.current = resetMessageList;
+
   // Default static snapshot captured from the live mentor character
   const [defaultAvatarUrl, setDefaultAvatarUrl] = useState(null);
 
@@ -126,6 +139,13 @@ export default function App() {
     conversationState,
     isSpeakingTextSync,
     toggleRecording,
+    // FIX 2 — connection state machine
+    connectionState,
+    manualReconnect,
+    // FIX 3 — mic permission
+    micPermission,
+    // FIX 4 — duplicate tab
+    isDuplicateTab,
   } = useVoicePipeline({
     conversationId: activeId,
     onTranscript: (text) => {
@@ -366,15 +386,17 @@ export default function App() {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6 }}
         >
-          <Sidebar
-            grouped={grouped}
-            activeId={activeId}
-            onSelect={selectConversation}
-            onDelete={deleteConversation}
-            onNewChat={createConversation}
-            isOpen={sidebarOpen}
-            onClose={() => setSidebarOpen(false)}
-          />
+          <ErrorBoundary onReset={() => window.location.reload()}>
+            <Sidebar
+              grouped={grouped}
+              activeId={activeId}
+              onSelect={selectConversation}
+              onDelete={deleteConversation}
+              onNewChat={createConversation}
+              isOpen={sidebarOpen}
+              onClose={() => setSidebarOpen(false)}
+            />
+          </ErrorBoundary>
 
           <div className="workspace">
             {/* Header */}
@@ -423,14 +445,21 @@ export default function App() {
                 </button>
 
                 {/* Connection Status */}
-                <div className={`status-badge ${status === 'connected' ? 'online' : 'connecting'}`}>
-                  <div className={`status-dot ${isRecording ? 'recording' :
-                    isProcessing ? 'processing' :
-                      isPlaying ? 'playing' :
-                        status === 'connected' ? 'connected' : ''
-                    }`} />
-                  {status === 'connected' ? (isRecording ? 'Listening' : isProcessing ? 'Thinking' : isPlaying ? 'Speaking' : 'Online') : 'Connecting...'}
-                </div>
+                <StatusBar
+                  connectionState={connectionState}
+                  status={status}
+                  isRecording={isRecording}
+                  isProcessing={isProcessing}
+                  isPlaying={isPlaying}
+                  conversationState={conversationState}
+                  manualReconnect={manualReconnect}
+                  reconnectAttempt={
+                    // Parse attempt number from status string "reconnecting:N"
+                    status?.startsWith('reconnecting:')
+                      ? status.split(':')[1]
+                      : undefined
+                  }
+                />
               </div>
             </header>
 
@@ -445,21 +474,25 @@ export default function App() {
                   style={{ gap: '0px' }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <motion.div
-                      layoutId="mentor-canvas"
-                      className="mentor-canvas-wrapper idle-mode"
-                    >
-                      <MentorCharacter
-                        state={
-                          isRecording ? 'listening' :
-                            isProcessing ? 'thinking' :
-                              isPlaying ? 'speaking' :
-                                'idle'
-                        }
-                        analyserNode={analyserNode}
-                        onSnapshot={!defaultAvatarUrl ? setDefaultAvatarUrl : undefined}
-                      />
-                    </motion.div>
+                    {/* FIX 1 — Isolate MentorCharacter: Three.js / WebGL failures are common.
+                        A crashed avatar must NOT take down the whole chat area. */}
+                    <ErrorBoundary onReset={() => window.location.reload()}>
+                      <motion.div
+                        layoutId="mentor-canvas"
+                        className="mentor-canvas-wrapper idle-mode"
+                      >
+                        <MentorCharacter
+                          state={
+                            isRecording ? 'listening' :
+                              isProcessing ? 'thinking' :
+                                isPlaying ? 'speaking' :
+                                  'idle'
+                          }
+                          analyserNode={analyserNode}
+                          onSnapshot={!defaultAvatarUrl ? setDefaultAvatarUrl : undefined}
+                        />
+                      </motion.div>
+                    </ErrorBoundary>
                   </div>
                   <div style={{
                     display: 'flex',
@@ -497,17 +530,44 @@ export default function App() {
                 </motion.div>
               )}
 
-              {/* Conversation Timeline */}
-              <MessageList
-                messages={messages}
-                currentSpokenWordIndex={currentSpokenWordIndex}
-                isSpeakingTextSync={isSpeakingTextSync}
-                analyserNode={analyserNode}
-                conversationState={conversationState}
-                defaultAvatarUrl={defaultAvatarUrl}
-                onSnapshot={saveMessageSnapshot}
-              />
+              {/* FIX 1 — Isolate MessageList: if ONE message bubble throws (e.g.
+                  malformed markdown from a streamed response), only the message
+                  list resets — the voice pipeline keeps running. */}
+              <ErrorBoundary onReset={resetMessageList}>
+                <MessageList
+                  messages={messages}
+                  currentSpokenWordIndex={currentSpokenWordIndex}
+                  isSpeakingTextSync={isSpeakingTextSync}
+                  analyserNode={analyserNode}
+                  conversationState={conversationState}
+                  defaultAvatarUrl={defaultAvatarUrl}
+                  onSnapshot={saveMessageSnapshot}
+                />
+              </ErrorBoundary>
             </div>
+
+            {/* FIX 4 — Duplicate tab banner */}
+            {isDuplicateTab && (
+              <div
+                role="alert"
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  zIndex: 9999,
+                  background: '#FEF3C7',
+                  borderBottom: '1px solid #F59E0B',
+                  color: '#92400E',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  padding: '8px 16px',
+                  textAlign: 'center',
+                }}
+              >
+                This conversation is open in another tab. Voice input is disabled here to prevent conflicts.
+              </div>
+            )}
 
             {/* VOICE INTERACTION ZONE (Fixed Bottom) */}
             <footer className="voice-zone">
