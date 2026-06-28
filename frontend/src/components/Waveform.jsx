@@ -38,16 +38,24 @@ export const Waveform = memo(function Waveform({
 
     const draw = () => {
       if (!canvas || !ctx) return;
-      
+
       const w = canvas.width;
       const h = canvas.height;
-      
+
       ctx.clearRect(0, 0, w, h);
 
-      // 1. Calculate current volume levels from AnalyserNode
+      // FIX 6 — guard: analyserNode may not exist yet when AudioContext hasn't
+      // been created (e.g. before any user interaction, or before the first mic
+      // capture). Render a flat/idle waveform rather than crash.
       let volume = 0.02; // baseline idle breathing amplitude
       if (analyserNode && dataArray) {
-        analyserNode.getByteTimeDomainData(dataArray);
+        // Only call getByteTimeDomainData if the analyser is still connected
+        // to a live audio graph (avoids InvalidStateError on context close).
+        try {
+          analyserNode.getByteTimeDomainData(dataArray);
+        } catch (_) {
+          // analyser was disconnected mid-frame — fall through with baseline volume
+        }
         let sum = 0;
         for (let i = 0; i < bufferLength; i++) {
           const val = (dataArray[i] - 128) / 128.0;
