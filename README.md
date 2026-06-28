@@ -340,6 +340,7 @@ pytest
 1. **GPU Offloading**: Ensure llama.cpp offloads all layers to VRAM. Increase `-ngl` in `run_llm_server.bat` (e.g., `-ngl 32` or `--n-gpu-layers all`).
 2. **Whisper Acceleration**: On a GPU machine, ensure `WHISPER_DEVICE` is set to `cuda` and `WHISPER_COMPUTE_TYPE` is `float16`.
 3. **Intent Classifier Gating**: If latency is still high, set `AGENT_INTENT_CLASSIFY=false` in `.env` to skip semantic intent classification.
+4. **Prompt Caching**: With `cache_prompt` enabled and stable prefix ordering (static system prompt → dynamic context → history → new message), repeat turns within a session see prefill time drop by **60–85%** compared to a cold turn, since only the newest message tokens need fresh computation. This does NOT reduce generation time (token-by-token decoding is unaffected) — it only reduces prefill time, which is most noticeable when the system prompt is large relative to the new message length. This is exactly EduMentor's case given the detailed Edi persona prompt. The server must be started with `--cache-reuse 256` and `-np 4` (see `run_llm_server.bat`).
 
 ### Out of GPU Memory (OOM)
 *   If your system runs out of VRAM, reduce the llama-server offloading layer count (e.g., `-ngl 15` instead of `20` in `run_llm_server.bat`).
@@ -347,6 +348,26 @@ pytest
 
 ### Microphone Access Issues
 *   Vite serves the client over HTTP on `localhost` by default, which is allowed by modern browser security policies. If accessing the app from an external IP, you **must** serve the frontend over HTTPS or configure browser exceptions to allow microphone permissions.
+
+### Verifying KV Cache Reuse
+
+With `--slots` enabled on `llama-server` (already set in `run_llm_server.bat` / `run_llm_server.sh`), you can inspect real KV cache state directly:
+
+```bash
+curl http://localhost:8080/slots
+```
+
+This returns a JSON array of per-slot objects. The key field to check is `n_past` — the number of tokens currently cached in that slot:
+
+| `n_past` behaviour | What it means |
+|---|---|
+| Grows turn-over-turn (e.g. 300 → 450 → 600) | ✅ Cache is accumulating — prefix reuse is working |
+| Resets to near-zero each turn (e.g. 600 → 10 → 10) | ❌ Cache is being evicted — prefix is likely not stable |
+
+If `n_past` keeps resetting, check:
+1. **Slot affinity** — the same `session_id` must always route to the same slot (see `get_slot_for_session()` in `llm_engine.py`).
+2. **Prefix stability** — any dynamic content (timestamps, random values) in the first system message will break the cached prefix on every call.
+3. **Server flags** — confirm `--cache-reuse 256` and `-np 4` are present in the server launch command.
 
 ---
 
