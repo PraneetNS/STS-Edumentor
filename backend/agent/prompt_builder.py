@@ -19,6 +19,37 @@ Output:
 
 Pipeline position:
   AgentContext → PromptBuilder.build_messages() → messages → LLMEngine
+
+KV Cache / Prompt Caching Architecture
+───────────────────────────────────────
+llama-server reuses its KV cache when the token prefix of the new
+request matches the cached prefix from the previous request on the
+same slot. For caching to help, the SAME tokens must appear in the
+SAME order at the START of every request.
+
+build_messages() enforces a strict four-layer ordering:
+
+  1. _BASE_SYSTEM (static, never changes)
+     Sent as its own "system" message so llama.cpp caches it
+     permanently after the first request. Zero dynamic content.
+
+  2. Dynamic context block (changes rarely within a session)
+     Turn rules + student profile + modifiers + session summary +
+     intent + emotion + interruption bridge. Stable for most of a
+     session; only changes when the profile or intent changes.
+
+  3. Conversation history (grows, but prior turns are frozen)
+     Each prior turn is appended verbatim. The first N-1 turns
+     are byte-identical to the previous request — only the newest
+     turn is genuinely new. This is where --cache-reuse earns its
+     keep: the shared prefix grows turn-over-turn.
+
+  4. New user message (always fresh)
+
+CRITICAL: Do NOT add any dynamic content (timestamps, counters,
+random seeds, dict iteration order) into layer 1 or layer 2 that
+changes on every request — it will break the cached prefix and
+silently eliminate the latency win without any error or warning.
 """
 
 from __future__ import annotations
@@ -221,17 +252,29 @@ class PromptBuilder:
     def __init__(self) -> None:
         logger.info("[OK] PromptBuilder ready.")
 
+    # ─────────────────────────────────────────────────────────────────────────────
+    # Public API
+    # ─────────────────────────────────────────────────────────────────────────────
+
     def build_messages(self, context: AgentContext) -> List[Dict[str, str]]:
         """
         Build the complete OpenAI-format messages list.
 
-        Format:
+        Format (KV-cache-stable ordering):
             [
-                {"role": "system",    "content": "..."},   # Built here
-                {"role": "user",      "content": "..."},   # From history
-                {"role": "assistant", "content": "..."},   # From history
+                # Layer 1 — static, never changes: llama.cpp caches permanently
+                {"role": "system", "content": _BASE_SYSTEM},
+
+                # Layer 2 — dynamic context: changes per-session, stable within session
+                {"role": "system", "content": <turn rules + profile + modifiers + ...>},
+
+                # Layer 3 — history: grows but prior turns are frozen byte-for-byte
+                {"role": "user",      "content": "..."},
+                {"role": "assistant", "content": "..."},
                 ...
-                {"role": "user",      "content": "..."},   # Current turn
+
+                # Layer 4 — new user message: always fresh
+                {"role": "user", "content": context.user_text},
             ]
 
         Args:
@@ -242,11 +285,23 @@ class PromptBuilder:
         """
         messages: List[Dict[str, str]] = []
 
-        # ── 1. System prompt ──────────────────────────────────────────────────
-        system_content = self._build_system_prompt(context)
-        messages.append({"role": "system", "content": system_content})
+        # ── Layer 1: Static system prompt ───────────────────────────────────
+        # _BASE_SYSTEM is a compile-time constant: zero dynamic content.
+        # Sending it as a separate message lets llama.cpp cache it after the
+        # very first request and never recompute it again.
+        messages.append({"role": "system", "content": _BASE_SYSTEM})
 
-        # ── 2. History turns ──────────────────────────────────────────────────
+        # ── Layer 2: Dynamic context (turn rules, profile, session state) ───
+        # This changes per-session but is stable across most turns within a
+        # session. Keeping it as a single separate message means layer 1 stays
+        # frozen even when layer 2 must update (e.g. after a profile change).
+        dynamic_content = self._build_dynamic_context(context)
+        messages.append({"role": "system", "content": dynamic_content})
+
+        # ── Layer 3: Conversation history ───────────────────────────────
+        # Prior turns are appended verbatim and never mutated.
+        # Everything except the newest turn is byte-identical to the previous
+        # request, so the KV cache prefix extends through all prior turns.
         if hasattr(context, "history_messages") and context.history_messages:
             messages.extend(context.history_messages)
         else:
@@ -254,7 +309,7 @@ class PromptBuilder:
                 messages.append({"role": "user",      "content": turn.user})
                 messages.append({"role": "assistant", "content": turn.assistant})
 
-        # ── 3. Retrieved documents (RAG) ──────────────────────────────────────
+        # ── RAG context (injected after history, before new message) ──────
         # SECURITY (LLM01 — Indirect Prompt Injection):
         # Retrieved documents are wrapped with an explicit "data not instructions"
         # framing. Even if sanitize_rag_content() missed something, the model is
@@ -272,7 +327,7 @@ class PromptBuilder:
             )
             messages.append({"role": "system", "content": rag_block})
 
-        # ── 4. Current user message ───────────────────────────────────────────
+        # ── Layer 4: Current user message ─────────────────────────────
         messages.append({"role": "user", "content": context.user_text})
 
         total_chars = sum(len(m["content"]) for m in messages)
@@ -283,27 +338,65 @@ class PromptBuilder:
 
         return messages
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # System prompt assembly
-    # ─────────────────────────────────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────────────────────
+    # Dynamic context assembly (Layer 2 system message)
+    # ─────────────────────────────────────────────────────────────────────────────
 
-    def _build_system_prompt(self, context: AgentContext) -> str:
+    @staticmethod
+    def build_profile_block(profile: StudentProfile) -> str:
         """
-        Assemble the full system prompt from all available context signals.
+        Render the student profile as a fixed-order string for the LLM.
 
-        Order of injection (top → bottom):
-          1. Base system prompt (always)
-          2. Student profile block (name, level, style)
+        CRITICAL — FIXED FIELD ORDER:
+        The field order here must never change. Even if the content is
+        identical across two turns, a different field order produces a
+        different byte sequence which produces different tokens, breaking
+        the KV cache prefix and silently eliminating the latency win.
+
+        When adding new profile fields, always append them at the END of
+        this function, never insert them in the middle.
+
+        Args:
+            profile: The StudentProfile dataclass.
+
+        Returns:
+            A newline-separated string with a fixed field layout.
+        """
+        # FIXED ORDER — do not reorder, do not use dict.items() or vars()
+        lines = [
+            f"Student: {profile.name}",
+            f"Skill level: {profile.level}",
+            f"Preferred style: {profile.preferred_style}",
+            f"Weak areas: {', '.join(profile.weak_topics) if profile.weak_topics else 'none'}",
+            f"Learning topics: {', '.join(profile.learning_topics) if profile.learning_topics else 'none'}",
+            f"Discipline: {profile.discipline}",
+        ]
+        return "\n".join(lines)
+
+    def _build_dynamic_context(self, context: AgentContext) -> str:
+        """
+        Build the dynamic Layer 2 system message.
+
+        This contains everything that may change across turns but is NOT
+        the static Edi persona (_BASE_SYSTEM). Keeping it separate from
+        _BASE_SYSTEM ensures layer 1 remains frozen and cacheable even
+        when the session state (profile, intent, emotion) updates.
+
+        Injection order (top → bottom):
+          1. Turn rules (first-turn introduction vs. subsequent-turn suppression)
+          2. Student profile block (fixed field order)
           3. Level modifier (beginner/intermediate/advanced instructions)
           4. Style modifier (examples/theory/mixed)
-          5. Session summary (long-term memory — project, topics, goals)
-          6. Intent-specific instruction
-          7. Emotion-based style instruction
-          8. Interruption bridge instruction
+          5. Weak topics reminder
+          6. Session summary (long-term memory — project, topics, goals)
+          7. Intent-specific instruction
+          8. Emotion-based style instruction
+          9. Interruption bridge instruction
         """
-        sections: List[str] = [_BASE_SYSTEM]
-        # First-turn rules enforce that Edi introduces himself by name
-        # to establish identity at the start of a session, and then suppresses it.
+        sections: List[str] = []
+
+        # ── Turn rules ────────────────────────────────────────────
+        # First-turn rules enforce Edi's name introduction once, then suppress it.
         is_first_turn = True
         if hasattr(context, "history_messages") and context.history_messages:
             if any(m["role"] == "assistant" for m in context.history_messages):
@@ -331,8 +424,6 @@ class PromptBuilder:
                     "- CRITICAL: If you output a <show> tag in your technical answer on the first turn, you MUST still output a preceding <speak> tag introducing it (e.g., 'Below is a roadmap showing the compiler workflow' or 'Below is the code for it') immediately before the <show> tag. You must never place a <show> tag immediately after the initial greeting/introduction <speak> tag without a separate preceding visual introduction <speak> tag."
                 )
         else:
-            # Subsequent turns must suppress introductory greetings and references to the name Edi
-            # to prevent conversational repetition.
             sections.append(
                 "[SUBSEQUENT-TURN RULES]\n"
                 "CRITICAL: This is a subsequent turn of the conversation (not the first turn). You MUST NOT say or output "
@@ -343,10 +434,10 @@ class PromptBuilder:
                 "and end with a follow-up question in the <followup> tag."
             )
 
-        # ── Student profile ───────────────────────────────────────────────────
+        # ── Student profile (fixed field order via build_profile_block) ──────
         if context.profile:
             profile = context.profile
-            sections.append(f"[STUDENT PROFILE]\n{profile.to_prompt_block()}")
+            sections.append(f"[STUDENT PROFILE]\n{self.build_profile_block(profile)}")
 
             # Level modifier
             level_mod = _LEVEL_MODIFIERS.get(profile.level)
@@ -366,7 +457,7 @@ class PromptBuilder:
                     f"Be extra patient if these topics come up."
                 )
 
-        # ── Session summary (long-term memory) ───────────────────────────────
+        # ── Session summary (long-term memory) ────────────────────────
         if context.session_summary:
             summary_block = context.session_summary.to_prompt_block()
             if summary_block.strip() != "[SESSION MEMORY]":

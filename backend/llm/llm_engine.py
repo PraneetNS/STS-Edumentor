@@ -4,9 +4,29 @@ EduMentor Voice — LLM Streaming Engine
 Communicates with a local llama.cpp server via its OpenAI-compatible
 streaming API. Tokens are yielded one-by-one as they are generated —
 no waiting for the full response.
+
+Prompt Caching / KV Cache Notes
+────────────────────────────────
+llama-server implements KV cache reuse via prefix matching. When the
+token prefix of a new request matches a previously cached prefix in a
+slot, the server skips re-computing those tokens (prefill shortcut).
+
+For caching to engage reliably across turns:
+  1. The prompt must start with identical tokens every time (stable
+     static system prompt — see PromptBuilder).
+  2. Each session must always land on the SAME slot. If session A's
+     requests are scattered across slot 1, 2, 3 at random, no slot
+     ever accumulates a useful cached prefix for that session.
+     get_slot_for_session() provides deterministic slot affinity.
+  3. The server must be started with -np > 1. Without multiple slots,
+     a second concurrent session evicts the first session's cached
+     prefix even though they share an identical static system prompt.
+     This is the most common reason prompt caching silently fails in
+     multi-user llama-server deployments — see run_llm_server.bat/sh.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 from typing import AsyncIterator
@@ -16,6 +36,36 @@ import httpx
 from config import Config
 
 logger = logging.getLogger(__name__)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Slot affinity — deterministic session-to-slot mapping
+# Must match -np value passed to llama-server (see run_llm_server.bat/sh).
+# ─────────────────────────────────────────────────────────────────────────────
+NUM_SLOTS: int = 4
+
+
+def get_slot_for_session(session_id: str, num_slots: int = NUM_SLOTS) -> int:
+    """Deterministic hash-based slot assignment.
+
+    The same session always lands on the same slot so its KV cache
+    accumulates across turns instead of being scattered across slots.
+
+    With -np 4, four concurrent active sessions each get their own slot.
+    Beyond 4 concurrent sessions, hash collisions become likely: two
+    sessions on the same slot will evict each other's prefix. Size -np
+    to your expected peak concurrency (not total user count — most
+    students are idle between turns, not all sending simultaneously).
+
+    Args:
+        session_id: Unique session identifier (WebSocket session ID).
+        num_slots:  Must match the -np value on llama-server.
+
+    Returns:
+        Slot index in [0, num_slots).
+    """
+    if not session_id:
+        return 0
+    return int(hashlib.md5(session_id.encode()).hexdigest(), 16) % num_slots
 
 
 class LLMEngine:
@@ -63,6 +113,7 @@ class LLMEngine:
     async def stream_tokens_from_messages(
         self,
         messages: list,
+        session_id: str = "",
     ) -> AsyncIterator[str]:
         """
         Stream tokens from the LLM using a pre-built messages list.
@@ -73,11 +124,17 @@ class LLMEngine:
         Parsing follows the OpenAI Server-Sent Events (SSE) format.
 
         Args:
-            messages: List of {"role": ..., "content": ...} dicts.
+            messages:   List of {"role": ..., "content": ...} dicts.
+            session_id: WebSocket session ID used to derive a deterministic
+                        slot index via get_slot_for_session(). Same session
+                        always maps to the same slot so its KV cache prefix
+                        accumulates across turns rather than being evicted
+                        by interleaved requests from other sessions.
 
         Yields:
             Individual token strings.
         """
+        slot_id = get_slot_for_session(session_id)
         payload = {
             "model":          Config.LLM_MODEL_NAME,
             "messages":       messages,
@@ -86,6 +143,14 @@ class LLMEngine:
             "temperature":    Config.LLM_TEMPERATURE,
             "top_p":          Config.LLM_TOP_P,
             "repeat_penalty": Config.LLM_REPEAT_PENALTY,
+            # Explicit cache_prompt — tells llama-server to attempt prefix reuse.
+            # Even though llama-server defaults to True, being explicit ensures
+            # the intent survives any future server default changes.
+            "cache_prompt":   True,
+            # Slot affinity — same session always uses the same KV slot so its
+            # cached prefix (static system prompt + profile + prior history)
+            # accumulates across turns instead of being evicted.
+            "slot_id":        slot_id,
             # Qwen ChatML stop tokens — prevent model bleeding past turn boundaries
             "stop": ["<|im_end|>", "<|im_start|>", "<|endoftext|>"],
         }
@@ -188,12 +253,14 @@ class LLMEngine:
         self,
         messages: list,
         max_tokens: int = 20,
-        timeout: float = 0.4
+        timeout: float = 0.4,
+        session_id: str = "",
     ) -> str:
         """
         Get a single non-streaming completion from the LLM with strict token limits and timeout.
         Used for the low-latency context-aware STT correction pass.
         """
+        slot_id = get_slot_for_session(session_id)
         payload = {
             "model":          Config.LLM_MODEL_NAME,
             "messages":       messages,
@@ -202,6 +269,8 @@ class LLMEngine:
             "temperature":    0.0,  # greedy decoding = faster & consistent
             "top_p":          Config.LLM_TOP_P,
             "repeat_penalty": Config.LLM_REPEAT_PENALTY,
+            "cache_prompt":   True,
+            "slot_id":        slot_id,
             "stop": ["<|im_end|>", "<|im_start|>", "<|endoftext|>"],
         }
 

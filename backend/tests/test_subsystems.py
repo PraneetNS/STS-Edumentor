@@ -85,7 +85,7 @@ class MockLLMEngine:
         self.base_url = "http://localhost:8080"
         self.response_text = None
 
-    async def stream_tokens_from_messages(self, messages: list) -> AsyncIterator[str]:
+    async def stream_tokens_from_messages(self, messages: list, session_id: str = "", **kwargs) -> AsyncIterator[str]:
         self.last_messages = messages
         if self.response_text is not None:
             yield self.response_text
