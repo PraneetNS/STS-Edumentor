@@ -9,7 +9,13 @@ REM  GPU offload: -ngl 9999 offloads all layers to GPU (NVIDIA).
 REM  Reduce -ngl if you see CUDA out-of-memory errors.
 REM
 REM  KV cache / prompt caching flags:
-REM  -c 16384         Context window — must hold system prompt + history + new turn.
+REM  -c 4096          Context window — must hold system prompt + history + new turn.
+REM                  4096 comfortably covers 2,700+ token requests for EduMentor:
+REM                  system prompt (~850t) + history (~1500t) + response (~350t)
+REM                  = ~2700t per turn, leaving ~1300t of headroom.
+REM                  Keeping it at 4096 (vs 8192) reduces KV cache VRAM usage
+REM                  per slot, leaving more headroom for model weights and
+REM                  improving latency.
 REM  --cache-reuse 256  Min token overlap required for llama.cpp to reuse a cached
 REM                   prefix segment. Without this, only a full-prefix match reuses
 REM                   the KV cache; 256 allows partial-prefix hits as history grows.
@@ -35,8 +41,8 @@ echo.
 
 "C:\Users\savan\.docker\bin\inference\llama-server.exe" ^
   -m %MODEL% ^
-  -c 16384 ^
-  -ngl 37 ^
+  -c 4096 ^
+  -ngl 24 ^
   --host 0.0.0.0 ^
   --port 8080 ^
   --temp 0.6 ^
@@ -44,6 +50,6 @@ echo.
   --repeat-penalty 1.08 ^
   --cache-reuse 256 ^
   --slots ^
-  -np 4
+  -np 1
 
 pause
