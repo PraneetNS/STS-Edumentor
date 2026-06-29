@@ -153,21 +153,51 @@ _PROMPT_INJECTION_CHECKER = _RegexChecker(SafetyCategory.PROMPT_INJECTION, [
     r"ignore (all |your )?(previous |prior )?instructions",
     r"disregard (all |your )?(previous |prior )?instructions",
     r"forget (all |your )?(previous |prior )?instructions",
+    r"override (all |your )?(previous |prior )?instructions",
     r"you are now (a |an )?(?!EduMentor)",  # Persona override
     r"pretend (you are|to be) (?!EduMentor)",
     r"act as (a |an )?(?!EduMentor|a tutor|a teacher)",
     r"new system prompt",
     r"system:\s*(you are|ignore)",
+    # System prompt extraction variants
+    r"reveal (your )?system prompt",
+    r"show (your )?system prompt",
+    r"(output|print|repeat|display) (your )?(system )?(prompt|instructions)",
+    r"what is (your )?system prompt",
+    # Special token injection (breaks model context boundary)
+    r"<\|(?:im_start|im_end|system|user|assistant|endoftext)\|>",
+    r"\[INST\]|\[/INST\]|<<SYS>>|<</SYS>>",
+    r"###\s*(System|Instruction|Human|Assistant)\s*:",
+    # Indirect / nested injection
+    r"complete (the )?(sentence|text|phrase).{0,30}you are",
+    r"continue (the )?(sentence|text).{0,30}ignore",
+    # Translation / encoding attacks
+    r"translate (your )?(system prompt|instructions|rules) (to|into)",
+    r"(encode|decode|convert) (your )?(system prompt|instructions) (to|as|in)",
+    # Context window poisoning
+    r"(everything|all text) (above|before) (this|these) (line|message|prompt)",
+    # Authority impersonation
+    r"(i am|this is) (your )?(developer|creator|admin|operator|openai|anthropic|meta)",
+    r"(as (your|the) )?(developer|creator|admin|operator) i (am )?(?:instruct|order|tell|command)ing you",
 ])
 
 _JAILBREAK_CHECKER = _RegexChecker(SafetyCategory.JAILBREAK, [
     r"DAN\s*(mode|prompt|jailbreak)",
     r"jailbreak (mode|prompt|yourself)",
     r"developer mode",
+    r"god mode",
     r"no restrictions",
+    r"unrestricted mode",
     r"without (any |your )?(ethical |moral )?restrictions",
     r"you have no (content |safety )?filters",
     r"bypass (your )?(safety|content|ethical) (filter|guardrail|restriction)",
+    # Hypothetical / fictional framing to bypass safety
+    r"hypothetically (speaking )?if you had no (restrictions|filters|safety)",
+    r"in a (story|novel|game|simulation) where (you|an ai) (has no|ignores)",
+    r"imagine you (have no|are without) (restrictions|filters|safety|guidelines)",
+    # Capability probing
+    r"what (can you really do|are your real capabilities|are you actually allowed)",
+    r"(show|tell|reveal) me (your )?(real|true|actual|hidden) (capabilities|self|mode|instructions)",
 ])
 
 # ── LLM07: Roleplay / persona-swap jailbreak patterns ─────────────────────
@@ -504,12 +534,20 @@ _REFUSAL_MESSAGES: dict = {
         "Let's work through this together step by step — you'll understand it much better that way."
     ),
     SafetyCategory.PROMPT_INJECTION.value: (
-        "I noticed something unusual in that message. Could you rephrase your question?"
+        "I'm EduMentor. I can't process instructions that try to change how I work. "
+        "What engineering topic can I help you with?"
     ),
     SafetyCategory.JAILBREAK.value: (
-        "I'm EduMentor, your AI tutor. I'm not able to change that role. "
+        "I'm EduMentor, your AI engineering tutor. That's not something I can help with. "
         "What would you like to learn today?"
     ),
+}
+
+# Categories whose inputs must NEVER be stored in conversation_logs or memory.
+# Storing them would allow injected instructions to resurface in future prompts.
+DB_DISCARD_CATEGORIES = {
+    SafetyCategory.PROMPT_INJECTION.value,
+    SafetyCategory.JAILBREAK.value,
 }
 
 _DEFAULT_REFUSAL = (
