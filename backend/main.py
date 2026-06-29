@@ -1061,9 +1061,18 @@ async def _stream_llm_and_tts(
                                 logger.info("Skipping diagram/roadmap sentence for TTS: %r", sentence[:60])
                                 continue
 
-                            logger.debug("Enqueuing sentence for TTS: %r", sentence[:60])
-                            # This will block if tts_queue is full (size >= 3), implementing backpressure
-                            await tts_queue.put(sentence)
+                            # Split multi-line content (e.g. inline code without fences)
+                            # into individual lines so TTS reads them one at a time.
+                            if "\n" in sentence:
+                                sub_lines = [l.strip() for l in sentence.split("\n") if l.strip()]
+                                for sub_line in sub_lines:
+                                    if not is_diagram_or_roadmap(sub_line):
+                                        logger.debug("Enqueuing code line for TTS: %r", sub_line[:60])
+                                        await tts_queue.put(sub_line)
+                            else:
+                                logger.debug("Enqueuing sentence for TTS: %r", sentence[:60])
+                                # This will block if tts_queue is full (size >= 3), implementing backpressure
+                                await tts_queue.put(sentence)
         except asyncio.CancelledError:
             logger.info("LLM token reader cancelled.")
             raise
@@ -1083,8 +1092,16 @@ async def _stream_llm_and_tts(
             if final_sentence:
                 from agent.response_planner import is_diagram_or_roadmap
                 if not is_diagram_or_roadmap(final_sentence):
-                    logger.debug("Enqueuing final sentence for TTS: %r", final_sentence[:60])
-                    await tts_queue.put(final_sentence)
+                    # Split multi-line final content line-by-line for TTS
+                    if "\n" in final_sentence:
+                        sub_lines = [l.strip() for l in final_sentence.split("\n") if l.strip()]
+                        for sub_line in sub_lines:
+                            if not is_diagram_or_roadmap(sub_line):
+                                logger.debug("Enqueuing final code line for TTS: %r", sub_line[:60])
+                                await tts_queue.put(sub_line)
+                    else:
+                        logger.debug("Enqueuing final sentence for TTS: %r", final_sentence[:60])
+                        await tts_queue.put(final_sentence)
             # Enqueue sentinel to signal TTS worker to stop
             await tts_queue.put(None)
 
