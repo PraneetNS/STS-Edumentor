@@ -1,6 +1,86 @@
 import re
 from typing import Generator, Dict, Optional
 
+
+# ── Code reformatter ────────────────────────────────────────────────────────
+# When a model collapses all code onto a single line (spaces instead of \n),
+# this restores proper multi-line formatting so the frontend renders it correctly.
+
+# Tokens that should be followed by a newline + indent increase
+_BLOCK_OPEN = re.compile(
+    r'(\{)\s*(?=\S)'          # opening brace with content on same "line"
+    r'|(?<=[):\]>])\s*(\{)\s*$',
+    re.MULTILINE
+)
+
+def _reformat_code(code: str, lang: str) -> str:
+    """
+    Detect and fix single-line code by restoring newlines at statement boundaries.
+    Only runs when the code has no real newlines (i.e. it's one long line).
+    Handles Java, C, C++, JavaScript, TypeScript, Python.
+    """
+    # If the code already has meaningful newlines, leave it alone
+    real_lines = [l for l in code.split('\n') if l.strip()]
+    if len(real_lines) > 3:
+        return code
+
+    lang = (lang or '').lower()
+
+    if lang in ('python', 'py'):
+        return _reformat_python(code)
+    else:
+        # C-family: Java, JS, TS, C, C++, C#, Go, etc.
+        return _reformat_c_family(code)
+
+
+def _reformat_python(code: str) -> str:
+    """Reformat collapsed Python code back to multi-line."""
+    # Pattern to find statement boundaries:
+    # 2 or more spaces followed by a comment, keyword, assignment, or function call
+    pattern = r'(?<!\n)(\s{2,})(?=(?:def\b|class\b|return\b|if\b|elif\b|else:|for\b|while\b|try:|except\b|finally:|with\b|import\b|from\b|pass\b|break\b|continue\b|raise\b|yield\b|assert\b|#|[a-zA-Z_][a-zA-Z0-9_]*\s*(?:=|\()))'
+    
+    # Replace spaces with newline + the same spaces
+    result = re.sub(pattern, r'\n\1', code)
+    
+    # Clean up empty lines and trailing spaces
+    lines = result.split('\n')
+    cleaned = []
+    for line in lines:
+        if line.strip():
+            cleaned.append(line.rstrip())
+    return '\n'.join(cleaned)
+
+
+
+def _reformat_c_family(code: str) -> str:
+    """Reformat collapsed C/Java/JS code back to multi-line with proper indentation."""
+    result = []
+    indent = 0
+    i = 0
+    # Tokenise by { } ; characters which are the statement/block delimiters
+    tokens = re.split(r'(\{|\}|;)', code)
+    for token in tokens:
+        token = token.strip()
+        if not token:
+            continue
+        if token == '{':
+            result.append(' {')
+            indent += 1
+            result.append('\n' + '    ' * indent)
+        elif token == '}':
+            indent = max(0, indent - 1)
+            result.append('\n' + '    ' * indent + '}')
+        elif token == ';':
+            result.append(';')
+            result.append('\n' + '    ' * indent)
+        else:
+            result.append(token)
+    reformed = ''.join(result)
+    # Clean up multiple blank lines and trailing spaces
+    reformed = re.sub(r'\n\s*\n', '\n', reformed)
+    reformed = re.sub(r' +\n', '\n', reformed)
+    return reformed.strip()
+
 def looks_like_truncated_code(code_text: str) -> bool:
     """Heuristic check: a code block that ends right after
     a function/class signature with no body is almost
@@ -424,13 +504,18 @@ class RealtimeStreamingParser:
                 "planned": ""
             }
         elif self.show_type == "code":
+            import logging
+            _log = logging.getLogger("edumentor.agent.realtime_parser")
             if looks_like_truncated_code(cleaned):
-                import logging
-                logging.getLogger("edumentor.agent.realtime_parser").warning(
-                    f"[WARNING] SILENT code block looks truncated: {cleaned[:150]!r}"
-                )
+                _log.warning(f"[CODE] Looks truncated: {cleaned[:150]!r}")
+            _log.warning(f"[CODE RAW INPUT] lang={self.show_lang!r} newlines_in_input={cleaned.count(chr(10))} len={len(cleaned)} sample={cleaned[:200]!r}")
+            # Reformat single-line code into proper multi-line before emitting
+            cleaned = _reformat_code(cleaned, self.show_lang)
+            _log.warning(f"[CODE AFTER REFORMAT] newlines={cleaned.count(chr(10))} sample={cleaned[:200]!r}")
+            final_raw = f"\n\n```{self.show_lang}\n{cleaned}\n```\n\n"
+            _log.warning(f"[CODE FINAL RAW TOKEN] {final_raw[:300]!r}")
             yield {
-                "raw": f"\n\n```{self.show_lang}\n{cleaned}\n```\n\n",
+                "raw": final_raw,
                 "planned": ""
             }
         else:
