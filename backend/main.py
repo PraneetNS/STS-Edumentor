@@ -746,10 +746,13 @@ async def _run_pipeline(
     if not validate_utterance_duration(duration_seconds):
         logger.warning("Utterance duration validation failed: %.2fs", duration_seconds)
         if duration_seconds < Config.MIN_UTTERANCE_MS / 1000:
-            logger.info("Utterance too short (treated as noise) — skipping pipeline.")
-            await websocket.send_json({"type": "transcript", "text": "", "words": []})
+            logger.info("Utterance too short (treated as noise) — responding with clarification prompt.")
+            await set_state(ConversationState.THINKING)
+            async def _short_audio_stream():
+                yield {"raw": "I didn't hear that. Could you speak a little louder and clearer?", "planned": "I didn't hear that. Could you speak a little louder and clearer?"}
+            await _stream_llm_and_tts(websocket, _short_audio_stream(), loop, set_state, Config.KOKORO_SPEED, Config.KOKORO_VOICE, latency_metrics, start_time)
             await set_state(ConversationState.IDLE)
-            await websocket.send_json({"type": "done"})
+            await websocket.send_json({"type": "assistant_finished"})
             return
 
     min_avg_logprob = 0.0
@@ -794,10 +797,13 @@ async def _run_pipeline(
         return
 
     if not transcript:
-        logger.info("Empty transcript — skipping pipeline.")
-        await websocket.send_json({"type": "transcript", "text": "", "words": []})
+        logger.info("Empty transcript — responding with clarification prompt.")
+        await set_state(ConversationState.THINKING)
+        async def _empty_transcript_stream():
+            yield {"raw": "I didn't hear that. Could you speak a little louder and clearer?", "planned": "I didn't hear that. Could you speak a little louder and clearer?"}
+        await _stream_llm_and_tts(websocket, _empty_transcript_stream(), loop, set_state, Config.KOKORO_SPEED, Config.KOKORO_VOICE, latency_metrics, start_time)
         await set_state(ConversationState.IDLE)
-        await websocket.send_json({"type": "done"})
+        await websocket.send_json({"type": "assistant_finished"})
         return
 
     # ── 1.5 Speech Normalization & Domain Correction ─────────────────────────
