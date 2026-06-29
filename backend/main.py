@@ -156,6 +156,12 @@ async def lifespan(app: FastAPI):
     llm_engine = LLMEngine()
     kokoro_engine = KokoroEngine()
 
+    # Reset circuit breaker so a stale open state from a previous
+    # crash/restart never blocks the first real request of this session.
+    from llm.circuit_breaker import llm_circuit
+    llm_circuit.reset()
+    logger.info("[OK] LLM circuit breaker reset to closed state.")
+
 
     # Load Silero VAD model
     logger.info("Loading Silero VAD model ...")
@@ -280,7 +286,30 @@ class ClientErrorReport(PydanticBaseModel):
     timestamp:      _Opt[str] = None
 
 
-@app.post("/api/log-client-error", tags=["System"])
+@app.post("/api/reset-circuit", tags=["System"])
+async def reset_circuit_breaker():
+    """Manually reset the LLM circuit breaker to closed state.
+    Use this when the LLM server comes back online after an outage
+    and you don't want to wait for the recovery_timeout."""
+    from llm.circuit_breaker import llm_circuit
+    llm_circuit.reset()
+    logger.info("[CIRCUIT BREAKER] Manually reset via API.")
+    return {"status": "reset", "state": llm_circuit.state}
+
+
+@app.get("/api/circuit-status", tags=["System"])
+async def circuit_status():
+    """Check current circuit breaker state."""
+    from llm.circuit_breaker import llm_circuit
+    return {
+        "state": llm_circuit.state,
+        "failure_count": llm_circuit.failure_count,
+        "call_timeout": llm_circuit.call_timeout,
+        "recovery_timeout": llm_circuit.recovery_timeout,
+    }
+
+
+
 async def log_client_error(report: ClientErrorReport):
     """
     Receive and log a React ErrorBoundary crash report.
