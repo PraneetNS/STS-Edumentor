@@ -600,14 +600,7 @@ export function useVoicePipeline({
         case 'assistant_text_delta':
           generatedTextBufferRef.current += msg.text;
           {
-            // TEMP DEBUG
-            if (msg.text && msg.text.includes('```')) {
-              console.log('[CODE DELTA RAW]', JSON.stringify(msg.text));
-            }
             const displayText = sanitizeAssistantText(generatedTextBufferRef.current);
-            if (msg.text && msg.text.includes('```')) {
-              console.log('[CODE DELTA SANITIZED TAIL]', JSON.stringify(displayText.slice(-400)));
-            }
             setAssistantText(displayText);
             if (fallbackToTokenStreamingRef.current) setIsSpeakingTextSync(false);
             if (onTextUpdateRef.current) onTextUpdateRef.current(displayText);

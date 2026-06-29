@@ -504,18 +504,15 @@ class RealtimeStreamingParser:
                 "planned": ""
             }
         elif self.show_type == "code":
-            import logging
-            _log = logging.getLogger("edumentor.agent.realtime_parser")
             if looks_like_truncated_code(cleaned):
-                _log.warning(f"[CODE] Looks truncated: {cleaned[:150]!r}")
-            _log.warning(f"[CODE RAW INPUT] lang={self.show_lang!r} newlines_in_input={cleaned.count(chr(10))} len={len(cleaned)} sample={cleaned[:200]!r}")
+                import logging
+                logging.getLogger("edumentor.agent.realtime_parser").warning(
+                    f"[CODE] Truncated code block detected: {cleaned[:150]!r}"
+                )
             # Reformat single-line code into proper multi-line before emitting
             cleaned = _reformat_code(cleaned, self.show_lang)
-            _log.warning(f"[CODE AFTER REFORMAT] newlines={cleaned.count(chr(10))} sample={cleaned[:200]!r}")
-            final_raw = f"\n\n```{self.show_lang}\n{cleaned}\n```\n\n"
-            _log.warning(f"[CODE FINAL RAW TOKEN] {final_raw[:300]!r}")
             yield {
-                "raw": final_raw,
+                "raw": f"\n\n```{self.show_lang}\n{cleaned}\n```\n\n",
                 "planned": ""
             }
         else:
