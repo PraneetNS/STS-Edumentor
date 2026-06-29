@@ -96,6 +96,24 @@ class KokoroEngine:
         # Remove markdown characters that confuse the G2P phoneme engine
         text = re.sub(r"[*`_\[\]{}()#]", "", text)
 
+        # Convert newlines in code-like content into spoken line breaks.
+        # Each non-empty line becomes its own sentence so TTS reads them
+        # one at a time instead of running everything together.
+        # Detect multi-line content (2+ newlines or indented lines).
+        if "\n" in text:
+            lines = text.split("\n")
+            spoken_lines = []
+            for line in lines:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                # Add a period after lines that don't already end with punctuation
+                # so the TTS engine treats each line as a complete spoken unit.
+                if stripped and not re.search(r"[.!?,;:]$", stripped):
+                    stripped += "."
+                spoken_lines.append(stripped)
+            text = "  ".join(spoken_lines)
+
         # Replace ellipses and dashes with commas/periods for natural pauses
         text = text.replace("...", ". ")
         text = text.replace("--", ", ")
