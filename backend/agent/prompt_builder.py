@@ -344,6 +344,25 @@ class PromptBuilder:
             )
             messages.append({"role": "system", "content": rag_block})
 
+        # ── Layer 3.5: Code formatting hard reminder (injected just before user msg) ──
+        # Placed immediately before the user message so it sits at the highest-weight
+        # position in the context window. The model is most likely to follow instructions
+        # that appear closest to the generation point.
+        if context.intent in (Intent.CODE_HELP, Intent.DEBUGGING):
+            messages.append({
+                "role": "system",
+                "content": (
+                    "[CODE FORMAT REMINDER — MANDATORY]\n"
+                    "You are about to generate a code block. You MUST follow these rules with zero exceptions:\n"
+                    "1. NEVER write code on a single line. Every statement, every comment, every blank line MUST be on its own line.\n"
+                    "2. Use real newline characters (\\n) between every line of code. Never use spaces or semicolons to separate statements.\n"
+                    "3. Preserve all indentation (4 spaces per level for Python).\n"
+                    "4. Place your code inside a <show type=\"code\" lang=\"...\"> block.\n"
+                    "5. The speak tag before the show block must be a single sentence — never embed code in speak tags.\n"
+                    "Violation of these rules will break the user interface. Single-line code output is strictly forbidden."
+                )
+            })
+
         # ── Layer 4: Current user message ─────────────────────────────
         messages.append({"role": "user", "content": context.user_text})
 
