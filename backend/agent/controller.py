@@ -67,6 +67,18 @@ logger = logging.getLogger("edumentor.agent.controller")
 agent_logger = logging.getLogger("edumentor.agent.events")
 
 
+def get_max_tokens_for_intent(user_text: str, intent: Intent) -> int:
+    query = user_text.lower()
+    needs_silent = (
+        intent in (Intent.CODE_HELP, Intent.DEBUGGING) or
+        any(w in query for w in ("code", "write", "implement", "script", "program", "function", "class")) or
+        any(w in query for w in ("roadmap", "workflow", "diagram", "table", "checklist", "comparison", "list"))
+    )
+    if needs_silent:
+        return 512  # Raise token ceiling for visual/code requests
+    return 150      # Keep voice-only or short replies compact and fast
+
+
 class AgentController:
     """
     Central orchestrator for the EduMentor agentic pipeline.
@@ -152,20 +164,70 @@ class AgentController:
         processed_text = aadhaar_re.sub("[redacted]", processed_text)
         processed_text = phone_re.sub("[redacted]", processed_text)
 
-        # Prompt Injection Detection
+        # Prompt Injection Detection — comprehensive patterns
         injection_patterns = [
+            # Classic instruction override
             r"ignore\s+(?:all\s+|your\s+)?(?:previous\s+|prior\s+)?instructions",
             r"disregard\s+(?:all\s+|your\s+)?(?:previous\s+|prior\s+)?instructions",
             r"forget\s+(?:all\s+|your\s+)?(?:previous\s+|prior\s+)?instructions",
+            r"override\s+(?:all\s+|your\s+)?(?:previous\s+|prior\s+)?instructions",
+            r"bypass\s+(?:all\s+|your\s+)?(?:previous\s+|prior\s+)?(?:instructions|rules|guidelines|filters|safety)",
+            # Identity hijacking
             r"you\s+are\s+now\s+(?:a\s+|an\s+)?(?!EduMentor)",
             r"pretend\s+(?:you\s+are|to\s+be)\s+(?!EduMentor)",
             r"act\s+as\s+(?:a\s+|an\s+)?(?!EduMentor|a\s+tutor|a\s+teacher)",
+            r"roleplay\s+as",
+            r"from\s+now\s+on\s+you\s+are",
+            r"switch\s+(?:to|into)\s+(?:a\s+|an\s+)?(?:new|different)\s+(?:mode|persona|role)",
+            # System prompt extraction
             r"new\s+system\s+prompt",
             r"system:\s*(?:you\s+are|ignore)",
             r"reveal\s+(?:your\s+)?system\s+prompt",
             r"show\s+(?:your\s+)?system\s+prompt",
             r"what\s+is\s+(?:your\s+)?system\s+prompt",
             r"output\s+(?:your\s+)?system\s+prompt",
+            r"print\s+(?:your\s+)?(?:system\s+)?(?:prompt|instructions)",
+            r"repeat\s+(?:your\s+)?(?:system\s+)?(?:prompt|instructions)\s+(?:back|verbatim)",
+            r"display\s+(?:your\s+)?(?:initial|original|hidden)\s+(?:prompt|instructions)",
+            # DAN / jailbreak keywords
+            r"\bDAN\b",
+            r"\bjailbreak\b",
+            r"\bprompt\s*injection\b",
+            r"\bprompt\s*leak(?:ing)?\b",
+            r"developer\s+mode",
+            r"god\s+mode",
+            r"unrestricted\s+mode",
+            r"no\s+(?:rules|restrictions|filters|limits)",
+            # Harmful intent
+            r"how\s+to\s+(?:hack|exploit|attack|destroy|harm|kill|bomb|weapon)",
+            r"(?:make|build|create)\s+(?:a\s+)?(?:bomb|weapon|virus|malware|exploit)",
+            # ── New: token smuggling / separator tricks ────────────────────────
+            # Attacker inserts special tokens or separators to break context boundary
+            r"<\|(?:im_start|im_end|system|user|assistant|endoftext)\|>",
+            r"\[INST\]|\[/INST\]|<<SYS>>|<</SYS>>",  # Llama2/Mistral special tokens
+            r"###\s*(?:System|Instruction|Human|Assistant)\s*:",
+            r"<\|?\s*system\s*\|?>",
+            # ── New: indirect / nested injection ─────────────────────────────
+            # "Complete the sentence: You are now..." style attacks
+            r"complete\s+(?:the\s+)?(?:sentence|text|phrase)\s*:.*you\s+are",
+            r"continue\s+(?:the\s+)?(?:sentence|text)\s*:.*ignore",
+            # ── New: hypothetical / fictional framing ─────────────────────────
+            r"hypothetically\s+(?:speaking\s+)?(?:if\s+)?you\s+(?:had\s+no|were\s+without|could\s+bypass)",
+            r"in\s+a\s+(?:story|novel|game|simulation)\s+where\s+(?:you|an\s+ai)\s+(?:has\s+no|ignores)",
+            r"imagine\s+you\s+(?:have\s+no|are\s+without)\s+(?:restrictions|filters|safety|guidelines)",
+            # ── New: translation / encoding attacks ───────────────────────────
+            # "Translate your instructions to Spanish" → system prompt extraction
+            r"translate\s+(?:your\s+)?(?:system\s+prompt|instructions|rules|guidelines)\s+(?:to|into)",
+            r"(?:encode|decode|convert)\s+(?:your\s+)?(?:system\s+prompt|instructions)\s+(?:to|as|in)",
+            # ── New: context window poisoning ─────────────────────────────────
+            r"(?:everything|all\s+text)\s+(?:above|before)\s+(?:this|these)\s+(?:line|message|prompt)",
+            r"(?:the|your)\s+(?:previous|above|prior)\s+(?:context|messages?|conversation)\s+(?:said|states?|told)",
+            # ── New: capability probing ───────────────────────────────────────
+            r"what\s+(?:can\s+you\s+really\s+do|are\s+your\s+real\s+capabilities|are\s+you\s+actually\s+allowed)",
+            r"(?:show|tell|reveal)\s+me\s+(?:your\s+)?(?:real|true|actual|hidden)\s+(?:capabilities|self|mode|instructions)",
+            # ── New: authority impersonation ──────────────────────────────────
+            r"(?:i\s+am|this\s+is)\s+(?:your\s+)?(?:developer|creator|admin|operator|openai|anthropic|meta)",
+            r"(?:as\s+(?:your|the)\s+)?(?:developer|creator|admin|operator)\s+i\s+(?:am\s+)?(?:instructing|ordering|telling|commanding)\s+you",
         ]
 
         for p in injection_patterns:
@@ -275,6 +337,7 @@ class AgentController:
         output_flagged = False
         flag_reason = None
         refusal_message = None
+        _skip_db_log = False  # Set True for any blocked input — prevents history poisoning
 
         # Redact PII in user input (existing logic)
         from agent.safety_guard import EMAIL_RE, AADHAAR_RE, PHONE_RE, SSN_RE
@@ -320,11 +383,12 @@ class AgentController:
             if input_flagged and flag_reason != "timeout":
                 from agent.security_logger import log_security_event
                 from agent.rate_limiter import rate_limiter
-                
+                from agent.safety_guard import DB_DISCARD_CATEGORIES
+
                 asyncio.create_task(log_security_event(
                     user_id, ip_address, "jailbreak_attempt", flag_reason or "unsafe_input"
                 ))
-                
+
                 violation_count = rate_limiter.record_violation(user_id)
                 if violation_count >= 3:
                     rate_limiter.apply_strict_limit(user_id, duration_seconds=3600)
@@ -333,24 +397,21 @@ class AgentController:
                         f"{violation_count} violations in 10 min"
                     ))
 
-                latency_ms = int((time.perf_counter() - start_time) * 1000)
-                asyncio.create_task(
-                    self._db_manager.write_log(
-                        user_id=user_uuid,
-                        session_id=session_uuid,
-                        query_text=processed_text,
-                        response_text=refusal_message,
-                        intent_category="UNSAFE",
-                        input_flagged=True,
-                        output_flagged=False,
-                        flag_reason=flag_reason,
-                        latency_ms=latency_ms
-                    )
-                )
+                # Mark as must-not-log: prompt injections and jailbreak attempts
+                # must never enter conversation_logs or memory (history poisoning).
+                if flag_reason in DB_DISCARD_CATEGORIES or flag_reason == "prompt_injection":
+                    _skip_db_log = True
+
                 async for token in self._stream_refusal(refusal_message, session_id):
                     yield token
+                # ── DO NOT write to conversation_logs ─────────────────────────
+                # Storing jailbreak/injection attempts in history would:
+                #   1. Pollute the student's conversation context and memory
+                #   2. Allow the injected text to resurface in future prompts
+                #      (history poisoning via the memory manager)
+                #   3. Create a record that could be replayed in RAG retrieval
+                # Security event is already logged via log_security_event() above.
                 return
-
         # 2. Non-Latin / off-topic routing (Component 3)
         from agent.safety_guard import get_non_latin_ratio
         non_latin_ratio = get_non_latin_ratio(processed_text)
@@ -364,24 +425,10 @@ class AgentController:
             ))
             # Route to manual review: flag and block
             refusal_message = "I noticed something unusual in that message. Let me flag this for review and get back to you."
-            latency_ms = int((time.perf_counter() - start_time) * 1000)
-            asyncio.create_task(
-                self._db_manager.write_log(
-                    user_id=user_uuid,
-                    session_id=session_uuid,
-                    query_text=original_text,
-                    response_text=refusal_message,
-                    intent_category="UNSAFE",
-                    input_flagged=True,
-                    output_flagged=False,
-                    flag_reason="non_latin_off_topic",
-                    latency_ms=latency_ms
-                )
-            )
+            # Blocked input — do NOT store in DB to prevent history poisoning
             async for token in self._stream_refusal(refusal_message, session_id):
                 yield token
             return
-
         # 3. Token budget check (Component 4) — before context assembly
         from agent.token_budget import token_budget
         if not token_budget.check_daily_budget(user_id):
@@ -414,7 +461,7 @@ class AgentController:
 
         # Retrieve history messages
         history_messages = []
-        db_rows = await self._db_manager.fetch_history(user_uuid, limit=10)
+        db_rows = await self._db_manager.fetch_history(user_uuid, session_id=session_uuid, limit=10)
         db_rows_reversed = list(reversed(db_rows))
         for r in db_rows_reversed:
             history_messages.append({"role": "user", "content": r["query_text"]})
@@ -490,7 +537,10 @@ class AgentController:
             # session_id is forwarded so the engine pins this request to a deterministic
             # KV cache slot, ensuring the cached system-prompt prefix accumulates across
             # turns instead of being scattered or evicted by other sessions.
-            async for raw_token in self._llm.stream_tokens_from_messages(messages, session_id=session_id):
+            max_tokens = get_max_tokens_for_intent(processed_text, intent_result.intent)
+            async for raw_token in self._llm.stream_tokens_from_messages(
+                messages, session_id=session_id, max_tokens=max_tokens
+            ):
                 full_raw_response_list.append(raw_token)
                 
                 # Filter PII across token boundaries
@@ -630,23 +680,28 @@ class AgentController:
             post_processed_response = refusal_message
             yield {"raw": refusal_message, "planned": refusal_message}
 
-        # Save memory for local tracking components
-        self._memory.add_turn(
-            session_id     = session_id,
-            user_text      = processed_text,
-            assistant_text = post_processed_response,
-            intent         = intent_result.intent.value,
-            emotion        = emotion_result.emotion.value,
-        )
+        # Save memory for local tracking components.
+        # Skip for blocked inputs — injected text must never enter the memory
+        # window where it could be included in future LLM context.
+        if not _skip_db_log:
+            self._memory.add_turn(
+                session_id     = session_id,
+                user_text      = processed_text,
+                assistant_text = post_processed_response,
+                intent         = intent_result.intent.value,
+                emotion        = emotion_result.emotion.value,
+            )
 
-        self._profile_manager.update_from_turn(
-            user_text       = processed_text,
-            assistant_text  = post_processed_response,
-            emotion         = emotion_result.emotion,
-        )
+            self._profile_manager.update_from_turn(
+                user_text       = processed_text,
+                assistant_text  = post_processed_response,
+                emotion         = emotion_result.emotion,
+            )
 
-        # Log turns to database
-        if not log_written:
+        # Log turns to database — skip entirely for blocked/jailbreak inputs to
+        # prevent history poisoning (injected text must never enter conversation_logs
+        # where it could be replayed via memory manager or RAG retrieval).
+        if not log_written and not _skip_db_log:
             latency_ms = int((time.perf_counter() - start_time) * 1000)
             asyncio.create_task(
                 self._db_manager.write_log(
