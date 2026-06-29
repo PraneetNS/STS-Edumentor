@@ -19,6 +19,42 @@ import './index.css';
 import { MarkdownViewer } from './components/MarkdownViewer';
 import { StatusBar } from './components/StatusBar';
 
+function trimToLastCompleteSentence(text) {
+  if (!text) return '';
+  
+  // Keep completed show blocks intact, only cleaning up trailing content after them
+  const lastShowClose = text.lastIndexOf('</show>');
+  const lastCurlyShowClose = text.lastIndexOf('{/show}');
+  const showCloseIndex = Math.max(lastShowClose, lastCurlyShowClose);
+  
+  if (showCloseIndex !== -1) {
+    const showCloseLength = lastShowClose > lastCurlyShowClose ? 7 : 8;
+    const showPart = text.substring(0, showCloseIndex + showCloseLength);
+    const afterShow = text.substring(showCloseIndex + showCloseLength);
+    const cleanedAfterShow = trimToLastCompleteSentence(afterShow);
+    return showPart + cleanedAfterShow;
+  }
+  
+  // Find the last index of sentence-ending punctuation (. or ! or ?)
+  const lastIndex = Math.max(
+    text.lastIndexOf('.'),
+    text.lastIndexOf('!'),
+    text.lastIndexOf('?')
+  );
+  
+  if (lastIndex !== -1) {
+    return text.substring(0, lastIndex + 1);
+  }
+  
+  // Fallback: trim to the last complete word
+  const trimmedText = text.trim();
+  const lastSpaceIndex = trimmedText.lastIndexOf(' ');
+  if (lastSpaceIndex !== -1) {
+    return trimmedText.substring(0, lastSpaceIndex);
+  }
+  
+  return text;
+}
 
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -107,6 +143,16 @@ export default function App() {
     saveMessageSnapshot,
   } = useConversationStore();
 
+  useEffect(() => {
+    if (activeConversation) {
+      document.title = activeConversation.title === 'New Conversation'
+        ? 'EduMentor Voice — AI Tutor'
+        : `EduMentor — ${activeConversation.title}`;
+    } else {
+      document.title = 'EduMentor Voice — AI Tutor';
+    }
+  }, [activeConversation?.title]);
+
   const messages = activeConversation?.messages ?? [];
 
   // Active message ID ref to update the streaming assistant bubble in real-time
@@ -149,6 +195,10 @@ export default function App() {
   } = useVoicePipeline({
     conversationId: activeId,
     onTranscript: (text) => {
+      // Guard: never add an empty user bubble — happens when STT
+      // produces nothing (silence, noise, too short). The backend
+      // will handle the "didn't hear you" response separately.
+      if (!text || !text.trim()) return;
       addMessage('user', text);
     },
     onThinking: () => {
@@ -168,6 +218,11 @@ export default function App() {
     },
     onInterrupt: () => {
       if (activeMsgIdRef.current) {
+        const activeMsg = activeConversation?.messages.find(m => m.id === activeMsgIdRef.current);
+        if (activeMsg && activeMsg.text) {
+          const cleanedText = trimToLastCompleteSentence(activeMsg.text);
+          setStreamingMessageText(activeMsgIdRef.current, cleanedText);
+        }
         finishStreamingMessage(activeMsgIdRef.current);
         activeMsgIdRef.current = null;
       }
@@ -498,7 +553,7 @@ export default function App() {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    gap: '6px',
+                    gap: '4px',
                   }}>
                     <p style={{
                       fontSize: '18px',
@@ -513,7 +568,7 @@ export default function App() {
                       fontSize: '14px',
                       fontWeight: '550',
                       color: 'var(--text-secondary)',
-                      margin: '2px 0 4px',
+                      margin: 0,
                     }}>
                       Your Engineering Mentor
                     </p>
@@ -521,7 +576,7 @@ export default function App() {
                       fontSize: '13px',
                       color: 'var(--text-muted)',
                       margin: 0,
-                      lineHeight: '1.6',
+                      lineHeight: '1.4',
                       maxWidth: '280px',
                     }}>
                       Press the mic below to start our session.
@@ -532,7 +587,10 @@ export default function App() {
 
               {/* FIX 1 — Isolate MessageList: if ONE message bubble throws (e.g.
                   malformed markdown from a streamed response), only the message
-                  list resets — the voice pipeline keeps running. */}
+                  list resets — the voice pipeline keeps running.
+                  Only render when there are messages — the welcome screen above
+                  already handles the empty state so we don't double-render. */}
+              {messages.length > 0 && (
               <ErrorBoundary onReset={resetMessageList}>
                 <MessageList
                   messages={messages}
@@ -544,6 +602,7 @@ export default function App() {
                   onSnapshot={saveMessageSnapshot}
                 />
               </ErrorBoundary>
+              )}
             </div>
 
             {/* FIX 4 — Duplicate tab banner */}
