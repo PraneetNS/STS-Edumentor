@@ -1,6 +1,30 @@
 import re
 from typing import Generator, Dict, Optional
 
+def looks_like_truncated_code(code_text: str) -> bool:
+    """Heuristic check: a code block that ends right after
+    a function/class signature with no body is almost
+    certainly truncated, not intentional."""
+    code = code_text.strip()
+    # Strip HTML/markdown code wrapper if present
+    code = re.sub(r"^```[\w]*\n", "", code)
+    code = re.sub(r"\n```$", "", code)
+    code = code.strip()
+    
+    lines = [l for l in code.split('\n') if l.strip()]
+    if len(lines) == 0:
+        return False
+    last_line = lines[-1].strip()
+    # Signature-only patterns across common languages
+    signature_only_patterns = [
+        r':\s*$',           # Python "def foo():" with nothing after
+        r'\{\s*$',          # JS/Java/C "function foo() {" with nothing after
+        r'^(def|function|class|public|private|void)\s',
+    ]
+    if len(lines) == 1 and any(re.search(p, last_line) for p in signature_only_patterns):
+        return True
+    return False
+
 class RealtimeStreamingParser:
     """
     State-based real-time streaming parser for LLM responses.
@@ -344,9 +368,12 @@ class RealtimeStreamingParser:
     def _yield_show_content(self) -> Generator[Dict[str, str], None, None]:
         cleaned = self.show_buffer.strip()
 
-        # Strip any XML-style tags the LLM placed inside the show block
-        # e.g. <checklist>...</checklist>, <item>...</item>, <step>...</step>
-        cleaned = re.sub(r"</?(?:checklist|item|step|li|ul|ol|entry|pre|code)>", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(
+            r"</?(?:checklist|item|step|li|ul|ol|entry|pre|code)(?:\s+[^>]*)?>",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
         
         # Strip leading/trailing JSON/string wrappers
         if cleaned.startswith("{") and cleaned.endswith("}"):
@@ -397,6 +424,11 @@ class RealtimeStreamingParser:
                 "planned": ""
             }
         elif self.show_type == "code":
+            if looks_like_truncated_code(cleaned):
+                import logging
+                logging.getLogger("edumentor.agent.realtime_parser").warning(
+                    f"[WARNING] SILENT code block looks truncated: {cleaned[:150]!r}"
+                )
             yield {
                 "raw": f"\n\n```{self.show_lang}\n{cleaned}\n```\n\n",
                 "planned": ""

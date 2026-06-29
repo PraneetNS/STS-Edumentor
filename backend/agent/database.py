@@ -250,24 +250,41 @@ class DatabaseManager:
         except Exception as e:
             logger.error("Failed to write low-confidence response to PostgreSQL: %s", e)
 
-    async def fetch_history(self, user_id: uuid.UUID, limit: int = 10) -> List[Dict[str, Any]]:
+    async def fetch_history(
+        self,
+        user_id: uuid.UUID,
+        session_id: Optional[uuid.UUID] = None,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
         """
-        Fetch the last limit records for a given user_id, ordered by created_at DESC.
+        Fetch the last limit records for a given user_id and optional session_id, ordered by created_at DESC.
         """
         if not self.enabled or not self.pool:
             logger.debug("Database disabled or pool not initialized. Returning empty history.")
             return []
 
-        query = """
-        SELECT query_text, response_text, intent_category, created_at
-        FROM conversation_logs
-        WHERE user_id = $1
-        ORDER BY created_at DESC
-        LIMIT $2;
-        """
+        if session_id:
+            query = """
+            SELECT query_text, response_text, intent_category, created_at
+            FROM conversation_logs
+            WHERE user_id = $1 AND session_id = $2
+            ORDER BY created_at DESC
+            LIMIT $3;
+            """
+            args = (user_id, session_id, limit)
+        else:
+            query = """
+            SELECT query_text, response_text, intent_category, created_at
+            FROM conversation_logs
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2;
+            """
+            args = (user_id, limit)
+
         try:
             async with self.pool.acquire() as conn:
-                rows = await conn.fetch(query, user_id, limit)
+                rows = await conn.fetch(query, *args)
                 return [dict(r) for r in rows]
         except Exception as e:
             logger.error("Failed to fetch history for user_id=%s from PostgreSQL: %s", user_id, e)

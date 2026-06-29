@@ -1052,6 +1052,7 @@ body,
   }
 }
 
+/* Cursor for streaming text (commented out per user request)
 .msg-bubble.streaming-text::after {
   content: '▌';
   display: inline;
@@ -1061,6 +1062,7 @@ body,
   font-size: 14px;
   line-height: 1;
 }
+*/
 
 /* Legacy stream cursor — kept for backwards compatibility, unused */
 .stream-cursor {

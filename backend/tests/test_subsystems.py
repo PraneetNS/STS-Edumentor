@@ -68,8 +68,15 @@ class InMemoryDBMock:
             "created_at": time.time() + self._counter
         })
 
-    async def fetch_history(self, user_id: uuid.UUID, limit: int = 10) -> list[dict]:
+    async def fetch_history(
+        self,
+        user_id: uuid.UUID,
+        session_id: Optional[uuid.UUID] = None,
+        limit: int = 10,
+    ) -> list[dict]:
         user_logs = [log for log in self.logs if log["user_id"] == user_id]
+        if session_id:
+            user_logs = [log for log in user_logs if log["session_id"] == session_id]
         # Sort DESC (newest first)
         user_logs.sort(key=lambda x: x["created_at"], reverse=True)
         return user_logs[:limit]

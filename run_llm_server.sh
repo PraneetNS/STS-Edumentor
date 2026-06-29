@@ -9,7 +9,7 @@
 #  Reduce -ngl if you get out-of-memory errors.
 #
 #  KV cache / prompt caching flags:
-#  -c 4096          Context window — must hold system prompt + history + new turn.
+#  -c 16384         Context window — must hold system prompt + history + new turn.
 #  --cache-reuse 256  Min token overlap for llama.cpp to reuse a cached prefix
 #                   segment instead of requiring a full-prefix match.
 #  --slots          Exposes /slots endpoint for cache verification:
@@ -43,7 +43,7 @@ echo ""
 
 llama-server \
   -m "${MODEL_PATH}" \
-  -c 4096 \
+  -c 16384 \
   -ngl 20 \
   --host 0.0.0.0 \
   --port 8080 \

@@ -27,12 +27,13 @@
     "Civil Engineering",
     "Aerospace Engineering",
     "Algorithms",
-    "DSA"
+    "DSA",
+    "Databases"
   ],
   "preferred_style": "examples",
-  "session_count": 58,
-  "discipline": "civil",
+  "session_count": 66,
+  "discipline": "cse",
   "active_topics": [
-    "Civil Engineering"
+    "Python"
   ]
 }

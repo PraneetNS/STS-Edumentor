@@ -5,6 +5,7 @@
  * Groups conversations by Today / Yesterday / Previous.
  */
 import { useState, useCallback, useMemo } from 'react';
+import { isJailbreakAttempt } from '../utils/isJailbreakAttempt';
 
 const STORAGE_KEY = 'edumentor_v2_conversations';
 
@@ -120,6 +121,12 @@ export function useConversationStore() {
   }, []);
 
   const addMessage = useCallback((role, text, extra = {}) => {
+    // Block jailbreak / prompt injection messages from being stored
+    if (role === 'user' && isJailbreakAttempt(text)) {
+      console.warn('[SECURITY] Blocked jailbreak attempt from being stored:', text?.slice(0, 50));
+      return null; // Signal to caller that message was rejected
+    }
+
     const msgId = extra.id || (role === 'user' ? 'u-' : 'a-') + Date.now();
     setConversations(prev => {
       const updated = prev.map(conv => {

@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { splitWrappedLines } from '../utils/formatMessageText';
 
 export const UserMessageText = memo(function UserMessageText({ text = '' }) {
-  const lines = splitWrappedLines(text);
+  const lines = text.split('\n').filter((line) => line.trim() !== '');
 
   if (lines.length === 0) return null;
 

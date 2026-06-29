@@ -9,7 +9,7 @@ REM  GPU offload: -ngl 9999 offloads all layers to GPU (NVIDIA).
 REM  Reduce -ngl if you see CUDA out-of-memory errors.
 REM
 REM  KV cache / prompt caching flags:
-REM  -c 4096          Context window — must hold system prompt + history + new turn.
+REM  -c 16384         Context window — must hold system prompt + history + new turn.
 REM  --cache-reuse 256  Min token overlap required for llama.cpp to reuse a cached
 REM                   prefix segment. Without this, only a full-prefix match reuses
 REM                   the KV cache; 256 allows partial-prefix hits as history grows.
@@ -35,8 +35,8 @@ echo.
 
 "C:\Users\savan\.docker\bin\inference\llama-server.exe" ^
   -m %MODEL% ^
-  -c 4096 ^
-  -ngl 20 ^
+  -c 16384 ^
+  -ngl 37 ^
   --host 0.0.0.0 ^
   --port 8080 ^
   --temp 0.6 ^

@@ -101,7 +101,7 @@ export function MarkdownViewer({ text, isStreaming = false }) {
     return null;
   }
 
-  const lines = wrapTextByWordCount(cleaned).split('\n');
+  const lines = cleaned.split('\n');
   let inCodeBlock = false;
   let codeContent = [];
   let renderedElements = [];

@@ -57,7 +57,7 @@ class Config:
     # ─────────────────────────────────────────────
     # LLM settings (llama.cpp OpenAI-compat server)
     # ─────────────────────────────────────────────
-    LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "http://localhost:8080")
+    LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "http://127.0.0.1:8080")
     LLM_MODEL_NAME: str = os.getenv("LLM_MODEL_NAME", "local")
     LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "512"))
     # Voice-tuned generation settings — warm and natural, not robotic

@@ -29,7 +29,7 @@ import asyncio
 import hashlib
 import json
 import logging
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 
 import httpx
 
@@ -114,6 +114,7 @@ class LLMEngine:
         self,
         messages: list,
         session_id: str = "",
+        max_tokens: Optional[int] = None,
     ) -> AsyncIterator[str]:
         """
         Stream tokens from the LLM using a pre-built messages list.
@@ -130,6 +131,7 @@ class LLMEngine:
                         always maps to the same slot so its KV cache prefix
                         accumulates across turns rather than being evicted
                         by interleaved requests from other sessions.
+            max_tokens: Optional token generation limit override.
 
         Yields:
             Individual token strings.
@@ -139,7 +141,7 @@ class LLMEngine:
             "model":          Config.LLM_MODEL_NAME,
             "messages":       messages,
             "stream":         True,
-            "max_tokens":     Config.LLM_MAX_TOKENS,
+            "max_tokens":     max_tokens if max_tokens is not None else Config.LLM_MAX_TOKENS,
             "temperature":    Config.LLM_TEMPERATURE,
             "top_p":          Config.LLM_TOP_P,
             "repeat_penalty": Config.LLM_REPEAT_PENALTY,

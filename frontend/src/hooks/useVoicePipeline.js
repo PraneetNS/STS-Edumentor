@@ -29,7 +29,7 @@ import { registerSession, unregisterSession } from '../utils/tabCoordination';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const WS_URL        = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/voice';
+const WS_URL        = import.meta.env.VITE_WS_URL || 'ws://127.0.0.1:8000/ws/voice';
 const SAMPLE_RATE   = 16000; // Must match backend Config.AUDIO_SAMPLE_RATE
 
 // FIX 2 — Reconnect parameters
