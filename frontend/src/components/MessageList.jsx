@@ -8,6 +8,21 @@ import { User } from 'lucide-react';
 import { MentorCharacter } from './MentorCharacter';
 import { MarkdownViewer } from './MarkdownViewer';
 import { UserMessageText } from './UserMessageText';
+import { extractVisualBlocks } from '../utils/visualBlockExtractor';
+import CodeStrategy from '../features/chat/components/DisplayPanel/CodeStrategy';
+import MermaidStrategy from '../features/chat/components/DisplayPanel/MermaidStrategy';
+import RoadmapStrategy from '../features/chat/components/DisplayPanel/RoadmapStrategy';
+import ComparisonTableStrategy from '../features/chat/components/DisplayPanel/ComparisonTableStrategy';
+import ChecklistStrategy from '../features/chat/components/DisplayPanel/ChecklistStrategy';
+
+const strategyMap = {
+  code: CodeStrategy,
+  mermaid: MermaidStrategy,
+  roadmap: RoadmapStrategy,
+  workflow: RoadmapStrategy,
+  table: ComparisonTableStrategy,
+  checklist: ChecklistStrategy,
+};
 
 const Message = memo(function Message({
   msg, 
@@ -21,6 +36,7 @@ const Message = memo(function Message({
 }) {
   const isUser = msg.role === 'user';
   const isStreaming = msg.isStreaming;
+  const blocks = !isUser ? extractVisualBlocks(msg.text) : [];
 
   const labelText = isUser ? 'You' : 'EDI';
 
@@ -61,6 +77,19 @@ const Message = memo(function Message({
             <MarkdownViewer text={msg.text || ''} isStreaming={true} />
           ) : (
             isUser ? <UserMessageText text={msg.text} /> : <MarkdownViewer text={msg.text} />
+          )}
+
+          {blocks.length > 0 && (
+            <div className="mt-4 flex flex-col gap-4 select-text">
+              {blocks.map((block) => {
+                const StrategyComponent = strategyMap[block.type] || CodeStrategy;
+                return (
+                  <div key={block.id} className="w-full max-w-full overflow-hidden border border-zinc-200 dark:border-zinc-850 rounded-lg shadow-sm bg-zinc-50 dark:bg-zinc-900/50">
+                    <StrategyComponent block={block} />
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       </div>
