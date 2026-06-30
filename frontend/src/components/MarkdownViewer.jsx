@@ -2,6 +2,7 @@ import React from 'react';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { sanitizeAssistantText } from '../utils/sanitizeAssistantText';
 import { wrapTextByWordCount } from '../utils/formatMessageText';
+import { stripVisualBlocks } from '../utils/visualBlockExtractor';
 
 // Simple custom markdown renderer for rendering markdown content nicely
 export function parseInlineMarkdown(text) {
@@ -64,18 +65,24 @@ export function parseInlineMarkdown(text) {
       if (closeBracket !== -1 && openParen === closeBracket + 1 && closeParen !== -1) {
         const linkText = remaining.substring(1, closeBracket);
         const linkUrl = remaining.substring(openParen + 1, closeParen);
+        const isSafeUrl = /^(https?:\/\/|\/)/i.test(linkUrl.trim());
         const isExternal = linkUrl.startsWith('http');
-        parts.push(
-          <a
-            key={`l-${key++}`}
-            href={linkUrl}
-            target={isExternal ? '_blank' : '_self'}
-            rel="noreferrer"
-            className="text-indigo-600 hover:text-indigo-800 underline font-medium"
-          >
-            {linkText}
-          </a>
-        );
+        
+        if (isSafeUrl) {
+          parts.push(
+            <a
+              key={`l-${key++}`}
+              href={linkUrl}
+              target={isExternal ? '_blank' : '_self'}
+              rel="noreferrer"
+              className="text-indigo-600 hover:text-indigo-800 underline font-medium"
+            >
+              {linkText}
+            </a>
+          );
+        } else {
+          parts.push(<span key={`unsafe-${key++}`} className="text-zinc-500 font-medium">{linkText}</span>);
+        }
         remaining = remaining.substring(closeParen + 1);
       } else {
         parts.push('[');
@@ -89,7 +96,8 @@ export function parseInlineMarkdown(text) {
 
 // Clean custom XML/HTML tags and parse lists safely without breaking mathematical operators
 export function cleanXmlTags(text) {
-  return sanitizeAssistantText(text);
+  const stripped = stripVisualBlocks(text);
+  return sanitizeAssistantText(stripped);
 }
 
 export function MarkdownViewer({ text, isStreaming = false }) {
