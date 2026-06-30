@@ -14,7 +14,7 @@ import { ContextCards } from './components/ContextCards';
 import { MentorCharacter } from './components/MentorCharacter';
 import ErrorBoundary from './components/ErrorBoundary';
 
-import './index.css';
+import './styles/index.css';
 
 import { MarkdownViewer } from './components/MarkdownViewer';
 import { StatusBar } from './components/StatusBar';
@@ -286,6 +286,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKey);
   }, [toggleRecording, isProcessing, shortcutsEnabled]);
 
+  const lastAssistantMessage = messages.slice().reverse().find((m) => m.role === 'assistant');
   const isMintState = isRecording || isPlaying || conversationState === 'LISTENING' || conversationState === 'SPEAKING';
   const glowColor = isMintState ? '#10B981' : '#4F46E5';
 
@@ -518,91 +519,109 @@ export default function App() {
               </div>
             </header>
 
-            {/* MAIN SCROLL AREA */}
+            {/* MAIN WORKSPACE CONTENT */}
             <div className="flex-1 overflow-hidden flex flex-col relative z-10 pt-4">
-              {messages.length === 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  className="flex-1 flex flex-col items-center justify-center p-8 text-center"
-                  style={{ gap: '0px' }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    {/* FIX 1 — Isolate MentorCharacter: Three.js / WebGL failures are common.
-                        A crashed avatar must NOT take down the whole chat area. */}
-                    <ErrorBoundary onReset={() => window.location.reload()}>
-                      <motion.div
-                        layoutId="mentor-canvas"
-                        className="mentor-canvas-wrapper idle-mode"
-                      >
-                        <MentorCharacter
-                          state={
-                            isRecording ? 'listening' :
-                              isProcessing ? 'thinking' :
-                                isPlaying ? 'speaking' :
-                                  'idle'
-                          }
-                          analyserNode={analyserNode}
-                          onSnapshot={!defaultAvatarUrl ? setDefaultAvatarUrl : undefined}
-                        />
-                      </motion.div>
-                    </ErrorBoundary>
-                  </div>
-                  <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '4px',
-                  }}>
-                    <p style={{
-                      fontSize: '18px',
-                      fontWeight: '600',
-                      color: 'var(--text-primary)',
-                      letterSpacing: '-0.01em',
-                      margin: 0,
+              <div className="flex-1 overflow-hidden flex flex-col relative">
+                {messages.length === 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="flex-1 flex flex-col items-center justify-center p-8 text-center"
+                    style={{ gap: '0px' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {/* FIX 1 — Isolate MentorCharacter: Three.js / WebGL failures are common.
+                          A crashed avatar must NOT take down the whole chat area. */}
+                      <ErrorBoundary onReset={() => window.location.reload()}>
+                        <motion.div
+                          layoutId="mentor-canvas"
+                          className="mentor-canvas-wrapper idle-mode"
+                        >
+                          <MentorCharacter
+                            state={
+                              isRecording ? 'listening' :
+                                isProcessing ? 'thinking' :
+                                  isPlaying ? 'speaking' :
+                                    'idle'
+                            }
+                            analyserNode={analyserNode}
+                            onSnapshot={!defaultAvatarUrl ? setDefaultAvatarUrl : undefined}
+                          />
+                        </motion.div>
+                      </ErrorBoundary>
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '4px',
                     }}>
-                      Hey, I'm <span style={{ color: '#5457E5' }}>EDI</span>.
-                    </p>
-                    <p style={{
-                      fontSize: '14px',
-                      fontWeight: '550',
-                      color: 'var(--text-secondary)',
-                      margin: 0,
-                    }}>
-                      Your Engineering Mentor
-                    </p>
-                    <p style={{
-                      fontSize: '13px',
-                      color: 'var(--text-muted)',
-                      margin: 0,
-                      lineHeight: '1.4',
-                      maxWidth: '280px',
-                    }}>
-                      Press the mic below to start our session.
-                    </p>
-                  </div>
-                </motion.div>
-              )}
+                      <p style={{
+                        fontSize: '18px',
+                        fontWeight: '600',
+                        color: 'var(--text-primary)',
+                        letterSpacing: '-0.01em',
+                        margin: 0,
+                      }}>
+                        Hey, I'm <span style={{ color: '#5457E5' }}>EDI</span>.
+                      </p>
+                      <p style={{
+                        fontSize: '14px',
+                        fontWeight: '550',
+                        color: 'var(--text-secondary)',
+                        margin: 0,
+                      }}>
+                        Your Engineering Mentor
+                      </p>
+                      <p style={{
+                        fontSize: '13px',
+                        color: 'var(--text-muted)',
+                        margin: 0,
+                        lineHeight: '1.4',
+                        maxWidth: '280px',
+                      }}>
+                        Press the mic below to start our session.
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
 
-              {/* FIX 1 — Isolate MessageList: if ONE message bubble throws (e.g.
-                  malformed markdown from a streamed response), only the message
-                  list resets — the voice pipeline keeps running.
-                  Only render when there are messages — the welcome screen above
-                  already handles the empty state so we don't double-render. */}
-              {messages.length > 0 && (
-              <ErrorBoundary onReset={resetMessageList}>
-                <MessageList
-                  messages={messages}
-                  currentSpokenWordIndex={currentSpokenWordIndex}
-                  isSpeakingTextSync={isSpeakingTextSync}
-                  analyserNode={analyserNode}
-                  conversationState={conversationState}
-                  defaultAvatarUrl={defaultAvatarUrl}
-                  onSnapshot={saveMessageSnapshot}
-                />
-              </ErrorBoundary>
-              )}
+                {/* FIX 1 — Isolate MessageList: if ONE message bubble throws (e.g.
+                    malformed markdown from a streamed response), only the message
+                    list resets — the voice pipeline keeps running.
+                    Only render when there are messages — the welcome screen above
+                    already handles the empty state so we don't double-render. */}
+                {messages.length > 0 && (
+                <ErrorBoundary onReset={resetMessageList}>
+                  <MessageList
+                    messages={messages}
+                    currentSpokenWordIndex={currentSpokenWordIndex}
+                    isSpeakingTextSync={isSpeakingTextSync}
+                    analyserNode={analyserNode}
+                    conversationState={conversationState}
+                    defaultAvatarUrl={defaultAvatarUrl}
+                    onSnapshot={saveMessageSnapshot}
+                  />
+                </ErrorBoundary>
+                )}
+              </div>
+
+              {/* Fixed bottom controls */}
+              <footer className="voice-zone shrink-0">
+                <div className="w-full max-w-2xl mx-auto flex flex-col gap-3">
+                  <div className="flex justify-center pb-1">
+                    <VoiceOrb
+                      isRecording={isRecording}
+                      isProcessing={isProcessing}
+                      isPlaying={isPlaying}
+                      conversationState={conversationState}
+                      onClick={toggleRecording}
+                      shortcutsEnabled={shortcutsEnabled}
+                    />
+                  </div>
+                </div>
+              </footer>
             </div>
 
             {/* FIX 4 — Duplicate tab banner */}
@@ -627,22 +646,6 @@ export default function App() {
                 This conversation is open in another tab. Voice input is disabled here to prevent conflicts.
               </div>
             )}
-
-            {/* VOICE INTERACTION ZONE (Fixed Bottom) */}
-            <footer className="voice-zone">
-              <div className="w-full max-w-2xl mx-auto flex flex-col gap-3">
-                <div className="flex justify-center pb-1">
-                  <VoiceOrb
-                    isRecording={isRecording}
-                    isProcessing={isProcessing}
-                    isPlaying={isPlaying}
-                    conversationState={conversationState}
-                    onClick={toggleRecording}
-                    shortcutsEnabled={shortcutsEnabled}
-                  />
-                </div>
-              </div>
-            </footer>
 
             {/* Soft radial glow behind the 3D character */}
             <div
