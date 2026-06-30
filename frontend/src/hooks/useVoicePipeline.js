@@ -26,6 +26,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { sanitizeAssistantText } from '../utils/sanitizeAssistantText';
 import { registerSession, unregisterSession } from '../utils/tabCoordination';
+import { voiceStore } from '../stores/voiceStore';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -854,6 +855,35 @@ export function useVoicePipeline({
       else startRecording();
     }
   }, [isRecording, isPlaying, isProcessing, startRecording, stopRecording, resetPlayback, cleanupMic]);
+
+  // Sync to global voiceStore to eliminate prop-drilling
+  useEffect(() => {
+    voiceStore.setState({
+      connectionState,
+      conversationState,
+      isRecording,
+      isProcessing,
+      isPlaying,
+      micPermission,
+      isDuplicateTab,
+      liveWords,
+      currentSpokenWordIndex,
+      status,
+      liveTranscript: transcript,
+    });
+  }, [
+    connectionState,
+    conversationState,
+    isRecording,
+    isProcessing,
+    isPlaying,
+    micPermission,
+    isDuplicateTab,
+    liveWords,
+    currentSpokenWordIndex,
+    status,
+    transcript
+  ]);
 
   // ── Public API ────────────────────────────────────────────────────────
   return {
