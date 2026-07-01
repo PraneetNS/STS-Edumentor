@@ -141,3 +141,53 @@ def validate_utterance_duration(duration_seconds: float) -> bool:
         )
     return is_valid
 
+
+def check_audio_frequency_profile(
+    pcm_float32: np.ndarray,
+    sample_rate: int = 16000
+) -> tuple[bool, str]:
+    """
+    Checks for suspicious frequency distributions that indicate
+    adversarial or ultrasonic audio content.
+    Returns (is_safe, reason_if_not)
+    """
+    import os
+    if len(pcm_float32) < 512:
+        return True, ""
+
+    fft = np.fft.rfft(pcm_float32)
+    freqs = np.fft.rfftfreq(len(pcm_float32), 1.0 / sample_rate)
+    power = np.abs(fft) ** 2
+
+    # Normal speech: 80% of power should be below 4kHz
+    low_band_mask  = freqs < 4000
+    high_band_mask = freqs >= 4000
+
+    total_power = power.sum() + 1e-10
+    high_power_ratio = power[high_band_mask].sum() / total_power
+
+    # If >40% of audio energy is above 4kHz, suspicious
+    threshold = float(os.getenv("HIGH_BAND_POWER_RATIO_THRESHOLD", "0.40"))
+    if high_power_ratio > threshold:
+        return False, f"Suspicious frequency profile: {high_power_ratio:.2f} high-band ratio"
+
+    # Very low total energy — likely silence or noise, skip STT
+    if total_power < 1e-6:
+        return False, "Audio energy too low for speech"
+
+    return True, ""
+
+
+def is_utterance_substantial(
+    transcript: str,
+    speech_duration_ms: float
+) -> bool:
+    import os
+    MIN_UTTERANCE_WORDS = int(os.getenv("MIN_UTTERANCE_WORDS", "2"))
+    MIN_UTTERANCE_DURATION_MS = float(os.getenv("MIN_UTTERANCE_DURATION_MS", "400"))
+    words = len(transcript.strip().split())
+    if words < MIN_UTTERANCE_WORDS and speech_duration_ms < MIN_UTTERANCE_DURATION_MS:
+        return False
+    return True
+
+
