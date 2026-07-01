@@ -328,6 +328,68 @@ def check_hedging(text: str) -> Optional[str]:
     return None
 
 
+HOMOPHONE_MAP = {
+    r'\beye\s+gore\b':    'ignore',
+    r'\bin\s+core\b':     'ignore',
+    r'\buh\s+void\b':     'avoid',
+    r'\bbye\s+pass\b':    'bypass',
+    r'\bsys\s+tem\b':     'system',
+    r'\bprompt\s+ed\b':   'prompted',
+    r'\bfor\s+get\b':     'forget',
+    r'\bpre\s+tend\b':    'pretend',
+    r'\bin\s+struc\s+shuns\b': 'instructions',
+}
+
+def normalize_homophones(text: str) -> str:
+    """
+    Normalizes suspicious homophones that try to bypass keyword checkers.
+    Note: This is a best-effort defense and is not exhaustive due to the infinite phonetic space.
+    """
+    t = text.lower()
+    for pattern, replacement in HOMOPHONE_MAP.items():
+        t = re.sub(pattern, replacement, t)
+    return t
+
+
+from collections import defaultdict
+class MultiTurnJailbreakTracker:
+    def __init__(self, window_turns: int = 5):
+        self.window = window_turns
+        # session_id -> list of transcripts
+        self.history: dict[str, list[str]] = defaultdict(list)
+
+    ESCALATION_PATTERNS = [
+        # Turn 1: establish fiction, Turn N: extract via fiction
+        r"(?i)(story|game|roleplay|hypothetically|imagine|pretend)",
+        # Building up to permission bypass
+        r"(?i)(as (a|an) (different|other|new)|now (act|be|pretend))",
+        # Persona seeding
+        r"(?i)(you (are|were|used to be|can be) (different|free|unrestricted))",
+    ]
+
+    def check_escalation(self, session_id: str, transcript: str) -> bool:
+        history = self.history[session_id]
+        history.append(transcript)
+        if len(history) > self.window:
+            history.pop(0)
+
+        # Count escalation signals in recent history
+        signals = 0
+        for turn in history:
+            for pattern in self.ESCALATION_PATTERNS:
+                if re.search(pattern, turn):
+                    signals += 1
+                    break
+
+        # 3 or more signals in the window = escalation attempt
+        return signals >= 3
+
+    def clear_session(self, session_id: str):
+        self.history.pop(session_id, None)
+
+multi_turn_tracker = MultiTurnJailbreakTracker()
+
+
 def check_input(text: str) -> SafetyResult:
     """
     Run the full input safety scan on user-provided text.
@@ -345,9 +407,12 @@ def check_input(text: str) -> SafetyResult:
     if not text or not text.strip():
         return SafetyResult.safe()
 
+    # Apply homophone normalization first for checks
+    normalized_text = normalize_homophones(text)
+
     # 1. Check standard input checkers
     for checker in _INPUT_CHECKERS:
-        match = checker.check(text)
+        match = checker.check(normalized_text)
         if match is not None:
             logger.warning(
                 "[SAFETY INPUT BLOCKED] category=%s match=%r text=%r",
@@ -356,8 +421,8 @@ def check_input(text: str) -> SafetyResult:
             return SafetyResult.blocked(checker.category, details=match)
 
     # 2. Check leetspeak substitutions
-    normalized_leet = normalize_leetspeak(text)
-    if normalized_leet != text:
+    normalized_leet = normalize_leetspeak(normalized_text)
+    if normalized_leet != normalized_text:
         for checker in _INPUT_CHECKERS:
             match = checker.check(normalized_leet)
             if match is not None:
