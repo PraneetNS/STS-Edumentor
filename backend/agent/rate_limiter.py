@@ -62,6 +62,25 @@ class RateLimiter:
         window.append(now)
         return len(window)
 
+    def check_voice_rate_limit(self, student_id: str) -> tuple[bool, str]:
+        import os
+        now = time.time()
+        window = self.requests_per_student[student_id]
+        window[:] = [t for t in window if now - t < 60]
+        MAX_PER_MINUTE = int(os.getenv("VOICE_RATE_LIMIT_PER_MINUTE", "12"))
+
+        if len(window) >= MAX_PER_MINUTE:
+            remaining_wait = 60 - (now - window[0])
+            return False, f"Slow down — wait {remaining_wait:.0f} seconds before speaking again."
+
+        # Burst protection: no more than 3 utterances in 5 seconds
+        recent_burst = [t for t in window if now - t < 5]
+        if len(recent_burst) >= 3:
+            return False, "You're speaking too fast. Give me a moment to respond."
+
+        window.append(now)
+        return True, ""
+
     def apply_strict_limit(self, student_id: str, duration_seconds: int):
         self.strict_mode_until[student_id] = time.time() + duration_seconds
 
