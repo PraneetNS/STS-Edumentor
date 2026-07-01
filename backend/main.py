@@ -32,14 +32,15 @@ if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, WebSocketException, status
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, WebSocketException, status, Response, Cookie, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
 from config import Config
 from stt.whisper_engine import WhisperEngine
 from llm.llm_engine import LLMEngine
 from tts.kokoro_engine import KokoroEngine
-from utils.audio import int16_bytes_to_float32, is_sentence_complete, validate_audio_chunk, validate_utterance_duration
+from utils.audio import int16_bytes_to_float32, is_sentence_complete, validate_audio_chunk, validate_utterance_duration, check_audio_frequency_profile, is_utterance_substantial
 
 import time
 from agent.models import ConversationState, Emotion
@@ -57,8 +58,10 @@ from agent import (
 from agent.database import DatabaseManager
 from agent.access_control import AccessControl
 from agent.integrity_check import verify_model_integrity, verify_requirements_pinned, IntegrityError
+from agent.idempotency import idempotency_guard
 
 silero_vad_model = None
+utterance_count = 0
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Logging — main console logger + agent file logger
@@ -272,6 +275,235 @@ async def health_check():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# User Authentication HTTP Endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+from pydantic import BaseModel
+
+class UserRegisterRequest(BaseModel):
+    email: str
+    password: str
+    display_name: str
+
+class UserLoginRequest(BaseModel):
+    email: str
+    password: str
+
+from agent import auth_utils
+
+async def get_current_user(authorization: Optional[str] = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid Authorization header"
+        )
+    token = authorization.split(" ")[1]
+    try:
+        payload = auth_utils.decode_token(token)
+        if payload.get("type") != "access":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type"
+            )
+        return payload
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Token verification failed: {e}"
+        )
+
+@app.post("/auth/register", tags=["Auth"])
+async def register_user(req: UserRegisterRequest):
+    if not db_manager or not db_manager.pool:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+        
+    existing = await db_manager.get_user_by_email(req.email)
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+        
+    password_hash = auth_utils.hash_password(req.password)
+    user = await db_manager.create_user_email(req.email, req.display_name, password_hash)
+    if not user:
+        raise HTTPException(status_code=500, detail="Failed to create user record")
+        
+    verify_token = auth_utils.generate_verification_token(req.email)
+    try:
+        await auth_utils.send_verification_email(req.email, verify_token)
+    except Exception as exc:
+        logger.error("Failed to send verification email: %s", exc)
+        
+    return {
+        "status": "registered",
+        "message": "Verification email sent. Please verify your account before logging in."
+    }
+
+@app.get("/auth/verify-email", tags=["Auth"])
+async def verify_email(token: str):
+    try:
+        payload = auth_utils.decode_token(token)
+        if payload.get("type") != "verification":
+            raise HTTPException(status_code=400, detail="Invalid token type")
+        email = payload.get("email")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid or expired verification token: {e}")
+        
+    success = await db_manager.verify_user_email(email)
+    if not success:
+        raise HTTPException(status_code=400, detail="Verification failed or user not found")
+        
+    return RedirectResponse(url="http://localhost:5173/login?verified=true")
+
+@app.post("/auth/login", tags=["Auth"])
+async def login_user(req: UserLoginRequest, response: Response):
+    user = await db_manager.get_user_by_email(req.email)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+    if not user.get("password_hash") or not auth_utils.check_password(req.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+    if not user.get("email_verified"):
+        raise HTTPException(status_code=403, detail="Email address is not verified yet")
+        
+    user_id = user["user_id"]
+    email = user["email"]
+    
+    access_token = auth_utils.generate_access_token(user_id, email)
+    refresh_token = auth_utils.generate_refresh_token(user_id, email)
+    
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        samesite="strict",
+        secure=True,
+        path="/auth",
+        max_age=7*86400
+    )
+    
+    return {
+        "access_token": access_token,
+        "user": {
+            "user_id": str(user_id),
+            "email": email,
+            "display_name": user.get("display_name"),
+            "avatar_url": user.get("avatar_url")
+        }
+    }
+
+@app.post("/auth/refresh", tags=["Auth"])
+async def refresh_tokens(response: Response, refresh_token: Optional[str] = Cookie(None)):
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="Refresh token missing")
+        
+    try:
+        payload = auth_utils.decode_token(refresh_token)
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=410, detail="Invalid token type")
+        user_id_str = payload.get("user_id")
+        email = payload.get("email")
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Invalid or expired refresh token: {e}")
+        
+    import uuid
+    new_access_token = auth_utils.generate_access_token(uuid.UUID(user_id_str), email)
+    return {"access_token": new_access_token}
+
+@app.post("/auth/logout", tags=["Auth"])
+async def logout_user(response: Response):
+    response.delete_cookie(key="refresh_token", path="/auth")
+    return {"status": "logged_out"}
+
+@app.get("/auth/google", tags=["Auth"])
+async def google_auth():
+    if not Config.GOOGLE_CLIENT_ID or Config.GOOGLE_CLIENT_ID.startswith("your_"):
+        logger.info("Google Client ID not configured. Using mock bypass redirect.")
+        return RedirectResponse(url="http://localhost:8000/auth/google/callback?code=mock_google_code_123")
+        
+    import urllib.parse
+    params = {
+        "response_type": "code",
+        "client_id": Config.GOOGLE_CLIENT_ID,
+        "redirect_uri": Config.GOOGLE_REDIRECT_URI,
+        "scope": "openid email profile",
+        "access_type": "offline",
+        "prompt": "consent"
+    }
+    url = f"https://accounts.google.com/o/oauth2/v2/auth?{urllib.parse.urlencode(params)}"
+    return RedirectResponse(url=url)
+
+@app.get("/auth/google/callback", tags=["Auth"])
+async def google_auth_callback(code: str, response: Response):
+    if code == "mock_google_code_123":
+        email = "mock_student@gmail.com"
+        display_name = "Mock Student"
+        avatar_url = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150"
+    else:
+        import httpx
+        token_url = "https://oauth2.googleapis.com/token"
+        data = {
+            "code": code,
+            "client_id": Config.GOOGLE_CLIENT_ID,
+            "client_secret": Config.GOOGLE_CLIENT_SECRET,
+            "redirect_uri": Config.GOOGLE_REDIRECT_URI,
+            "grant_type": "authorization_code"
+        }
+        async with httpx.AsyncClient() as client:
+            try:
+                token_res = await client.post(token_url, data=data)
+                token_res.raise_for_status()
+                token_data = token_res.json()
+                
+                access_token = token_data.get("access_token")
+                user_info_url = "https://www.googleapis.com/oauth2/v3/userinfo"
+                headers = {"Authorization": f"Bearer {access_token}"}
+                user_info_res = await client.get(user_info_url, headers=headers)
+                user_info_res.raise_for_status()
+                user_info = user_info_res.json()
+                
+                email = user_info.get("email")
+                display_name = user_info.get("name")
+                avatar_url = user_info.get("picture")
+            except Exception as e:
+                logger.error("Failed to perform Google OAuth exchange: %s", e)
+                raise HTTPException(status_code=400, detail="Google authentication failed")
+                
+    if not email:
+        raise HTTPException(status_code=400, detail="No email returned from Google")
+        
+    user = await db_manager.upsert_google_user(email, display_name, avatar_url)
+    if not user:
+        raise HTTPException(status_code=500, detail="Failed to upsert user record")
+        
+    user_id = user["user_id"]
+    access_token = auth_utils.generate_access_token(user_id, email)
+    refresh_token = auth_utils.generate_refresh_token(user_id, email)
+    
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        samesite="strict",
+        secure=True,
+        path="/auth",
+        max_age=7*86400
+    )
+    
+    return RedirectResponse(url=f"http://localhost:5173/auth/callback?token={access_token}")
+
+@app.get("/api/profile/stats", tags=["Profile"])
+async def profile_stats(user: dict = Depends(get_current_user)):
+    user_id_str = user.get("user_id")
+    import uuid
+    user_id = uuid.UUID(user_id_str)
+    stats = await db_manager.get_profile_stats(user_id)
+    return stats
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Client error logging (FIX 1 — ErrorBoundary fire-and-forget POST)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -365,6 +597,27 @@ async def voice_endpoint(websocket: WebSocket):
     from agent.rate_limiter import rate_limiter
     client_ip = websocket.client.host if websocket.client else "unknown"
     registered_connection = False
+
+    # ── Token Authentication Check ──
+    token = websocket.query_params.get("token")
+    if not token:
+        logger.warning("Rejected WebSocket connection: missing token.")
+        await websocket.accept()
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="missing auth token")
+        return
+        
+    try:
+        from agent import auth_utils
+        import uuid
+        payload = auth_utils.decode_token(token)
+        user_uuid = uuid.UUID(payload["user_id"])
+        email = payload["email"]
+    except Exception as e:
+        logger.warning("Rejected WebSocket connection: invalid auth token. Error: %s", e)
+        await websocket.accept()
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="invalid auth token")
+        return
+
     if not rate_limiter.check_connection_limit(client_ip):
         await websocket.accept()
         await websocket.close(code=1008, reason="too many connections")
@@ -373,15 +626,14 @@ async def voice_endpoint(websocket: WebSocket):
     await websocket.accept()
     rate_limiter.register_connection(client_ip)
     registered_connection = True
-    logger.info("Client connected: %s", websocket.client)
-    session_id = websocket.query_params.get("session_id") or f"{websocket.client.host}:{websocket.client.port}"
-    user_id = websocket.query_params.get("user_id") or session_id
+    logger.info("Client connected and authenticated: %s (user_id=%s)", websocket.client, user_uuid)
 
-    # Convert session_id and user_id to UUID
-    user_uuid = None
+    session_id = websocket.query_params.get("session_id") or f"{websocket.client.host}:{websocket.client.port}"
+    user_id = str(user_uuid)
+
+    # Convert session_id to UUID
     session_uuid = None
     if agent_controller:
-        user_uuid = agent_controller._to_uuid(user_id)
         session_uuid = agent_controller._to_uuid(session_id)
 
     # Pre-fetch user speech corrections from database
@@ -743,10 +995,38 @@ async def _run_pipeline(
     # Connection ip-rate limits / daily limits (Part 1)
     from agent.rate_limiter import rate_limiter
     client_ip = websocket.client.host if websocket.client else "unknown"
-    if not rate_limiter.check_rate_limit(user_id):
+
+    async def send_tts_response(ws: WebSocket, message: str):
+        await set_state(ConversationState.THINKING)
+        async def _message_stream():
+            yield {"raw": message, "planned": message}
+        start_time_tts = time.time()
+        latency_metrics_tts = {}
+        await _stream_llm_and_tts(
+            ws,
+            _message_stream(),
+            loop,
+            set_state,
+            Config.KOKORO_SPEED,
+            Config.KOKORO_VOICE,
+            latency_metrics_tts,
+            start_time_tts,
+            student_id=user_id
+        )
+        await set_state(ConversationState.IDLE)
+        await ws.send_json({"type": "assistant_finished"})
+
+    # Voice rate limiting (Part 2)
+    allowed, rate_limit_msg = rate_limiter.check_voice_rate_limit(user_id)
+    if not allowed:
+        # Send the message back as a TTS response, not just an error
+        # Student hears "slow down" rather than getting a silent drop
+        await send_tts_response(websocket, rate_limit_msg)
         from agent.security_logger import log_security_event
-        asyncio.create_task(log_security_event(user_id, client_ip, "rate_limit_hit", "Utterance rate limit per minute exceeded"))
-        await websocket.send_json({"type": "error", "text": "You're sending requests too fast. Slow down a bit."})
+        await log_security_event(
+            user_id, client_ip, "rate_limit_hit",
+            f"utterances_in_window={len(rate_limiter.requests_per_student[user_id])}"
+        )
         await set_state(ConversationState.IDLE)
         await websocket.send_json({"type": "done"})
         return
@@ -769,6 +1049,14 @@ async def _run_pipeline(
 
     # ── 1. STT ───────────────────────────────────────────────────────────────
     audio_array = int16_bytes_to_float32(raw_pcm)
+
+    # Ultrasonic / adversarial audio detection (Part 3A)
+    is_safe, reason = check_audio_frequency_profile(audio_array, Config.AUDIO_SAMPLE_RATE)
+    if not is_safe:
+        logger.warning(f"[AUDIO GUARD] Frame rejected: {reason}")
+        await set_state(ConversationState.IDLE)
+        await websocket.send_json({"type": "done"})
+        return
     
     # Utterance duration cap and noise filter validation (Part 2)
     duration_seconds = len(audio_array) / Config.AUDIO_SAMPLE_RATE
@@ -910,6 +1198,32 @@ async def _run_pipeline(
         await set_state(ConversationState.IDLE)
         await websocket.send_json({"type": "done"})
         return
+
+    # VAD silence abuse prevention (Part 3B)
+    vad_speech_duration_ms = (len(audio_array) / Config.AUDIO_SAMPLE_RATE) * 1000
+    if not is_utterance_substantial(normalized_transcript, vad_speech_duration_ms):
+        logger.info(f"Ignoring unsubstantial utterance: {normalized_transcript!r} ({vad_speech_duration_ms:.1f}ms)")
+        await set_state(ConversationState.IDLE)
+        await websocket.send_json({"type": "done"})
+        return
+
+    # Idempotency check — same utterance within 1 second = skip (Part 1)
+    if idempotency_guard.is_duplicate(session_id, normalized_transcript):
+        logger.warning(f"[IDEMPOTENCY] Duplicate utterance dropped: {normalized_transcript[:40]}")
+        from agent.security_logger import log_security_event
+        await log_security_event(
+            user_id, client_ip, "duplicate_utterance_dropped",
+            f"transcript_hash={idempotency_guard._make_key(session_id, normalized_transcript)}"
+        )
+        await set_state(ConversationState.IDLE)
+        await websocket.send_json({"type": "done"})
+        return
+
+    idempotency_guard.register(session_id, normalized_transcript)
+    global utterance_count
+    utterance_count += 1
+    if utterance_count % 50 == 0:
+        idempotency_guard.cleanup()
 
     # ── 2. Send transcript to frontend with word statuses ────────────────────
     logger.info("Original Transcript: %r -> Normalized: %r", transcript, normalized_transcript)
@@ -1117,10 +1431,12 @@ async def _stream_llm_and_tts(
                     tts_queue.task_done()
                     break
                 
-                logger.debug("TTS worker synthesizing: %r", sentence[:60])
+                from agent.output_sanitiser import sanitise
+                sanitized_sentence = sanitise(sentence)
+                logger.debug("TTS worker synthesizing: %r", sanitized_sentence[:60])
                 # Synthesize sentence using dynamic speed and voice with fail-safe logic
                 try:
-                    wav_bytes = await loop.run_in_executor(None, lambda: kokoro_engine.synthesize(sentence, speed, voice, student_id))
+                    wav_bytes = await loop.run_in_executor(None, lambda: kokoro_engine.synthesize(sanitized_sentence, speed, voice, student_id))
                     
                     if wav_bytes is None:
                         # Fallback to text-only (Part 7)
@@ -1134,21 +1450,21 @@ async def _stream_llm_and_tts(
                     from speech.alignment import estimate_word_timestamps
                     try:
                         if wav_bytes:
-                            timestamps = estimate_word_timestamps(sentence, wav_bytes)
+                            timestamps = estimate_word_timestamps(sanitized_sentence, wav_bytes)
                         else:
                             timestamps = []
                     except Exception as align_exc:
                         logger.warning("Alignment engine failed: %s", align_exc)
                         timestamps = []
                 except Exception as tts_exc:
-                    logger.error("TTS synthesis failed for sentence %r: %s", sentence, tts_exc)
+                    logger.error("TTS synthesis failed for sentence %r: %s", sanitized_sentence, tts_exc)
                     wav_bytes = b""
                     timestamps = []
 
                 await audio_queue.put({
                     "wav": wav_bytes,
                     "timestamps": timestamps,
-                    "text": sentence
+                    "text": sanitized_sentence
                 })
                 tts_queue.task_done()
         except asyncio.CancelledError:
