@@ -67,4 +67,8 @@ rapidfuzz==3.0.0
 librosa==0.10.0
 jellyfish==1.1.0
 
+# ── Authentication Layer ───────────────────────────────────────────
+pyjwt==2.8.0
+bcrypt==4.1.2
+
 
