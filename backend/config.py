@@ -235,4 +235,34 @@ class Config:
     MAX_UTTERANCE_SECONDS: float = float(os.getenv("MAX_UTTERANCE_SECONDS", "45"))
     MIN_UTTERANCE_MS: float = float(os.getenv("MIN_UTTERANCE_MS", "200"))
 
+    # Voice rate limiting (Part 2)
+    VOICE_RATE_LIMIT_PER_MINUTE: int = int(os.getenv("VOICE_RATE_LIMIT_PER_MINUTE", "12"))
+    VOICE_BURST_MAX_IN_5S: int = int(os.getenv("VOICE_BURST_MAX_IN_5S", "3"))
+
+    # Idempotency (Part 1)
+    IDEMPOTENCY_WINDOW_SECONDS: float = float(os.getenv("IDEMPOTENCY_WINDOW_SECONDS", "1.0"))
+
+    # Audio frequency guard & VAD limits (Part 3)
+    HIGH_BAND_POWER_RATIO_THRESHOLD: float = float(os.getenv("HIGH_BAND_POWER_RATIO_THRESHOLD", "0.40"))
+    MIN_UTTERANCE_WORDS: int = int(os.getenv("MIN_UTTERANCE_WORDS", "2"))
+    MIN_UTTERANCE_DURATION_MS: float = float(os.getenv("MIN_UTTERANCE_DURATION_MS", "400"))
+
+    # Multi-turn jailbreak tracking (Part 3)
+    MULTI_TURN_WINDOW_TURNS: int = int(os.getenv("MULTI_TURN_WINDOW_TURNS", "5"))
+    MULTI_TURN_SIGNAL_THRESHOLD: int = int(os.getenv("MULTI_TURN_SIGNAL_THRESHOLD", "3"))
+
+    # Authentication & Session stats settings
+    JWT_SECRET: str = os.getenv("JWT_SECRET", "edumentor-super-secret-development-key")
+    JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
+    
+    # SMTP settings for email verification
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "localhost")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "1025")) # Default to local / maildev testing port
+    SMTP_USER: str = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    SMTP_FROM: str = os.getenv("SMTP_FROM", "noreply@edumentor.edu")
+
 
