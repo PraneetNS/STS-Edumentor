@@ -319,6 +319,20 @@ class AgentController:
                 yield token
             return
 
+        # Multi-turn jailbreak state tracking (Part 3C)
+        from agent.safety_guard import multi_turn_tracker
+        if multi_turn_tracker.check_escalation(session_id, user_text):
+            from agent.security_logger import log_security_event
+            await log_security_event(
+                user_id, ip_address, "multi_turn_jailbreak_detected",
+                f"escalation signals across last {multi_turn_tracker.window} turns"
+            )
+            multi_turn_tracker.clear_session(session_id)  # reset the window
+            refusal = "Let's get back to engineering topics. What are you working on?"
+            async for token in self._stream_refusal(refusal, session_id):
+                yield token
+            return
+
         # Initialize turn tracking
         self._turn_state[session_id] = {
             "last_topic":       "general",
@@ -699,8 +713,7 @@ class AgentController:
             )
 
         # Log turns to database — skip entirely for blocked/jailbreak inputs to
-        # prevent history poisoning (injected text must never enter conversation_logs
-        # where it could be replayed via memory manager or RAG retrieval).
+        # prevent history poisoning (injected text never enters conversation_logs).
         if not log_written and not _skip_db_log:
             latency_ms = int((time.perf_counter() - start_time) * 1000)
             asyncio.create_task(
@@ -716,6 +729,45 @@ class AgentController:
                     latency_ms=latency_ms
                 )
             )
+            
+            # Increment session stats asynchronously (Part 2)
+            active_topic = "General"
+            if self._profile_manager:
+                active_topic = self._profile_manager.get_active_topic(str(user_uuid))
+            
+            # Heuristic to detect if turn is self-initiated
+            is_self_initiated = True
+            if self._memory:
+                history = self._memory.get_session(session_id)
+                if history:
+                    last_turn = history[-1]
+                    if last_turn and last_turn.assistant:
+                        assistant_text = last_turn.assistant
+                        if "<followup>" in assistant_text or "{followup}" in assistant_text:
+                            if len(processed_text.split()) < 8 and "?" not in processed_text:
+                                is_self_initiated = False
+
+            # Map active topic to discipline category (cse, mech, eee, civil, chemical, aerospace)
+            from agent.student_profile import TOPIC_TO_DISCIPLINE
+            discipline = TOPIC_TO_DISCIPLINE.get(active_topic, "cse")
+            if discipline == "ece":
+                discipline = "eee"
+
+            if hasattr(self._db_manager, "increment_session_stats"):
+                asyncio.create_task(
+                    self._db_manager.increment_session_stats(
+                        user_id=user_uuid,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        discipline=discipline,
+                        intent=intent_result.intent.value,
+                        active_topic=active_topic,
+                        query_text=processed_text,
+                        is_self_initiated=is_self_initiated,
+                        input_flagged=input_flagged,
+                        output_flagged=output_flagged or is_blocked
+                    )
+                )
 
         total_ms = (time.perf_counter() - start_time) * 1000
         agent_logger.info(
