@@ -18,6 +18,10 @@ import './styles/index.css';
 
 import { MarkdownViewer } from './components/MarkdownViewer';
 import { StatusBar } from './components/StatusBar';
+import { authStore } from './stores/authStore';
+import { LoginRegister } from './components/LoginRegister';
+import { Profile } from './components/Profile';
+import { User as UserIcon, LogOut } from 'lucide-react';
 
 function trimToLastCompleteSentence(text) {
   if (!text) return '';
@@ -63,6 +67,52 @@ export default function App() {
   const [showDocs, setShowDocs] = useState(false);
   const [readmeContent, setReadmeContent] = useState('');
   const [isLoadingReadme, setIsLoadingReadme] = useState(false);
+
+  // Authentication & Dropdown State
+  const user = authStore.useStore(s => s.user);
+  const isAuthenticated = authStore.useStore(s => s.isAuthenticated);
+  const isLoadingAuth = authStore.useStore(s => s.isLoading);
+  const checkAuth = authStore.getState().checkAuth;
+  const logout = authStore.getState().logout;
+  const [avatarDropdownOpen, setAvatarDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setAvatarDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlToken = params.get('token');
+    if (urlToken) {
+      try {
+        const jwtPayload = JSON.parse(atob(urlToken.split('.')[1]));
+        authStore.setState({
+          token: urlToken,
+          user: {
+            user_id: jwtPayload.user_id,
+            email: jwtPayload.email,
+            display_name: jwtPayload.email.split('@')[0],
+            avatar_url: null
+          },
+          isAuthenticated: true,
+          isLoading: false
+        });
+        window.history.replaceState({}, document.title, '/');
+      } catch (e) {
+        console.error("Failed to decode SSO callback token:", e);
+        checkAuth();
+      }
+    } else {
+      checkAuth();
+    }
+  }, []);
 
   const [shortcutsEnabled, setShortcutsEnabled] = useState(() => {
     const saved = localStorage.getItem('shortcutsEnabled');
@@ -290,6 +340,24 @@ export default function App() {
   const isMintState = isRecording || isPlaying || conversationState === 'LISTENING' || conversationState === 'SPEAKING';
   const glowColor = isMintState ? '#10B981' : '#4F46E5';
 
+  if (isLoadingAuth) {
+    return (
+      <div className="w-screen h-screen bg-[#0A0B0E] flex flex-col items-center justify-center text-slate-400 gap-4 font-mono">
+        <div className="w-10 h-10 border-4 border-slate-800 border-t-orange-500 rounded-full animate-spin" />
+        <div className="text-[10px] uppercase tracking-widest text-slate-500">INITIALIZING SECURITY SYSTEM...</div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <>
+        <ToastContainer toasts={toasts} onDismiss={removeToast} />
+        <LoginRegister />
+      </>
+    );
+  }
+
   return (
     <>
       <div className="ambient-bg" aria-hidden="true">
@@ -300,7 +368,11 @@ export default function App() {
 
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
 
-      {view === 'landing' ? (
+      {view === 'profile' ? (
+        <div className="app-shell flex flex-col bg-[#0A0B0E] overflow-y-auto w-full min-h-screen relative z-10">
+          <Profile onBack={() => setView('chat')} />
+        </div>
+      ) : view === 'landing' ? (
         <div className="landing-container">
           {/* Navigation Bar */}
           <nav className="landing-nav">
@@ -320,9 +392,24 @@ export default function App() {
                 Documentation
               </button>
             </div>
-            <button onClick={() => setView('chat')} className="landing-nav-cta">
-              Launch Mentor
-            </button>
+            <div className="flex items-center gap-4">
+              <button onClick={() => setView('chat')} className="landing-nav-cta">
+                Launch Mentor
+              </button>
+              <button 
+                onClick={() => setView('profile')} 
+                className="w-8 h-8 rounded border border-orange-500/30 bg-[#181C26] flex items-center justify-center hover:border-orange-500 transition-all cursor-pointer"
+                title="View Profile Stats"
+              >
+                {user?.avatar_url ? (
+                  <img src={user.avatar_url} alt={user.display_name} className="w-full h-full rounded object-cover" />
+                ) : (
+                  <span className="text-xs font-bold text-orange-500">
+                    {user?.display_name ? user.display_name[0].toUpperCase() : 'U'}
+                  </span>
+                )}
+              </button>
+            </div>
           </nav>
 
           {/* Hero Section */}
@@ -516,6 +603,53 @@ export default function App() {
                       : undefined
                   }
                 />
+
+                {/* User Dropdown Profile/Logout Menu (Part 2) */}
+                <div className="relative" ref={dropdownRef}>
+                  <button
+                    onClick={() => setAvatarDropdownOpen(!avatarDropdownOpen)}
+                    className="flex items-center gap-2 border border-slate-800 bg-slate-900/35 hover:border-orange-500/50 p-1.5 rounded cursor-pointer transition-all"
+                    title="User Account"
+                  >
+                    {user?.avatar_url ? (
+                      <img src={user.avatar_url} alt={user.display_name} className="w-6 h-6 rounded-full" />
+                    ) : (
+                      <div className="w-6 h-6 rounded-full bg-orange-950/20 border border-orange-500/30 flex items-center justify-center text-[10px] font-bold text-orange-500">
+                        {user?.display_name ? user.display_name[0].toUpperCase() : 'U'}
+                      </div>
+                    )}
+                  </button>
+                  
+                  {avatarDropdownOpen && (
+                    <>
+                      {/* Dropdown Menu */}
+                      <div className="absolute right-0 mt-2 w-48 border border-slate-800 bg-[#0F1117]/95 shadow-xl rounded py-1 z-50 font-mono text-[11px] select-none text-slate-300">
+                        <div className="px-3 py-2 border-b border-slate-800/80">
+                          <div className="font-bold text-white truncate">{user?.display_name}</div>
+                          <div className="text-[9px] text-slate-500 truncate mt-0.5">{user?.email}</div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setView('profile');
+                            setAvatarDropdownOpen(false);
+                          }}
+                          className="w-full text-left px-3 py-2 hover:bg-orange-950/20 hover:text-orange-500 transition-colors flex items-center gap-2 cursor-pointer"
+                        >
+                          <UserIcon size={12} /> Profile Stats
+                        </button>
+                        <button
+                          onClick={() => {
+                            logout();
+                            setAvatarDropdownOpen(false);
+                          }}
+                          className="w-full text-left px-3 py-2 text-rose-400 hover:bg-rose-950/20 hover:text-rose-400 transition-colors flex items-center gap-2 cursor-pointer"
+                        >
+                          <LogOut size={12} /> Sign Out
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </header>
 

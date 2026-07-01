@@ -27,6 +27,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { sanitizeAssistantText } from '../utils/sanitizeAssistantText';
 import { registerSession, unregisterSession } from '../utils/tabCoordination';
 import { voiceStore } from '../stores/voiceStore';
+import { authStore } from '../stores/authStore';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -286,6 +287,11 @@ export function useVoicePipeline({
     if (conversationId) {
       wsUrlObj.searchParams.set('session_id', conversationId);
       wsUrlObj.searchParams.set('user_id', conversationId);
+    }
+
+    const token = authStore.getState().token;
+    if (token) {
+      wsUrlObj.searchParams.set('token', token);
     }
 
     // FIX 4 — reuse existing connection if one is already open for this session
