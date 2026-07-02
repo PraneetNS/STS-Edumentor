@@ -21,6 +21,7 @@ import { StatusBar } from './components/StatusBar';
 import { authStore } from './stores/authStore';
 import { LoginRegister } from './components/LoginRegister';
 import { Profile } from './components/Profile';
+import { SettingsView } from './components/SettingsView';
 import { User as UserIcon, LogOut } from 'lucide-react';
 
 function trimToLastCompleteSentence(text) {
@@ -369,7 +370,7 @@ export default function App() {
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
 
       {view === 'profile' ? (
-        <div className="app-shell flex flex-col bg-[#0A0B0E] overflow-y-auto w-full min-h-screen relative z-10">
+        <div style={{ width: '100%', height: '100vh', overflowY: 'auto', background: 'white', position: 'relative', zIndex: 10 }}>
           <Profile onBack={() => setView('chat')} />
         </div>
       ) : view === 'landing' ? (
