@@ -15,7 +15,10 @@
     "Sentiment Analysis",
     "Aerospace Engineering",
     "Civil Engineering",
-    "Mechanical Engineering"
+    "Mechanical Engineering",
+    "Deep Learning",
+    "System Design",
+    "JavaScript"
   ],
   "weak_topics": [
     "Python",
@@ -28,10 +31,12 @@
     "Aerospace Engineering",
     "Algorithms",
     "DSA",
-    "Databases"
+    "Databases",
+    "System Design",
+    "JavaScript"
   ],
   "preferred_style": "examples",
-  "session_count": 79,
+  "session_count": 88,
   "discipline": "civil",
   "active_topics": [
     "Civil Engineering"
