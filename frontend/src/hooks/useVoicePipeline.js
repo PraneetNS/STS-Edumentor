@@ -95,6 +95,7 @@ export function useVoicePipeline({
   onTextUpdate,
   onFinished,
   onInterrupt,
+  onFollowup,
   conversationId,
 }) {
   // ── State ────────────────────────────────────────────────────────────────
@@ -126,13 +127,14 @@ export function useVoicePipeline({
   const assistantCharsDeliveredRef = useRef(0);
   const clientSilenceTimerRef     = useRef(null);
   const clientInactivityTimerRef  = useRef(null);
-  const hasSpeechRef              = useRef(false);
 
   const onTranscriptRef = useRef(onTranscript);
   const onThinkingRef   = useRef(onThinking);
   const onTextUpdateRef = useRef(onTextUpdate);
-  const onFinishedRef   = useRef(onFinished);
-  const onInterruptRef  = useRef(onInterrupt);
+  const onFinishedRef        = useRef(onFinished);
+  const onInterruptRef       = useRef(onInterrupt);
+  const onFollowupRef        = useRef(onFollowup);
+  const hasSpeechRef              = useRef(false);
 
   // Decoupled streaming state
   const generatedTextBufferRef              = useRef('');
@@ -172,7 +174,8 @@ export function useVoicePipeline({
     onTextUpdateRef.current = onTextUpdate;
     onFinishedRef.current   = onFinished;
     onInterruptRef.current  = onInterrupt;
-  }, [onTranscript, onThinking, onTextUpdate, onFinished, onInterrupt]);
+    onFollowupRef.current   = onFollowup;
+  }, [onTranscript, onThinking, onTextUpdate, onFinished, onInterrupt, onFollowup]);
 
   // ── FIX 3 — Mic permission state machine ──────────────────────────────────
   useEffect(() => {
@@ -271,7 +274,7 @@ export function useVoicePipeline({
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── WebSocket connect ─────────────────────────────────────────────────
-  const connectWS = useCallback(() => {
+  const connectWS = useCallback(async () => {
     // Guard: don't open a second socket if one is already live
     if (
       wsRef.current?.readyState === WebSocket.OPEN ||
@@ -281,6 +284,13 @@ export function useVoicePipeline({
     setConnectionState('connecting');
     setStatus('connecting');
     isManualDisconnectRef.current = false;
+
+    // Refresh JWT access token silently before connecting to ensure it hasn't expired
+    try {
+      await authStore.getState().silentRefresh();
+    } catch (e) {
+      console.warn("Pre-connection silent token refresh failed:", e);
+    }
 
     // Build URL with stable session_id so backend can resume context
     const wsUrlObj = new URL(WS_URL);
@@ -684,6 +694,10 @@ export function useVoicePipeline({
           if (onInterruptRef.current) onInterruptRef.current();
           break;
 
+        case 'followup':
+          if (onFollowupRef.current) onFollowupRef.current(msg.text);
+          break;
+
         case 'error':
           console.error('[Pipeline Error]', msg.text);
           setStatus(`error: ${msg.text}`);
@@ -892,6 +906,14 @@ export function useVoicePipeline({
   ]);
 
   // ── Public API ────────────────────────────────────────────────────────
+  const sendTextQuery = useCallback((queryText) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'text_query', text: queryText }));
+      return true;
+    }
+    return false;
+  }, []);
+
   return {
     // Pipeline state
     isRecording,
@@ -918,5 +940,6 @@ export function useVoicePipeline({
     connect: connectWS,
     disconnect,
     sendWebSocketMessage,
+    sendTextQuery,
   };
 }
