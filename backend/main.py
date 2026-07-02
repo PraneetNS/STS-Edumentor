@@ -877,6 +877,26 @@ async def voice_endpoint(websocket: WebSocket):
                 if msg_type == "ping":
                     await websocket.send_json({"type": "pong"})
 
+                elif msg_type == "text_query":
+                    query_text = data.get("text", "")
+                    if query_text:
+                        if pipeline_task and not pipeline_task.done():
+                            pipeline_task.cancel()
+                            try:
+                                await pipeline_task
+                            except asyncio.CancelledError:
+                                pass
+                        if live_transcribe_task and not live_transcribe_task.done():
+                            live_transcribe_task.cancel()
+
+                        await set_state(ConversationState.TRANSCRIBING)
+                        await websocket.send_json({
+                            "type": "transcript",
+                            "text": query_text,
+                            "words": [{"word": w, "status": "confirmed"} for w in query_text.split()]
+                        })
+                        pipeline_task = asyncio.create_task(_run_pipeline_wrapper(b"", query_text))
+
                 elif msg_type == "end_of_speech":
                     # User clicked stop manually
                     if not audio_chunks:
@@ -1331,6 +1351,11 @@ async def _stream_llm_and_tts(
                 for event in events:
                     raw_token = event.get("raw", "") if isinstance(event, dict) else ""
                     planned_token = event.get("planned", "") if isinstance(event, dict) else event
+                    
+                    # Intercept parsed follow-up events and dispatch to client
+                    followup = event.get("followup", "") if isinstance(event, dict) else ""
+                    if followup:
+                        await websocket.send_json({"type": "followup", "text": followup})
 
                     # Forward display-safe token to frontend immediately
                     if raw_token:
@@ -1397,6 +1422,9 @@ async def _stream_llm_and_tts(
                 for event in legacy_parser.finalize():
                     raw_token = event.get("raw", "")
                     planned_token = event.get("planned", "")
+                    followup = event.get("followup", "")
+                    if followup:
+                        await websocket.send_json({"type": "followup", "text": followup})
                     if raw_token:
                         await websocket.send_json({"type": "assistant_text_delta", "text": raw_token})
                     if planned_token:
