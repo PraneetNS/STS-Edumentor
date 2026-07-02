@@ -14,7 +14,6 @@ export function RadarChart({ data }) {
   const [animatedScale, setAnimatedScale] = useState(0);
 
   useEffect(() => {
-    // Animate scale on load
     const timer = setTimeout(() => setAnimatedScale(1), 100);
     return () => clearTimeout(timer);
   }, []);
@@ -40,8 +39,8 @@ export function RadarChart({ data }) {
 
   return (
     <div className="flex flex-col items-center justify-center p-4 w-full" style={{ fontFamily: 'var(--font-mono)' }}>
-      <svg viewBox="0 0 400 400" className="w-full max-w-[400px] select-none">
-        {/* Background Blueprint Grid Rings */}
+      <svg viewBox="0 0 400 400" className="w-full max-w-[340px] select-none overflow-visible">
+        {/* Background Grid Lines (Concentric Polygons) */}
         {levels.map((level, idx) => {
           const levelPoints = AXES.map((_, i) => {
             const coords = getCoordinates(i, level);
@@ -53,14 +52,15 @@ export function RadarChart({ data }) {
               key={idx}
               points={levelPoints}
               fill="none"
-              stroke="rgba(255, 107, 0, 0.12)"
-              strokeWidth="1"
-              strokeDasharray="3 3"
+              stroke="var(--black)"
+              strokeWidth="2"
+              strokeDasharray="4 4"
+              opacity="0.3"
             />
           );
         })}
 
-        {/* Axis Lines & Labels */}
+        {/* Axis spoke lines */}
         {AXES.map((axis, i) => {
           const outerCoords = getCoordinates(i, 1.0);
           const labelCoords = getCoordinates(i, 1.25);
@@ -77,27 +77,32 @@ export function RadarChart({ data }) {
                 y1={cy}
                 x2={outerCoords.x}
                 y2={outerCoords.y}
-                stroke="rgba(255, 107, 0, 0.2)"
-                strokeWidth="1"
+                stroke="var(--black)"
+                strokeWidth="2"
+                opacity="0.25"
               />
               
+              {/* Category label */}
               <text
                 x={labelCoords.x}
-                y={labelCoords.y + 4}
-                fill="var(--text-secondary)"
-                fontSize="10"
-                fontWeight="500"
-                textAnchor={textAnchor}
-              >
-                {axis.name}
-              </text>
-              
-              <text
-                x={labelCoords.x}
-                y={labelCoords.y + 16}
-                fill="#FF6B00"
+                y={labelCoords.y}
+                fill="var(--black)"
                 fontSize="10"
                 fontWeight="700"
+                fontFamily="var(--font-sans)"
+                textAnchor={textAnchor}
+              >
+                {axis.name.toUpperCase()}
+              </text>
+              
+              {/* Score label */}
+              <text
+                x={labelCoords.x}
+                y={labelCoords.y + 13}
+                fill="var(--coral)"
+                fontSize="10.5"
+                fontWeight="800"
+                fontFamily="var(--font-mono)"
                 textAnchor={textAnchor}
               >
                 {Math.round(val * 100)}%
@@ -106,20 +111,21 @@ export function RadarChart({ data }) {
           );
         })}
 
-        {/* Radar Value Polygon */}
+        {/* Radar Value Fill Polygon */}
         {points && (
           <motion.polygon
             points={points}
-            fill="rgba(255, 107, 0, 0.15)"
-            stroke="#FF6B00"
-            strokeWidth="2"
+            fill="var(--lavender)"
+            fillOpacity="0.7"
+            stroke="var(--black)"
+            strokeWidth="3.5"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.8, ease: 'easeOut' }}
           />
         )}
 
-        {/* Interactive node marker dots */}
+        {/* Node point circular markers */}
         {AXES.map((axis, i) => {
           const depth = data?.[axis.key] ?? 0.0;
           const coords = getCoordinates(i, depth * animatedScale);
@@ -128,10 +134,10 @@ export function RadarChart({ data }) {
               key={axis.key}
               cx={coords.x}
               cy={coords.y}
-              r="4"
-              fill="#0F1117"
-              stroke="#FF6B00"
-              strokeWidth="2"
+              r="6.5"
+              fill="var(--yellow)"
+              stroke="var(--black)"
+              strokeWidth="2.5"
             />
           );
         })}
