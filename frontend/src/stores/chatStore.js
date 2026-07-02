@@ -152,6 +152,23 @@ export const chatStore = createStore((set, get) => ({
     });
   },
 
+  setStreamingMessageFollowup: (msgId, followup) => {
+    set((state) => {
+      const updated = state.conversations.map((conv) => {
+        if (conv.id !== state.activeId) return conv;
+        const msgs = conv.messages.map((m) => {
+          if (m.id === msgId) {
+            return { ...m, followup };
+          }
+          return m;
+        });
+        return { ...conv, messages: msgs };
+      });
+      saveToStorage(updated);
+      return { conversations: updated };
+    });
+  },
+
   finishStreamingMessage: (msgId) => {
     set((state) => {
       const updated = state.conversations.map((conv) => {

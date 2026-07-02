@@ -45,6 +45,7 @@ export function useConversationStore() {
     addMessage: chatStore.getState().addMessage,
     updateStreamingMessage: chatStore.getState().updateStreamingMessage,
     setStreamingMessageText: chatStore.getState().setStreamingMessageText,
+    setStreamingMessageFollowup: chatStore.getState().setStreamingMessageFollowup,
     finishStreamingMessage: chatStore.getState().finishStreamingMessage,
     saveMessageSnapshot: chatStore.getState().saveMessageSnapshot,
   };
