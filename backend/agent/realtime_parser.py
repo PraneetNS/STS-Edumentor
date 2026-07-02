@@ -121,6 +121,7 @@ class RealtimeStreamingParser:
         self.show_lang = "python"
         self.spoken_buffer = ""
         self.show_title = ""
+        self.followup_buffer = ""
 
     def feed(self, chunk: str) -> Generator[Dict[str, str], None, None]:
         """
@@ -195,8 +196,14 @@ class RealtimeStreamingParser:
             yield from self._handle_char(char)
 
         # Flush any remaining show buffer if we end in the middle of a show block
-        if self.state == "SHOW" and self.show_buffer:
-            yield from self._yield_show_content()
+        if self.state == "SHOW":
+            yield {"raw": "</show>", "planned": ""}
+            self.state = "OUTSIDE"
+
+        # Flush any remaining followup buffer if we end in the middle of a followup block
+        if self.state == "FOLLOWUP" and self.followup_buffer.strip():
+            yield {"raw": "", "planned": "", "followup": self.followup_buffer.strip()}
+            self.followup_buffer = ""
 
     def _is_potential_tag_start(self, text: str) -> bool:
         """
@@ -345,7 +352,7 @@ class RealtimeStreamingParser:
 
         if tag_clean in ("<speak>", "{speak}"):
             if self.state == "SHOW":
-                yield from self._yield_show_content()
+                yield {"raw": "</show>", "planned": ""}
             self.state = "SPEAK"
             yield {"raw": "", "planned": ""}
         elif tag_clean in ("</speak>", "{/speak}"):
@@ -353,19 +360,22 @@ class RealtimeStreamingParser:
             yield {"raw": "", "planned": ""}
         elif tag_clean in ("<followup>", "{followup}"):
             if self.state == "SHOW":
-                yield from self._yield_show_content()
+                yield {"raw": "</show>", "planned": ""}
             # Transition to FOLLOWUP state — followup text is hidden from chat and TTS
             self.state = "FOLLOWUP"
+            self.followup_buffer = ""
             yield {"raw": "", "planned": ""}
         elif tag_clean in ("</followup>", "{/followup}"):
             self.state = "OUTSIDE"
-            yield {"raw": "", "planned": ""}
+            yield {"raw": "", "planned": "", "followup": self.followup_buffer.strip()}
+            self.followup_buffer = ""
         elif tag_clean in ("<code>", "</code>", "{code}", "{/code}"):
             # Ignore and strip code tags entirely
             yield {"raw": "", "planned": ""}
         elif tag_clean in ("</show>", "{/show}", "</table>"):
             if self.state == "SHOW":
-                yield from self._yield_show_content()
+                self.state = "OUTSIDE"
+                yield {"raw": tag, "planned": ""}
             else:
                 yield {"raw": "", "planned": ""}
         elif tag_clean.startswith("<show") or tag_clean.startswith("{show"):
@@ -392,7 +402,7 @@ class RealtimeStreamingParser:
                     if not introduced:
                         planned_intro = "Below is the code for this. "
                         
-                    yield {"raw": "", "planned": planned_intro}
+                    yield {"raw": tag, "planned": planned_intro}
             else:
                 self.state = "SHOW"
                 type_match = re.search(r'type\s*=\s*["\']([^"\']*)["\']', tag, re.IGNORECASE)
@@ -432,7 +442,7 @@ class RealtimeStreamingParser:
                     else:
                         planned_intro = "Here is a diagram for this. "
                         
-                yield {"raw": "", "planned": planned_intro}
+                yield {"raw": tag, "planned": planned_intro}
         elif tag == "```":
             if self.state == "CODE_MD":
                 self.state = "OUTSIDE"
@@ -583,14 +593,14 @@ class RealtimeStreamingParser:
         """
         if self.state == "SHOW":
             self.show_buffer += char
-            yield {"raw": "", "planned": ""}
+            yield {"raw": char, "planned": ""}
         elif self.state == "CODE_MD":
             yield {"raw": char, "planned": ""}
         elif self.state == "SPEAK":
             self.spoken_buffer += char
             yield {"raw": char, "planned": char}
         elif self.state == "FOLLOWUP":
-            # Followup content is hidden from chat and not spoken aloud
+            self.followup_buffer += char
             yield {"raw": "", "planned": ""}
         else:
             self.spoken_buffer += char
