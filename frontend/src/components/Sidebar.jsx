@@ -64,8 +64,17 @@ export const Sidebar = memo(function Sidebar({
       <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <div className="sidebar-brand">
-            <div className="sidebar-brand-icon" style={{ background: 'transparent', boxShadow: 'none', padding: 0 }}>
-              <img src="/mascot.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
+            <div className="sidebar-brand-icon" style={{
+              background: 'white',
+              borderRadius: '50%',
+              border: '1.5px solid rgba(84,87,229,0.2)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+              padding: '2px',
+              overflow: 'hidden',
+              width: '34px',
+              height: '34px',
+            }}>
+              <img src="/mascot.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
             </div>
             <div>
               <div className="sidebar-brand-name">EduMentor</div>
