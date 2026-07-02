@@ -131,7 +131,14 @@ export const StatusBar = memo(function StatusBar({
           style={{ color: info.error ? 'var(--accent-red)' : 'var(--text-muted)', flexShrink: 0 }}
         />
       ) : (
-        <div className={`status-dot ${info.dotClass}`} aria-hidden="true" />
+        <div
+          className={`status-dot ${info.dotClass}`}
+          aria-hidden="true"
+          style={info.dotClass === 'connected' ? {
+            backgroundColor: '#22c55e',
+            boxShadow: '0 0 0 2px rgba(34,197,94,0.25)',
+          } : undefined}
+        />
       )}
 
       <AnimatePresence mode="wait">
@@ -157,13 +164,13 @@ export const StatusBar = memo(function StatusBar({
             alignItems: 'center',
             gap: '4px',
             marginLeft: '6px',
-            padding: '2px 8px',
+            padding: '3px 10px',
             fontSize: '11px',
             fontWeight: '600',
             color: '#fff',
-            background: '#4F46E5',
+            background: 'var(--blue-500)',
             border: 'none',
-            borderRadius: '4px',
+            borderRadius: '999px',
             cursor: 'pointer',
             flexShrink: 0,
           }}
