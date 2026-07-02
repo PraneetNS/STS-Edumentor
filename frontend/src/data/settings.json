@@ -1,0 +1,36 @@
+{
+  "account": {
+    "display_name": "Praneet Savant",
+    "email": "praneet.savant@university.edu",
+    "student_id": "STU-2026-CSE48",
+    "branch": "Computer Science & Engineering",
+    "semester": "Semester VI",
+    "college": "Satyabhama Institute of Technology",
+    "location": "Chennai, Tamil Nadu, India",
+    "language": "English (US)"
+  },
+  "voice": {
+    "speech_speed": 1.0,
+    "voice_style": "Friendly Mentor",
+    "accent": "English (US) - Male",
+    "playback_speed": 1.0
+  },
+  "learning": {
+    "preferred_difficulty": "Medium",
+    "interview_goal": "FAANG Software Engineer",
+    "placement_goal": "Product-based company core developer",
+    "preferred_companies": ["Google", "Stripe", "Linear", "Vercel", "Figma"],
+    "preferred_languages": ["Python", "JavaScript", "TypeScript", "C++", "SQL"]
+  },
+  "notifications": {
+    "reminder_frequency": "Daily",
+    "email_notifications": true,
+    "push_notifications": true,
+    "voice_alerts": false
+  },
+  "privacy": {
+    "export_format": "JSON",
+    "delete_conversations_on_logout": false,
+    "download_history_active": true
+  }
+}

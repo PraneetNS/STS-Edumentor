@@ -1,0 +1,24 @@
+{
+  "profile": {
+    "display_name": "Praneet Savant",
+    "email": "praneet.savant@university.edu",
+    "initials": "PS",
+    "student_id": "STU-2026-CSE48",
+    "branch": "Computer Science & Engineering",
+    "college": "Satyabhama Institute of Technology",
+    "year": "3rd Year (Semester VI)",
+    "current_goal": "Target: FAANG Software Engineer & Distributed Systems Lead",
+    "current_streak": 7,
+    "avatar_url": null
+  },
+  "today": {
+    "greeting": "Good Morning, Praneet 👋",
+    "goals": [
+      { "id": "g1", "label": "Complete Binary Search Tree deletions and balancing", "completed": false },
+      { "id": "g2", "label": "Revise Object-Oriented Design patterns (Strategy & Factory)", "completed": true },
+      { "id": "g3", "label": "Practice 5 mock technical interview questions with EDI", "completed": false },
+      { "id": "g4", "label": "Review system design caching levels (Redis vs Memcached)", "completed": false }
+    ],
+    "estimated_time_mins": 100
+  }
+}

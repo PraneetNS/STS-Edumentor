@@ -1,0 +1,60 @@
+{
+  "badges": [
+    {
+      "id": "b1",
+      "name": "7 Day Streak",
+      "icon": "🔥",
+      "description": "Practiced engineering voice sessions for 7 consecutive days.",
+      "unlocked": true,
+      "date_unlocked": "2026-06-28"
+    },
+    {
+      "id": "b2",
+      "name": "100 Questions",
+      "icon": "💯",
+      "description": "Asked over 100 deep technical queries to EDI.",
+      "unlocked": true,
+      "date_unlocked": "2026-07-01"
+    },
+    {
+      "id": "b3",
+      "name": "DSA Explorer",
+      "icon": "🌳",
+      "description": "Completed algorithms track including Trees and Graphs.",
+      "unlocked": true,
+      "date_unlocked": "2026-06-20"
+    },
+    {
+      "id": "b4",
+      "name": "AI Learner",
+      "icon": "🤖",
+      "description": "Explored foundational concepts of Neural Nets and Prompt engineering.",
+      "unlocked": true,
+      "date_unlocked": "2026-06-25"
+    },
+    {
+      "id": "b5",
+      "name": "Top Consistency",
+      "icon": "📅",
+      "description": "Maintained study hours target for 4 weeks straight.",
+      "unlocked": true,
+      "date_unlocked": "2026-06-30"
+    },
+    {
+      "id": "b6",
+      "name": "System Architect",
+      "icon": "🌐",
+      "description": "Achieve 70%+ score in System Design modules.",
+      "unlocked": false,
+      "date_unlocked": null
+    },
+    {
+      "id": "b7",
+      "name": "Placement Ready",
+      "icon": "🎓",
+      "description": "Complete mock placement tests with excellent grade score.",
+      "unlocked": false,
+      "date_unlocked": null
+    }
+  ]
+}
