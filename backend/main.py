@@ -371,12 +371,13 @@ async def login_user(req: UserLoginRequest, response: Response):
     access_token = auth_utils.generate_access_token(user_id, email)
     refresh_token = auth_utils.generate_refresh_token(user_id, email)
     
+    is_production = Config.ENVIRONMENT == "production"
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        samesite="strict",
-        secure=True,
+        samesite="lax",
+        secure=is_production,
         path="/auth",
         max_age=7*86400
     )
@@ -479,12 +480,13 @@ async def google_auth_callback(code: str, response: Response):
     access_token = auth_utils.generate_access_token(user_id, email)
     refresh_token = auth_utils.generate_refresh_token(user_id, email)
     
+    is_production = Config.ENVIRONMENT == "production"
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        samesite="strict",
-        secure=True,
+        samesite="lax",
+        secure=is_production,
         path="/auth",
         max_age=7*86400
     )
@@ -631,6 +633,13 @@ async def voice_endpoint(websocket: WebSocket):
     session_id = websocket.query_params.get("session_id") or f"{websocket.client.host}:{websocket.client.port}"
     user_id = str(user_uuid)
 
+    session_voice_style = websocket.query_params.get("voice_style", "Friendly Mentor")
+    session_accent = websocket.query_params.get("accent", "English (US) - Male")
+    try:
+        session_speech_speed = float(websocket.query_params.get("speech_speed", str(Config.KOKORO_SPEED)))
+    except ValueError:
+        session_speech_speed = Config.KOKORO_SPEED
+
     # Convert session_id to UUID
     session_uuid = None
     if agent_controller:
@@ -747,7 +756,16 @@ async def voice_endpoint(websocket: WebSocket):
     async def _run_pipeline_wrapper(raw_pcm: bytes, pre_transcribed: Optional[str] = None):
         nonlocal is_pipeline_running
         try:
-            await _run_pipeline(websocket, raw_pcm, set_state, pre_transcribed, user_corrections)
+            await _run_pipeline(
+                websocket,
+                raw_pcm,
+                set_state,
+                pre_transcribed,
+                user_corrections,
+                voice_style=session_voice_style,
+                accent=session_accent,
+                speech_speed=session_speech_speed
+            )
         except asyncio.CancelledError:
             logger.info("Pipeline execution cancelled.")
         except Exception as e:
@@ -945,6 +963,19 @@ async def voice_endpoint(websocket: WebSocket):
                     logger.info("Persona changed in session: %s -> %s", data.get("previous"), data.get("current"))
                     stabilizer.reset()
 
+                elif msg_type == "settings_update":
+                    settings = data.get("settings", {})
+                    logger.info("Settings updated for session %s: %s", session_id, settings)
+                    if "voice_style" in settings:
+                        session_voice_style = settings["voice_style"]
+                    if "accent" in settings:
+                        session_accent = settings["accent"]
+                    if "speech_speed" in settings:
+                        try:
+                            session_speech_speed = float(settings["speech_speed"])
+                        except ValueError:
+                            pass
+
     except WebSocketDisconnect:
         logger.info("Client disconnected: %s", websocket.client)
     except RuntimeError as exc:
@@ -988,7 +1019,10 @@ async def _run_pipeline(
     raw_pcm: bytes,
     set_state,
     pre_transcribed_text: Optional[str] = None,
-    user_corrections: Optional[list[str]] = None
+    user_corrections: Optional[list[str]] = None,
+    voice_style: Optional[str] = None,
+    accent: Optional[str] = None,
+    speech_speed: Optional[float] = None,
 ) -> None:
     """
     Execute the full STT → LLM → TTS pipeline for one user utterance.
@@ -1016,6 +1050,55 @@ async def _run_pipeline(
     from agent.rate_limiter import rate_limiter
     client_ip = websocket.client.host if websocket.client else "unknown"
 
+    def map_accent_to_voice(acc: Optional[str]) -> str:
+        """Map a voice display label (accent) to a Kokoro voice code.
+
+        The frontend now sends exact Kokoro voice codes directly.
+        We keep the old fuzzy fallbacks for backwards compat with any
+        stored settings that use the old string format.
+        """
+        if not acc:
+            return Config.KOKORO_VOICE
+
+        # Full set of supported Kokoro-82M English voices
+        VALID_VOICES = {
+            # American Female
+            "af_heart", "af_bella", "af_aoede", "af_kore", "af_sarah",
+            "af_nova", "af_sky", "af_alloy", "af_jessica", "af_nicole", "af_river",
+            # American Male
+            "am_adam", "am_echo", "am_eric", "am_fenrir", "am_liam",
+            "am_michael", "am_onyx", "am_puck",
+            # British Female
+            "bf_alice", "bf_emma", "bf_isabella", "bf_lily",
+            # British Male
+            "bm_daniel", "bm_fable", "bm_george", "bm_lewis",
+        }
+
+        # Direct code — pass through (new frontend format)
+        if acc in VALID_VOICES:
+            return acc
+
+        # Legacy fuzzy fallback for old saved settings
+        acc_lower = acc.lower()
+        if "us" in acc_lower and "female" in acc_lower:
+            return "af_bella"
+        elif "us" in acc_lower and "male" in acc_lower:
+            return "am_adam"
+        elif "uk" in acc_lower and "female" in acc_lower:
+            return "bf_emma"
+        elif "uk" in acc_lower and "male" in acc_lower:
+            return "bm_george"
+        elif "female" in acc_lower:
+            return "af_bella"
+        elif "male" in acc_lower:
+            return "am_adam"
+        return Config.KOKORO_VOICE
+
+    # Map selected accent to Kokoro voice name and compute base speech speed
+    voice = map_accent_to_voice(accent)
+    base_speech_speed = speech_speed if speech_speed is not None else Config.KOKORO_SPEED
+    speed = base_speech_speed
+
     async def send_tts_response(ws: WebSocket, message: str):
         await set_state(ConversationState.THINKING)
         async def _message_stream():
@@ -1027,8 +1110,8 @@ async def _run_pipeline(
             _message_stream(),
             loop,
             set_state,
-            Config.KOKORO_SPEED,
-            Config.KOKORO_VOICE,
+            base_speech_speed,
+            voice,
             latency_metrics_tts,
             start_time_tts,
             student_id=user_id
@@ -1087,7 +1170,7 @@ async def _run_pipeline(
             await set_state(ConversationState.THINKING)
             async def _short_audio_stream():
                 yield {"raw": "I didn't hear that. Could you speak a little louder and clearer?", "planned": "I didn't hear that. Could you speak a little louder and clearer?"}
-            await _stream_llm_and_tts(websocket, _short_audio_stream(), loop, set_state, Config.KOKORO_SPEED, Config.KOKORO_VOICE, latency_metrics, start_time)
+            await _stream_llm_and_tts(websocket, _short_audio_stream(), loop, set_state, speed, voice, latency_metrics, start_time)
             await set_state(ConversationState.IDLE)
             await websocket.send_json({"type": "assistant_finished"})
             return
@@ -1123,12 +1206,10 @@ async def _run_pipeline(
             "words": [{"word": "[Speech recognition unavailable]", "status": "confirmed"}]
         })
         await set_state(ConversationState.THINKING)
-        # Yield a spoken error response using defaults
-        stt_err_speed = Config.KOKORO_SPEED
-        stt_err_voice = Config.KOKORO_VOICE
+        # Yield a spoken error response using session settings
         async def mock_error_stream():
             yield {"raw": "I am sorry, but I failed to recognize your speech due to a local transcriber error. Please try again.", "planned": "I am sorry, but I failed to recognize your speech due to a local transcriber error. Please try again."}
-        await _stream_llm_and_tts(websocket, mock_error_stream(), loop, set_state, stt_err_speed, stt_err_voice, latency_metrics, start_time)
+        await _stream_llm_and_tts(websocket, mock_error_stream(), loop, set_state, speed, voice, latency_metrics, start_time)
         await set_state(ConversationState.IDLE)
         await websocket.send_json({"type": "assistant_finished"})
         return
@@ -1138,7 +1219,7 @@ async def _run_pipeline(
         await set_state(ConversationState.THINKING)
         async def _empty_transcript_stream():
             yield {"raw": "I didn't hear that. Could you speak a little louder and clearer?", "planned": "I didn't hear that. Could you speak a little louder and clearer?"}
-        await _stream_llm_and_tts(websocket, _empty_transcript_stream(), loop, set_state, Config.KOKORO_SPEED, Config.KOKORO_VOICE, latency_metrics, start_time)
+        await _stream_llm_and_tts(websocket, _empty_transcript_stream(), loop, set_state, speed, voice, latency_metrics, start_time)
         await set_state(ConversationState.IDLE)
         await websocket.send_json({"type": "assistant_finished"})
         return
@@ -1274,10 +1355,9 @@ async def _run_pipeline(
     elif emotion_state == Emotion.BORED:
         emotion_adjust = 1.1
 
-    speed = round(Config.KOKORO_SPEED * emotion_adjust, 2)
-    voice = Config.KOKORO_VOICE
+    speed = round(base_speech_speed * emotion_adjust, 2)
     logger.info("Dynamic Prosody: base_speed=%.2f, emotion=%s -> final_speed=%.2f, voice=%s",
-                Config.KOKORO_SPEED, emotion_state.value, speed, voice)
+                base_speech_speed, emotion_state.value, speed, voice)
 
     # Transition to THINKING state
     await set_state(ConversationState.THINKING)
@@ -1287,7 +1367,8 @@ async def _run_pipeline(
     if agent_controller is not None:
         # ── Agent path: full pipeline with intent, memory, safety, emotion ────
         token_stream = agent_controller.stream(
-            normalized_transcript, session_id, user_id=user_id, audio_array=audio_array, ip_address=client_ip
+            normalized_transcript, session_id, user_id=user_id, audio_array=audio_array, ip_address=client_ip,
+            voice_style=voice_style
         )
         await _stream_llm_and_tts(websocket, token_stream, loop, set_state, speed, voice, latency_metrics, start_time, student_id=user_id)
     else:
