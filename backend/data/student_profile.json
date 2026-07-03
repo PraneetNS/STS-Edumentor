@@ -18,7 +18,8 @@
     "Mechanical Engineering",
     "Deep Learning",
     "System Design",
-    "JavaScript"
+    "JavaScript",
+    "Electronics Engineering"
   ],
   "weak_topics": [
     "Python",
@@ -36,9 +37,9 @@
     "JavaScript"
   ],
   "preferred_style": "examples",
-  "session_count": 88,
-  "discipline": "civil",
+  "session_count": 103,
+  "discipline": "cse",
   "active_topics": [
-    "Civil Engineering"
+    "Python"
   ]
 }
