@@ -454,6 +454,7 @@ class AgentContext:
     safety_flags:    Dict[str, Any]            = field(default_factory=dict)
     is_interrupted:  bool                      = False
     history_messages: List[Dict[str, str]]     = field(default_factory=list)
+    voice_style:     Optional[str]             = None
 
 
 
