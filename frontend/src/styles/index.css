@@ -2241,12 +2241,12 @@ body,
 .markdown-body pre, pre {
   max-width: 100% !important;
   overflow-x: auto !important;
-  white-space: pre !important;
-  word-break: normal !important;
-  word-wrap: normal !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  word-wrap: break-word !important;
 }
 .markdown-body pre code, pre code {
-  white-space: pre !important;
+  white-space: pre-wrap !important;
 }
 
 /* ═══════════════════════════════════════════════════
