@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { PanelLeft, Home, X, BookOpen, ExternalLink, FileText } from 'lucide-react';
+import { PanelLeft, Home, X, BookOpen, ExternalLink, FileText, Terminal, Download } from 'lucide-react';
 
 import { useVoicePipeline } from './hooks/useVoicePipeline';
 import { useConversationStore } from './hooks/useConversationStore';
@@ -22,7 +22,9 @@ import { authStore } from './stores/authStore';
 import { LoginRegister } from './components/LoginRegister';
 import { Profile } from './components/Profile';
 import { SettingsView } from './components/SettingsView';
-import { User as UserIcon, LogOut } from 'lucide-react';
+import { AnalyticsOverview } from './components/AnalyticsOverview';
+import { User as UserIcon, LogOut, LayoutDashboard, Settings } from 'lucide-react';
+import readmeContentRaw from '../../README.md?raw';
 
 function trimToLastCompleteSentence(text) {
   if (!text) return '';
@@ -66,7 +68,7 @@ export default function App() {
   const { toasts, addToast, removeToast } = useToasts();
   const [view, setView] = useState('landing');
   const [showDocs, setShowDocs] = useState(false);
-  const [readmeContent, setReadmeContent] = useState('');
+  const [readmeContent, setReadmeContent] = useState(readmeContentRaw);
   const [isLoadingReadme, setIsLoadingReadme] = useState(false);
 
   // Authentication & Dropdown State
@@ -190,19 +192,20 @@ export default function App() {
     addMessage,
     updateStreamingMessage,
     setStreamingMessageText,
+    setStreamingMessageFollowup,
     finishStreamingMessage,
     saveMessageSnapshot,
   } = useConversationStore();
 
   useEffect(() => {
-    if (activeConversation) {
+    if (isAuthenticated && activeConversation) {
       document.title = activeConversation.title === 'New Conversation'
         ? 'EduMentor Voice — AI Tutor'
         : `EduMentor — ${activeConversation.title}`;
     } else {
       document.title = 'EduMentor Voice — AI Tutor';
     }
-  }, [activeConversation?.title]);
+  }, [isAuthenticated, activeConversation, activeConversation?.title]);
 
   const messages = activeConversation?.messages ?? [];
 
@@ -280,26 +283,7 @@ export default function App() {
     }
   });
 
-  // ── Fetch README Effect ──────────────────────────────────────────────────
-  useEffect(() => {
-    if (showDocs && !readmeContent) {
-      setIsLoadingReadme(true);
-      fetch('/README.md')
-        .then((res) => {
-          if (!res.ok) throw new Error('Failed to load README.md');
-          return res.text();
-        })
-        .then((text) => {
-          setReadmeContent(text);
-          setIsLoadingReadme(false);
-        })
-        .catch((err) => {
-          console.error(err);
-          addToast('Could not load README.md file.', 'error');
-          setIsLoadingReadme(false);
-        });
-    }
-  }, [showDocs, readmeContent, addToast]);
+  // README loaded statically at build time.
 
   // ── Error detection ─────────────────────────────────────────────────────
   const prevStatus = useRef(status);
@@ -369,11 +353,7 @@ export default function App() {
 
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
 
-      {view === 'profile' ? (
-        <div style={{ width: '100%', height: '100vh', overflowY: 'auto', background: 'white', position: 'relative', zIndex: 10 }}>
-          <Profile onBack={() => setView('chat')} />
-        </div>
-      ) : view === 'landing' ? (
+      {view === 'landing' ? (
         <div className="landing-container">
           {/* Navigation Bar */}
           <nav className="landing-nav">
@@ -388,6 +368,7 @@ export default function App() {
             </div>
             <div className="landing-nav-links">
               <a href="#features" className="landing-nav-link">Disciplines</a>
+              <a href="#sdk" className="landing-nav-link">SDK Integration</a>
               <a href="#docs" className="landing-nav-link">Docs Setup</a>
               <button onClick={() => setShowDocs(true)} className="landing-nav-link-btn">
                 Documentation
@@ -450,10 +431,68 @@ export default function App() {
                 </div>
               ))}
             </div>
+          </section>          {/* Developer SDK Integration Section */}
+          <section id="sdk" className="docs-section" style={{ borderTop: '1px solid var(--border-default)', paddingTop: '60px', paddingBottom: '20px' }}>
+            <div className="section-header">
+              <h2 className="section-title">Developer Client SDK</h2>
+              <p className="section-subtitle">Integrate EduMentor's real-time voice & engineering tutor pipeline into your own apps.</p>
+            </div>
+            <div className="docs-grid-layout" style={{ alignItems: 'stretch' }}>
+              <div className="docs-card-highlight" style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div className="docs-card-icon-title">
+                    <Terminal className="text-indigo-600" size={24} />
+                    <h3>EduMentor Voice SDK</h3>
+                  </div>
+                  <p style={{ margin: 0 }}>
+                    A lightweight, framework-agnostic client library that wraps Web Audio contexts, microphone capture (via high-performance AudioWorklet threads), and WebSocket handlers. Automatically handles gapless queue playback, voice personas, and client-side barge-in/interruptions.
+                  </p>
+                </div>
+                <div className="docs-action-buttons" style={{ marginTop: '20px' }}>
+                  <a href="/edumentor-sdk.js" download className="docs-btn-primary" style={{ textDecoration: 'none' }}>
+                    <Download size={16} /> Download JS SDK File
+                  </a>
+                  <a href="/audio-processor.js" download className="docs-btn-secondary" style={{ textDecoration: 'none' }}>
+                    Download Audio Worklet <ExternalLink size={14} />
+                  </a>
+                </div>
+              </div>
+              
+              <div style={{
+                background: '#0B0F19',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: 'var(--radius-xl)',
+                padding: '24px',
+                fontFamily: 'monospace',
+                fontSize: '11px',
+                lineHeight: '1.6',
+                color: '#A5B4FC',
+                overflowX: 'auto',
+                boxShadow: 'var(--shadow-md)',
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                boxSizing: 'border-box'
+              }}>
+                <div style={{ color: '#6366F1', fontWeight: 'bold', marginBottom: '8px' }}>// Initialize the Voice SDK</div>
+                <div><span style={{ color: '#F472B6' }}>import</span> &#123; EduMentorVoiceSDK &#125; <span style={{ color: '#F472B6' }}>from</span> <span style={{ color: '#34D399' }}>'./edumentor-sdk.js'</span>;</div>
+                <br />
+                <div><span style={{ color: '#F472B6' }}>const</span> sdk = <span style={{ color: '#F472B6' }}>new</span> <span style={{ color: '#60A5FA' }}>EduMentorVoiceSDK</span>(&#123;</div>
+                <div>&nbsp;&nbsp;wsUrl: <span style={{ color: '#34D399' }}>'ws://localhost:8000/ws/voice'</span>,</div>
+                <div>&nbsp;&nbsp;token: <span style={{ color: '#34D399' }}>'YOUR_JWT_ACCESS_TOKEN'</span>,</div>
+                <div>&nbsp;&nbsp;accent: <span style={{ color: '#34D399' }}>'af_bella'</span>, <span style={{ color: '#6B7280' }}>// Voice style code</span></div>
+                <div>&nbsp;&nbsp;onTranscript: (msg) =&gt; console.log(<span style={{ color: '#34D399' }}>"User said:"</span>, msg.text),</div>
+                <div>&nbsp;&nbsp;onTextUpdate: (msg) =&gt; console.log(<span style={{ color: '#34D399' }}>"AI token:"</span>, msg.text),</div>
+                <div>&nbsp;&nbsp;onInterrupt: () =&gt; console.log(<span style={{ color: '#34D399' }}>"AI Interrupted!"</span>)</div>
+                <div>&#125;);</div>
+                <br />
+                <div><span style={{ color: '#6B7280' }}>// Establish session and start microphone</span></div>
+                <div><span style={{ color: '#F472B6' }}>await</span> sdk.connect();</div>
+                <div><span style={{ color: '#F472B6' }}>await</span> sdk.startRecording();</div>
+              </div>
+            </div>
           </section>
-
-
-
           {/* Documentation Section */}
           <section id="docs" className="docs-section">
             <div className="section-header">
@@ -565,10 +604,10 @@ export default function App() {
                     <img src="/mascot.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
                   </div>
                   <div>
-                    <div className="header-title">
-                      {activeConversation?.title === 'New Conversation' ? 'EduMentor' : activeConversation?.title ?? 'EduMentor'}
+                    <div className="header-title">EduMentor</div>
+                    <div className="header-subtitle">
+                      {activeConversation?.title === 'New Conversation' ? 'AI Voice Tutor' : activeConversation?.title ?? 'AI Voice Tutor'}
                     </div>
-                    <div className="header-subtitle">AI Voice Tutor</div>
                   </div>
                 </div>
               </div>
@@ -609,13 +648,13 @@ export default function App() {
                 <div className="relative" ref={dropdownRef}>
                   <button
                     onClick={() => setAvatarDropdownOpen(!avatarDropdownOpen)}
-                    className="flex items-center gap-2 border border-slate-800 bg-slate-900/35 hover:border-orange-500/50 p-1.5 rounded cursor-pointer transition-all"
+                    className="flex items-center gap-2 border border-[var(--border-default)] bg-[var(--bg-primary)] hover:border-[var(--accent-indigo)] p-1.5 rounded-none cursor-pointer transition-all shadow-sm"
                     title="User Account"
                   >
                     {user?.avatar_url ? (
-                      <img src={user.avatar_url} alt={user.display_name} className="w-6 h-6 rounded-full" />
+                      <img src={user.avatar_url} alt={user.display_name} className="w-6 h-6 rounded-none object-cover" />
                     ) : (
-                      <div className="w-6 h-6 rounded-full bg-orange-950/20 border border-orange-500/30 flex items-center justify-center text-[10px] font-bold text-orange-500">
+                      <div className="w-6 h-6 rounded-none bg-indigo-950/20 border border-indigo-500/30 flex items-center justify-center text-[10px] font-bold text-indigo-400">
                         {user?.display_name ? user.display_name[0].toUpperCase() : 'U'}
                       </div>
                     )}
@@ -624,28 +663,52 @@ export default function App() {
                   {avatarDropdownOpen && (
                     <>
                       {/* Dropdown Menu */}
-                      <div className="absolute right-0 mt-2 w-48 border border-slate-800 bg-[#0F1117]/95 shadow-xl rounded py-1 z-50 font-mono text-[11px] select-none text-slate-300">
-                        <div className="px-3 py-2 border-b border-slate-800/80">
-                          <div className="font-bold text-white truncate">{user?.display_name}</div>
-                          <div className="text-[9px] text-slate-500 truncate mt-0.5">{user?.email}</div>
+                      <div className="absolute right-0 mt-2 w-48 border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-lg rounded-none py-1 z-50 font-sans text-xs select-none text-[var(--text-secondary)]">
+                        <div className="px-3 py-2 border-b border-[var(--border-default)]">
+                          <div className="font-extrabold text-[var(--text-primary)] truncate">{user?.display_name}</div>
+                          <div className="text-[9.5px] text-[var(--text-muted)] truncate mt-0.5">{user?.email}</div>
                         </div>
+                        
                         <button
                           onClick={() => {
                             setView('profile');
                             setAvatarDropdownOpen(false);
                           }}
-                          className="w-full text-left px-3 py-2 hover:bg-orange-950/20 hover:text-orange-500 transition-colors flex items-center gap-2 cursor-pointer"
+                          className="w-full text-left px-3 py-2 hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors flex items-center gap-2.5 cursor-pointer font-semibold"
                         >
-                          <UserIcon size={12} /> Profile Stats
+                          <UserIcon size={13} className="text-[var(--text-muted)]" /> Profile Stats
                         </button>
+                        
+                        <button
+                          onClick={() => {
+                            setView('dashboard');
+                            setAvatarDropdownOpen(false);
+                          }}
+                          className="w-full text-left px-3 py-2 hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors flex items-center gap-2.5 cursor-pointer font-semibold"
+                        >
+                          <LayoutDashboard size={13} className="text-[var(--text-muted)]" /> Insights Dashboard
+                        </button>
+                        
+                        <button
+                          onClick={() => {
+                            setView('settings');
+                            setAvatarDropdownOpen(false);
+                          }}
+                          className="w-full text-left px-3 py-2 hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors flex items-center gap-2.5 cursor-pointer font-semibold"
+                        >
+                          <Settings size={13} className="text-[var(--text-muted)]" /> Settings View
+                        </button>
+                        
+                        <div className="border-t border-[var(--border-default)] my-1" />
+                        
                         <button
                           onClick={() => {
                             logout();
                             setAvatarDropdownOpen(false);
                           }}
-                          className="w-full text-left px-3 py-2 text-rose-400 hover:bg-rose-950/20 hover:text-rose-400 transition-colors flex items-center gap-2 cursor-pointer"
+                          className="w-full text-left px-3 py-2 text-rose-500 hover:bg-rose-950/20 transition-colors flex items-center gap-2.5 cursor-pointer font-semibold"
                         >
-                          <LogOut size={12} /> Sign Out
+                          <LogOut size={13} /> Sign Out
                         </button>
                       </div>
                     </>
@@ -655,109 +718,124 @@ export default function App() {
             </header>
 
             {/* MAIN WORKSPACE CONTENT */}
-            <div className="flex-1 overflow-hidden flex flex-col relative z-10 pt-4">
-              <div className="flex-1 overflow-hidden flex flex-col relative">
-                {messages.length === 0 && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="flex-1 flex flex-col items-center justify-center p-8 text-center"
-                    style={{ gap: '0px' }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      {/* FIX 1 — Isolate MentorCharacter: Three.js / WebGL failures are common.
-                          A crashed avatar must NOT take down the whole chat area. */}
-                      <ErrorBoundary onReset={() => window.location.reload()}>
-                        <motion.div
-                          layoutId="mentor-canvas"
-                          className="mentor-canvas-wrapper idle-mode"
-                        >
-                          <MentorCharacter
-                            state={
-                              isRecording ? 'listening' :
-                                isProcessing ? 'thinking' :
-                                  isPlaying ? 'speaking' :
-                                    'idle'
-                            }
-                            analyserNode={analyserNode}
-                            onSnapshot={!defaultAvatarUrl ? setDefaultAvatarUrl : undefined}
-                          />
-                        </motion.div>
-                      </ErrorBoundary>
-                    </div>
-                    <div style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}>
-                      <p style={{
-                        fontSize: '18px',
-                        fontWeight: '600',
-                        color: 'var(--text-primary)',
-                        letterSpacing: '-0.01em',
-                        margin: 0,
-                      }}>
-                        Hey, I'm <span style={{ color: '#5457E5' }}>EDI</span>.
-                      </p>
-                      <p style={{
-                        fontSize: '14px',
-                        fontWeight: '550',
-                        color: 'var(--text-secondary)',
-                        margin: 0,
-                      }}>
-                        Your Engineering Mentor
-                      </p>
-                      <p style={{
-                        fontSize: '13px',
-                        color: 'var(--text-muted)',
-                        margin: 0,
-                        lineHeight: '1.4',
-                        maxWidth: '280px',
-                      }}>
-                        Press the mic below to start our session.
-                      </p>
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* FIX 1 — Isolate MessageList: if ONE message bubble throws (e.g.
-                    malformed markdown from a streamed response), only the message
-                    list resets — the voice pipeline keeps running.
-                    Only render when there are messages — the welcome screen above
-                    already handles the empty state so we don't double-render. */}
-                {messages.length > 0 && (
-                <ErrorBoundary onReset={resetMessageList}>
-                  <MessageList
-                    messages={messages}
-                    currentSpokenWordIndex={currentSpokenWordIndex}
-                    isSpeakingTextSync={isSpeakingTextSync}
-                    analyserNode={analyserNode}
-                    conversationState={conversationState}
-                    defaultAvatarUrl={defaultAvatarUrl}
-                    onSnapshot={saveMessageSnapshot}
-                  />
-                </ErrorBoundary>
-                )}
+            {view === 'profile' ? (
+              <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 relative z-10 select-none bg-[var(--bg-secondary)]">
+                <Profile onBack={() => setView('chat')} setView={setView} />
               </div>
+            ) : view === 'dashboard' ? (
+              <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 relative z-10 select-none bg-[var(--bg-secondary)]">
+                <AnalyticsOverview onBack={() => setView('chat')} />
+              </div>
+            ) : view === 'settings' ? (
+              <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 relative z-10 select-none bg-[var(--bg-secondary)]">
+                <SettingsView onBack={() => setView('chat')} />
+              </div>
+            ) : (
+              <div className="flex-1 overflow-hidden flex flex-col relative z-10 pt-4">
+                <div className="flex-1 overflow-hidden flex flex-col relative">
+                  {messages.length === 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.2 }}
+                      className="flex-1 flex flex-col items-center justify-center p-8 text-center"
+                      style={{ gap: '0px' }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {/* FIX 1 — Isolate MentorCharacter: Three.js / WebGL failures are common.
+                            A crashed avatar must NOT take down the whole chat area. */}
+                        <ErrorBoundary onReset={() => window.location.reload()}>
+                          <motion.div
+                            layoutId="mentor-canvas"
+                            className="mentor-canvas-wrapper idle-mode"
+                          >
+                            <MentorCharacter
+                              state={
+                                isRecording ? 'listening' :
+                                  isProcessing ? 'thinking' :
+                                    isPlaying ? 'speaking' :
+                                      'idle'
+                              }
+                              analyserNode={analyserNode}
+                              onSnapshot={!defaultAvatarUrl ? setDefaultAvatarUrl : undefined}
+                            />
+                          </motion.div>
+                        </ErrorBoundary>
+                      </div>
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}>
+                        <p style={{
+                          fontSize: '18px',
+                          fontWeight: '600',
+                          color: 'var(--text-primary)',
+                          letterSpacing: '-0.01em',
+                          margin: 0,
+                        }}>
+                          Hey, I'm <span style={{ color: '#5457E5' }}>EDI</span>.
+                        </p>
+                        <p style={{
+                          fontSize: '14px',
+                          fontWeight: '550',
+                          color: 'var(--text-secondary)',
+                          margin: 0,
+                        }}>
+                          Your Engineering Mentor
+                        </p>
+                        <p style={{
+                          fontSize: '13px',
+                          color: 'var(--text-muted)',
+                          margin: 0,
+                          lineHeight: '1.4',
+                          maxWidth: '280px',
+                        }}>
+                          Press the mic below to start our session.
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
 
-              {/* Fixed bottom controls */}
-              <footer className="voice-zone shrink-0">
-                <div className="w-full max-w-2xl mx-auto flex flex-col gap-3">
-                  <div className="flex justify-center pb-1">
-                    <VoiceOrb
-                      isRecording={isRecording}
-                      isProcessing={isProcessing}
-                      isPlaying={isPlaying}
+                  {/* FIX 1 — Isolate MessageList: if ONE message bubble throws (e.g.
+                      malformed markdown from a streamed response), only the message
+                      list resets — the voice pipeline keeps running.
+                      Only render when there are messages — the welcome screen above
+                      already handles the empty state so we don't double-render. */}
+                  {messages.length > 0 && (
+                  <ErrorBoundary onReset={resetMessageList}>
+                    <MessageList
+                      messages={messages}
+                      conversationId={activeId}
+                      currentSpokenWordIndex={currentSpokenWordIndex}
+                      isSpeakingTextSync={isSpeakingTextSync}
+                      analyserNode={analyserNode}
                       conversationState={conversationState}
-                      onClick={toggleRecording}
-                      shortcutsEnabled={shortcutsEnabled}
+                      defaultAvatarUrl={defaultAvatarUrl}
+                      onSnapshot={saveMessageSnapshot}
                     />
-                  </div>
+                  </ErrorBoundary>
+                  )}
                 </div>
-              </footer>
-            </div>
+
+                {/* Fixed bottom controls */}
+                <footer className="voice-zone shrink-0">
+                  <div className="w-full max-w-2xl mx-auto flex flex-col gap-3">
+                    <div className="flex justify-center pb-1">
+                      <VoiceOrb
+                        isRecording={isRecording}
+                        isProcessing={isProcessing}
+                        isPlaying={isPlaying}
+                        conversationState={conversationState}
+                        onClick={toggleRecording}
+                        shortcutsEnabled={shortcutsEnabled}
+                      />
+                    </div>
+                  </div>
+                 </footer>
+              </div>
+            )}
 
             {/* FIX 4 — Duplicate tab banner */}
             {isDuplicateTab && (
