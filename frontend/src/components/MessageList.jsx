@@ -80,7 +80,7 @@ const Message = memo(function Message({
                 return (
                   <div 
                     key={block.id} 
-                    className="w-full max-w-full overflow-hidden border border-neutral-800 rounded-xl shadow-sm bg-[#0f172a]"
+                    className="w-full max-w-full overflow-hidden border border-neutral-800 rounded-none shadow-sm bg-[#0f172a]"
                   >
                     <StrategyComponent block={block} />
                   </div>
@@ -148,6 +148,7 @@ function MessageListEmpty() {
 
 export const MessageList = memo(function MessageList({
   messages,
+  conversationId,
   currentSpokenWordIndex,
   isSpeakingTextSync,
   analyserNode,
@@ -157,14 +158,30 @@ export const MessageList = memo(function MessageList({
   onSendFollowup
 }) {
   const bottomRef = useRef(null);
+  const hasScrolledInitially = useRef(false);
 
   if (messages == null) return <MessageListSkeleton />;
 
-  // Auto-scroll when new items arrive
+  // Reset the initial-scroll flag whenever the active conversation changes.
+  // This ensures switching to any session instantly jumps to the bottom
+  // instead of using the smooth animation (which causes the visible top-to-bottom sweep).
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    hasScrolledInitially.current = false;
+  }, [conversationId]);
+
+  // Consolidated auto-scroll logic: instant scroll on first mount/switch, smooth scroll on updates/streaming
   // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     const el = bottomRef.current;
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    if (!el || messages.length === 0) return;
+
+    if (!hasScrolledInitially.current) {
+      el.scrollIntoView({ behavior: 'instant', block: 'end' });
+      hasScrolledInitially.current = true;
+    } else {
+      el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
   }, [messages.length, messages[messages.length - 1]?.text]);
 
   if (messages.length === 0) return <MessageListEmpty />;
