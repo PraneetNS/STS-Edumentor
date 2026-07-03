@@ -99,6 +99,7 @@ export function useVoicePipeline({
   conversationId,
 }) {
   // ── State ────────────────────────────────────────────────────────────────
+  const isAuthenticated = authStore.useStore(s => s.isAuthenticated);
   const [isRecording, setIsRecording]         = useState(false);
   const [isProcessing, setIsProcessing]       = useState(false);
   const [isPlaying, setIsPlaying]             = useState(false);
@@ -275,6 +276,13 @@ export function useVoicePipeline({
 
   // ── WebSocket connect ─────────────────────────────────────────────────
   const connectWS = useCallback(async () => {
+    // Guard: only connect if authenticated
+    if (!authStore.getState().isAuthenticated) {
+      setConnectionState('disconnected');
+      setStatus('disconnected');
+      return;
+    }
+
     // Guard: don't open a second socket if one is already live
     if (
       wsRef.current?.readyState === WebSocket.OPEN ||
@@ -285,11 +293,26 @@ export function useVoicePipeline({
     setStatus('connecting');
     isManualDisconnectRef.current = false;
 
-    // Refresh JWT access token silently before connecting to ensure it hasn't expired
-    try {
-      await authStore.getState().silentRefresh();
-    } catch (e) {
-      console.warn("Pre-connection silent token refresh failed:", e);
+    // Only call silentRefresh if we don't already have a valid access token in the store.
+    // After Google OAuth, the token is set from the URL redirect before connectWS fires,
+    // so we skip the refresh and use the existing in-memory token directly.
+    const existingToken = authStore.getState().token;
+    if (!existingToken) {
+      let refreshOk = false;
+      try {
+        refreshOk = await authStore.getState().silentRefresh();
+      } catch (e) {
+        console.warn("Pre-connection silent token refresh failed:", e);
+      }
+
+      if (!refreshOk) {
+        // No token in store and refresh failed — both tokens are dead. Force logout.
+        console.warn('[Auth] No token and refresh failed. Logging out...');
+        authStore.getState().logout();
+        setConnectionState('disconnected');
+        setStatus('disconnected');
+        return;
+      }
     }
 
     // Build URL with stable session_id so backend can resume context
@@ -297,6 +320,27 @@ export function useVoicePipeline({
     if (conversationId) {
       wsUrlObj.searchParams.set('session_id', conversationId);
       wsUrlObj.searchParams.set('user_id', conversationId);
+    }
+
+    // Add voice settings to URL parameters
+    try {
+      const savedSettingsRaw = localStorage.getItem('edumentor_settings');
+      if (savedSettingsRaw) {
+        const savedSettings = JSON.parse(savedSettingsRaw);
+        if (savedSettings.voice) {
+          if (savedSettings.voice.voice_style) {
+            wsUrlObj.searchParams.set('voice_style', savedSettings.voice.voice_style);
+          }
+          if (savedSettings.voice.accent) {
+            wsUrlObj.searchParams.set('accent', savedSettings.voice.accent);
+          }
+          if (savedSettings.voice.speech_speed) {
+            wsUrlObj.searchParams.set('speech_speed', savedSettings.voice.speech_speed.toString());
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Pipeline] Failed to parse settings for ws connection params', e);
     }
 
     const token = authStore.getState().token;
@@ -353,6 +397,16 @@ export function useVoicePipeline({
         return;
       }
 
+      // 1008 = policy violation — backend rejected the token as expired/invalid
+      // Don't retry; force a full re-login instead.
+      if (event.code === 1008) {
+        console.warn('[Auth] WebSocket rejected with 1008. Forcing logout...');
+        authStore.getState().logout();
+        setConnectionState('disconnected');
+        setStatus('disconnected');
+        return;
+      }
+
       scheduleReconnect();
     };
 
@@ -383,12 +437,16 @@ export function useVoicePipeline({
     connectWS();
   }, [connectWS]);
 
-  // Auto-connect on mount; disconnect on unmount
+  // Auto-connect on mount/auth-change; disconnect on unmount
   useEffect(() => {
+    if (!isAuthenticated) {
+      disconnect();
+      return;
+    }
     reconnectAttemptsRef.current = 0;
     connectWS();
     return () => disconnect();
-  }, [connectWS, disconnect]);
+  }, [connectWS, disconnect, isAuthenticated]);
 
   // Reset pipeline when switching conversation sessions
   useEffect(() => {
@@ -399,6 +457,29 @@ export function useVoicePipeline({
     setIsProcessing(false);
     cleanupMic();
   }, [conversationId, cleanupMic]);
+
+  // Listen to settings update events and propagate to backend websocket
+  useEffect(() => {
+    const handleSettingsSaved = (e) => {
+      const updated = e.detail;
+      if (updated && updated.voice) {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({
+            type: 'settings_update',
+            settings: {
+              voice_style: updated.voice.voice_style,
+              accent: updated.voice.accent,
+              speech_speed: updated.voice.speech_speed,
+            }
+          }));
+        }
+      }
+    };
+    window.addEventListener('edumentor_settings_saved', handleSettingsSaved);
+    return () => {
+      window.removeEventListener('edumentor_settings_saved', handleSettingsSaved);
+    };
+  }, []);
 
   // ── Audio context ──────────────────────────────────────────────────────
   const getAudioContext = useCallback(() => {
@@ -620,7 +701,7 @@ export function useVoicePipeline({
             const displayText = sanitizeAssistantText(generatedTextBufferRef.current);
             setAssistantText(displayText);
             if (fallbackToTokenStreamingRef.current) setIsSpeakingTextSync(false);
-            if (onTextUpdateRef.current) onTextUpdateRef.current(displayText);
+            if (onTextUpdateRef.current) onTextUpdateRef.current(generatedTextBufferRef.current);
           }
           break;
 
