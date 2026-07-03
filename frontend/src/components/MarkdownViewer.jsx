@@ -114,6 +114,8 @@ export function MarkdownViewer({ text, isStreaming = false }) {
   let codeContent = [];
   let renderedElements = [];
   let key = 0;
+  let inTable = false;
+  let tableRows = [];
 
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i];
@@ -136,6 +138,21 @@ export function MarkdownViewer({ text, isStreaming = false }) {
     if (inCodeBlock) {
       codeContent.push(line);
       continue;
+    }
+
+    // Tables - proper parsing
+    if (line.startsWith('|')) {
+      if (!inTable) {
+        inTable = true;
+        tableRows = [];
+      }
+      tableRows.push(line);
+      continue;
+    } else if (inTable) {
+      // Table ended, render it
+      renderedElements.push(renderTable(tableRows, key++));
+      tableRows = [];
+      inTable = false;
     }
 
     // Headings
@@ -184,16 +201,6 @@ export function MarkdownViewer({ text, isStreaming = false }) {
       continue;
     }
 
-    // Tables
-    if (line.startsWith('|')) {
-      renderedElements.push(
-        <div key={`tbl-${key++}`} className="font-mono text-xs bg-zinc-50 p-2 border-x border-b first:border-t text-zinc-600">
-          {line}
-        </div>
-      );
-      continue;
-    }
-
     // HR
     if (line.trim() === '---') {
       renderedElements.push(<hr key={`hr-${key++}`} className="my-6 border-zinc-200" />);
@@ -210,9 +217,78 @@ export function MarkdownViewer({ text, isStreaming = false }) {
     }
   }
 
+  // Handle table at end of content
+  if (inTable && tableRows.length > 0) {
+    renderedElements.push(renderTable(tableRows, key++));
+  }
+
   return (
     <div className="markdown-body">
       {renderedElements}
+    </div>
+  );
+}
+
+// Helper function to render tables properly
+function renderTable(rows, key) {
+  if (rows.length === 0) return null;
+
+  // Parse rows into cells
+  const parsedRows = rows.map(row => {
+    return row
+      .split('|')
+      .filter((_, idx, arr) => idx !== 0 && idx !== arr.length - 1) // Remove leading/trailing empty strings
+      .map(cell => cell.trim());
+  });
+
+  if (parsedRows.length === 0) return null;
+
+  // Identify header (first row) and separator (usually second row with dashes)
+  const hasHeader = parsedRows.length > 1;
+  const headerRow = hasHeader ? parsedRows[0] : null;
+  
+  // Skip separator row if it exists (contains only dashes, colons, and spaces)
+  let dataStartIndex = 1;
+  if (hasHeader && parsedRows[1] && parsedRows[1].every(cell => /^[\s:-]+$/.test(cell))) {
+    dataStartIndex = 2;
+  } else {
+    dataStartIndex = hasHeader ? 1 : 0;
+  }
+
+  const dataRows = parsedRows.slice(dataStartIndex);
+
+  return (
+    <div key={`table-wrapper-${key}`} className="my-4 overflow-x-auto">
+      <table className="min-w-full border-collapse border border-zinc-300 bg-white text-sm">
+        {headerRow && (
+          <thead className="bg-zinc-100">
+            <tr>
+              {headerRow.map((cell, idx) => (
+                <th
+                  key={`th-${key}-${idx}`}
+                  className="border border-zinc-300 px-4 py-2 text-left font-bold text-zinc-900"
+                >
+                  {parseInlineMarkdown(cell)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+        )}
+        <tbody>
+          {dataRows.map((row, rowIdx) => (
+            <tr key={`tr-${key}-${rowIdx}`} className="even:bg-zinc-50">
+              {row.map((cell, cellIdx) => (
+                <td
+                  key={`td-${key}-${rowIdx}-${cellIdx}`}
+                  className="border border-zinc-300 px-4 py-2 text-zinc-700"
+                >
+                  {parseInlineMarkdown(cell)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
