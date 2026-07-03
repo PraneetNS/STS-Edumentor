@@ -52,12 +52,18 @@ export function extractVisualBlocks(text) {
       isStreaming = true;
     }
 
+    let cleanContent = content;
+    // Strip wrapping ``` fences if present
+    if (cleanContent.startsWith('\x60\x60\x60')) {
+      cleanContent = cleanContent.replace(/^\x60\x60\x60[a-zA-Z0-9]*\n/, '').replace(/\n\x60\x60\x60$/, '').trim();
+    }
+
     blocks.push({
       id: `${tagName}_${startTagIndex}`,
       type,
       lang,
       title: title || getDefaultTitle(type, lang),
-      content,
+      content: cleanContent,
       isStreaming
     });
   }
