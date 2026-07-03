@@ -287,6 +287,7 @@ class AgentController:
         user_id: Optional[str] = None,
         audio_array: Optional[np.ndarray] = None,
         ip_address: Optional[str] = None,
+        voice_style: Optional[str] = None,
     ) -> AsyncIterator[dict]:
         """
         Process a transcript and stream cleaned response tokens.
@@ -508,6 +509,7 @@ class AgentController:
             knowledge_route = knowledge_route,
             retrieved_docs  = retrieved_docs,
             audio_emotion   = audio_emotion,
+            voice_style     = voice_style,
         )
         context_obj.history_messages = history_messages
         messages = self._prompt_builder.build_messages(context_obj)
@@ -563,12 +565,13 @@ class AgentController:
                     for event in parser.feed(safe_text):
                         raw_chunk = event["raw"]
                         planned_chunk = event["planned"]
+                        followup_chunk = event.get("followup", "")
                         
-                        if raw_chunk or planned_chunk:
+                        if raw_chunk or planned_chunk or followup_chunk:
                             self._turn_state[session_id]["partial_response"] += raw_chunk
                             self._interrupt.track_chars_sent(session_id, len(raw_chunk))
                             cleaned_planned = self._response_planner._clean_token(planned_chunk) if planned_chunk else ""
-                            yield {"raw": raw_chunk, "planned": cleaned_planned}
+                            yield {"raw": raw_chunk, "planned": cleaned_planned, "followup": followup_chunk}
         except Exception as exc:
             logger.exception("LLM generation error in controller: %s", exc)
             err_msg = f"I encountered an error while processing your request: {exc}. Please try again."
@@ -580,21 +583,23 @@ class AgentController:
             for event in parser.feed(final_safe):
                 raw_chunk = event["raw"]
                 planned_chunk = event["planned"]
-                if raw_chunk or planned_chunk:
+                followup_chunk = event.get("followup", "")
+                if raw_chunk or planned_chunk or followup_chunk:
                     self._turn_state[session_id]["partial_response"] += raw_chunk
                     self._interrupt.track_chars_sent(session_id, len(raw_chunk))
                     cleaned_planned = self._response_planner._clean_token(planned_chunk) if planned_chunk else ""
-                    yield {"raw": raw_chunk, "planned": cleaned_planned}
+                    yield {"raw": raw_chunk, "planned": cleaned_planned, "followup": followup_chunk}
             
         # Finalize the parser
         for event in parser.finalize():
             raw_chunk = event["raw"]
             planned_chunk = event["planned"]
-            if raw_chunk or planned_chunk:
+            followup_chunk = event.get("followup", "")
+            if raw_chunk or planned_chunk or followup_chunk:
                 self._turn_state[session_id]["partial_response"] += raw_chunk
                 self._interrupt.track_chars_sent(session_id, len(raw_chunk))
                 cleaned_planned = self._response_planner._clean_token(planned_chunk) if planned_chunk else ""
-                yield {"raw": raw_chunk, "planned": cleaned_planned}
+                yield {"raw": raw_chunk, "planned": cleaned_planned, "followup": followup_chunk}
 
         full_raw_response = "".join(full_raw_response_list)
         post_processed_response = full_raw_response
