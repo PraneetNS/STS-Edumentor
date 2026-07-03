@@ -197,8 +197,8 @@ class RealtimeStreamingParser:
 
         # Flush any remaining show buffer if we end in the middle of a show block
         if self.state == "SHOW":
+            yield from self._yield_show_content()
             yield {"raw": "</show>", "planned": ""}
-            self.state = "OUTSIDE"
 
         # Flush any remaining followup buffer if we end in the middle of a followup block
         if self.state == "FOLLOWUP" and self.followup_buffer.strip():
@@ -352,6 +352,7 @@ class RealtimeStreamingParser:
 
         if tag_clean in ("<speak>", "{speak}"):
             if self.state == "SHOW":
+                yield from self._yield_show_content()
                 yield {"raw": "</show>", "planned": ""}
             self.state = "SPEAK"
             yield {"raw": "", "planned": ""}
@@ -360,22 +361,21 @@ class RealtimeStreamingParser:
             yield {"raw": "", "planned": ""}
         elif tag_clean in ("<followup>", "{followup}"):
             if self.state == "SHOW":
+                yield from self._yield_show_content()
                 yield {"raw": "</show>", "planned": ""}
-            # Transition to FOLLOWUP state — followup text is hidden from chat and TTS
-            self.state = "FOLLOWUP"
-            self.followup_buffer = ""
+            # Transition to SPEAK state — followup text is displayed in chat and spoken by TTS
+            self.state = "SPEAK"
             yield {"raw": "", "planned": ""}
         elif tag_clean in ("</followup>", "{/followup}"):
             self.state = "OUTSIDE"
-            yield {"raw": "", "planned": "", "followup": self.followup_buffer.strip()}
-            self.followup_buffer = ""
+            yield {"raw": "", "planned": ""}
         elif tag_clean in ("<code>", "</code>", "{code}", "{/code}"):
             # Ignore and strip code tags entirely
             yield {"raw": "", "planned": ""}
         elif tag_clean in ("</show>", "{/show}", "</table>"):
             if self.state == "SHOW":
-                self.state = "OUTSIDE"
-                yield {"raw": tag, "planned": ""}
+                yield from self._yield_show_content()
+                yield {"raw": "</show>" if tag_clean != "</table>" else "</table>", "planned": ""}
             else:
                 yield {"raw": "", "planned": ""}
         elif tag_clean.startswith("<show") or tag_clean.startswith("{show"):
@@ -402,7 +402,8 @@ class RealtimeStreamingParser:
                     if not introduced:
                         planned_intro = "Below is the code for this. "
                         
-                    yield {"raw": tag, "planned": planned_intro}
+                    # Yield normalized tag with single quotes
+                    yield {"raw": "<show type='code' lang='python'>", "planned": planned_intro}
             else:
                 self.state = "SHOW"
                 type_match = re.search(r'type\s*=\s*["\']([^"\']*)["\']', tag, re.IGNORECASE)
@@ -442,7 +443,12 @@ class RealtimeStreamingParser:
                     else:
                         planned_intro = "Here is a diagram for this. "
                         
-                yield {"raw": tag, "planned": planned_intro}
+                # Yield normalized tag with single quotes
+                normalized_tag = f"<show type='{self.show_type}' lang='{self.show_lang}'"
+                if self.show_title:
+                    normalized_tag += f" title='{self.show_title}'"
+                normalized_tag += ">"
+                yield {"raw": normalized_tag, "planned": planned_intro}
         elif tag == "```":
             if self.state == "CODE_MD":
                 self.state = "OUTSIDE"
@@ -593,7 +599,7 @@ class RealtimeStreamingParser:
         """
         if self.state == "SHOW":
             self.show_buffer += char
-            yield {"raw": char, "planned": ""}
+            yield {"raw": "", "planned": ""}
         elif self.state == "CODE_MD":
             yield {"raw": char, "planned": ""}
         elif self.state == "SPEAK":
