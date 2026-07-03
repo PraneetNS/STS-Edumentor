@@ -6,26 +6,43 @@ import { ChevronLeft } from 'lucide-react';
 import { FloatingShapes } from './FloatingShapes';
 import mockSettings from '../data/settings.json';
 
+const STORAGE_KEY = 'edumentor_settings';
+
 export function SettingsView({ onBack }) {
   const [activeTab, setActiveTab] = useState('account');
   const logout = authStore.getState().logout;
 
+  const [currentSettings, setCurrentSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.warn('[Settings] Failed to load from localStorage:', e);
+    }
+    return mockSettings;
+  });
+
   const handleSave = (updated) => {
     console.log('[Settings] Saving changes:', updated);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      setCurrentSettings(updated);
+      window.dispatchEvent(new CustomEvent('edumentor_settings_saved', { detail: updated }));
+    } catch (e) {
+      console.error('[Settings] Failed to save to localStorage:', e);
+    }
   };
 
   return (
-    <div className="relative min-h-screen w-full px-4 md:px-8 py-6 bg-white select-none overflow-y-auto">
-      {/* Background shape animation */}
-      <FloatingShapes page="profile" />
-
-      <div className="w-full relative z-10">
+    <div className="w-full relative z-10 text-[var(--text-primary)]">
         
         {/* HEADER CONTROLS */}
         <div className="flex items-center justify-between mb-8">
           <button 
             onClick={onBack} 
-            className="flex items-center gap-2 font-sans font-semibold text-xs text-neutral-600 bg-white border border-neutral-200 px-4 py-2.5 rounded-full hover:bg-neutral-50 transition-all cursor-pointer shadow-sm"
+            className="flex items-center gap-2 font-sans font-semibold text-xs text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border-default)] px-4 py-2.5 rounded-none hover:bg-[var(--bg-tertiary)] transition-all cursor-pointer shadow-sm"
           >
             <ChevronLeft size={16} /> Back to Mentor
           </button>
@@ -48,14 +65,13 @@ export function SettingsView({ onBack }) {
           <div className="md:col-span-8 lg:col-span-9 flex flex-col min-h-[70vh]">
             <SettingsPanel 
               activeTab={activeTab} 
-              initialSettings={mockSettings}
+              initialSettings={currentSettings}
               onSave={handleSave} 
               onLogout={logout} 
             />
           </div>
         </div>
 
-      </div>
     </div>
   );
 }
