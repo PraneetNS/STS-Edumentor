@@ -63,8 +63,8 @@ def test_history_injected_as_alternating_roles(builder):
     ]
     ctx = make_context(history=history)
     messages = builder.build_messages(ctx)
-    # static_system (1) + dynamic_system (2) + 2 * history turns (4) + current_user (1) = 7
-    assert len(messages) == 7
+    # static_system (1) + dynamic_system (2) + 2 * history turns (4) + reminder (1) + current_user (1) = 8
+    assert len(messages) == 8
     assert messages[2]["role"] == "user"
     assert messages[3]["role"] == "assistant"
 
