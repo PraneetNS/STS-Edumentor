@@ -7,28 +7,45 @@ export default function ComparisonTableStrategy({ block }) {
   const [filterQuery, setFilterQuery] = useState('');
 
   useEffect(() => {
-    const lines = block.content.split('\n');
-    const parsedHeaders = [];
-    const parsedRows = [];
+    const rawLines = block.content.split('\n');
+    
+    // Clean and split lines into cells
+    const lineCells = rawLines
+      .map(line => {
+        let clean = line.trim();
+        // Remove leading and trailing pipes if present
+        if (clean.startsWith('|')) clean = clean.slice(1);
+        if (clean.endsWith('|')) clean = clean.slice(0, -1);
+        
+        // Return null for empty lines so we can filter them out
+        if (clean === '') return null;
+        
+        return clean.split('|').map(c => c.trim());
+      })
+      .filter(cells => cells !== null);
 
-    lines.forEach((line) => {
-      const trimmed = line.trim();
-      if (!trimmed || !trimmed.startsWith('|')) return;
+    // Find the separator line index (e.g. |---|---| or ---|---)
+    const separatorIdx = lineCells.findIndex(cells => 
+      cells.length > 0 && cells.every(cell => /^[\s:-]+$/.test(cell))
+    );
 
-      // Skip separators like |---|---|
-      if (trimmed.match(/^\|[\s:-|]+$/)) return;
+    let parsedHeaders = [];
+    let parsedRows = [];
 
-      const cells = trimmed
-        .split('|')
-        .map((c) => c.trim())
-        .filter((_, idx, arr) => idx > 0 && idx < arr.length - 1); // remove first/last empty cells from boundary split
-
-      if (parsedHeaders.length === 0) {
-        parsedHeaders.push(...cells);
-      } else {
-        parsedRows.push(cells);
+    if (separatorIdx > 0) {
+      // Header is the line right before the separator
+      parsedHeaders = lineCells[separatorIdx - 1];
+      // Rows are all lines after the separator
+      parsedRows = lineCells.slice(separatorIdx + 1);
+    } else if (lineCells.length > 0) {
+      // Fallback: If no separator line found yet (streaming), use the first non-empty line as header
+      // but only if it contains actual column separators (pipes)
+      const firstLine = lineCells[0];
+      if (firstLine.length > 1) {
+        parsedHeaders = firstLine;
+        parsedRows = lineCells.slice(1);
       }
-    });
+    }
 
     setHeaders(parsedHeaders);
     setRows(parsedRows);
@@ -121,11 +138,14 @@ export default function ComparisonTableStrategy({ block }) {
                 ) : (
                   filteredRows.map((row, rIdx) => (
                     <tr key={rIdx} className="hover:bg-zinc-900/20 transition-colors">
-                      {row.map((cell, cIdx) => (
-                        <td key={cIdx} className="px-4 py-3 whitespace-nowrap align-middle">
-                          {formatTableCell(cell)}
-                        </td>
-                      ))}
+                      {Array.from({ length: headers.length }).map((_, cIdx) => {
+                        const cell = row[cIdx] || '';
+                        return (
+                          <td key={cIdx} className="px-4 py-3 text-xs text-zinc-300 align-middle whitespace-normal break-words max-w-[300px]">
+                            {formatTableCell(cell)}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))
                 )}
