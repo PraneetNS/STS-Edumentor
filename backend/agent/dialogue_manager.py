@@ -105,6 +105,7 @@ class DialogueManager:
         knowledge_route: KnowledgeRoute,
         retrieved_docs: Optional[str] = None,
         audio_emotion: Optional[EmotionResult] = None,
+        voice_style: Optional[str] = None,
     ) -> AgentContext:
         """
         Build the complete AgentContext for this turn.
@@ -118,6 +119,8 @@ class DialogueManager:
             profile:         Student profile.
             knowledge_route: RAG routing decision.
             retrieved_docs:  Retrieved text from RAG (may be None).
+            audio_emotion:   Detected emotion result (optional).
+            voice_style:     Voice/persona style name (optional).
 
         Returns:
             Fully populated AgentContext ready for PromptBuilder.
@@ -183,6 +186,7 @@ class DialogueManager:
             safety_flags    = {
                 "bridge_instruction": bridge_instruction,  # Passed through to PromptBuilder
             },
+            voice_style     = voice_style,
         )
 
         return ctx
