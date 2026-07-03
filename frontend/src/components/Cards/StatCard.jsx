@@ -33,21 +33,21 @@ export function StatCard({ label, value, desc, icon: Icon, colorClass = 'bg-whit
 
   return (
     <motion.div
-      className={`border border-neutral-200 p-5 rounded-2xl shadow-sm text-black flex flex-col justify-between relative overflow-hidden cursor-default ${colorClass}`}
-      whileHover={{ y: -1, boxShadow: 'var(--shadow-flat-md)' }}
+      className={`border border-[var(--border-default)] p-5 rounded-none shadow-sm text-[var(--text-primary)] flex flex-col justify-between relative overflow-hidden cursor-default bg-[var(--bg-primary)] ${colorClass}`}
+      whileHover={{ y: -1, boxShadow: 'var(--shadow-md)' }}
       transition={{ type: 'spring', stiffness: 300, damping: 20 }}
       style={{ minWidth: 0 }}
     >
       <div className="flex justify-between items-start gap-4">
-        <span className="font-mono text-[9px] uppercase font-bold text-black/60 tracking-wider truncate">{label}</span>
-        {Icon && <Icon size={16} className="text-black/70 flex-shrink-0" />}
+        <span className="font-mono text-[9px] uppercase font-bold text-[var(--text-muted)] tracking-wider truncate">{label}</span>
+        {Icon && <Icon size={16} className="text-[var(--text-secondary)] flex-shrink-0" />}
       </div>
       
       <div className="mt-4">
-        <h3 className="font-sans font-extrabold text-3xl leading-tight truncate text-black">
+        <h3 className="font-sans font-extrabold text-3xl leading-tight truncate text-[var(--text-primary)]">
           {typeof value === 'number' ? displayValue.toLocaleString() : value}
         </h3>
-        {desc && <p className="font-mono text-[10px] text-black/60 mt-1 leading-snug break-words">{desc}</p>}
+        {desc && <p className="font-mono text-[10px] text-[var(--text-muted)] mt-1 leading-snug break-words">{desc}</p>}
       </div>
     </motion.div>
   );
