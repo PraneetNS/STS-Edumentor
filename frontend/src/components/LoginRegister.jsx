@@ -214,7 +214,8 @@ export function LoginRegister() {
                     placeholder="Praneet N.S."
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    className="w-full h-12 bg-white border border-neutral-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-black pl-11 pr-4 rounded-xl font-sans text-sm focus:outline-none transition-all placeholder-neutral-400"
+                    style={{ paddingLeft: '3rem' }}
+                  className="w-full h-12 bg-white border border-neutral-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-black pr-4 rounded-xl font-sans text-sm focus:outline-none transition-all placeholder-neutral-400"
                   />
                 </div>
               </div>
@@ -230,7 +231,8 @@ export function LoginRegister() {
                   placeholder="student@university.edu"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full h-12 bg-white border border-neutral-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-black pl-11 pr-4 rounded-xl font-sans text-sm focus:outline-none transition-all placeholder-neutral-400"
+                  style={{ paddingLeft: '3rem' }}
+                  className="w-full h-12 bg-white border border-neutral-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-black pr-4 rounded-xl font-sans text-sm focus:outline-none transition-all placeholder-neutral-400"
                 />
               </div>
             </div>
@@ -245,7 +247,8 @@ export function LoginRegister() {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full h-12 bg-white border border-neutral-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-black pl-11 pr-4 rounded-xl font-sans text-sm focus:outline-none transition-all placeholder-neutral-400"
+                  style={{ paddingLeft: '3rem' }}
+                  className="w-full h-12 bg-white border border-neutral-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-black pr-4 rounded-xl font-sans text-sm focus:outline-none transition-all placeholder-neutral-400"
                 />
               </div>
             </div>
