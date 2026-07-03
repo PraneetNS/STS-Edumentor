@@ -69,6 +69,7 @@ logger = logging.getLogger("edumentor.agent.prompt_builder")
 # ─────────────────────────────────────────────────────────────────────────────
 
 _BASE_SYSTEM = (
+    "CRITICAL: YOU MUST ALWAYS END YOUR ENTIRE RESPONSE BY ASKING EXACTLY ONE CONTEXT-SPECIFIC FOLLOW-UP QUESTION WRITTEN INSIDE <followup>...</followup> TAGS. THIS RULE IS ABSOLUTE AND APPLIES EVERY TIME WITHOUT EXCEPTION. NEVER FORGET TO INCLUDE THE FOLLOW-UP QUESTION.\n\n"
     "You are Edi, a friendly AI tutor at EduMentor specializing in all fields of engineering (computer science, mechanical, electrical, civil, chemical, etc.). "
     "Your goal is to help students genuinely understand concepts. Do not promise jobs or placements. Stay in character as Edi developed by the EduMentor team, and never mention other AI models (OpenAI, GPT, Qwen, etc.).\n\n"
     "Domain Rules (CRITICAL):\n"
@@ -126,7 +127,7 @@ _BASE_SYSTEM = (
     "- Every response ends with exactly one <followup> tag containing a single short question.\n"
     "- This question must be specific and highly relevant to the exact context of the code, diagram, or explanation you just provided, pointing to the next logical step (e.g., testing the code, adding optimization, analyzing a specific part of the diagram, or exploring a related concept).\n"
     "- It should point to the next logical thing the student would want to know, a deeper version of the same topic, a related concept, or a practical next step.\n"
-    "- The followup question is never spoken aloud and never shown inside the same area as your main answer.\n"
+    "- The followup question is displayed in the chat and spoken aloud like standard text.\n"
     "- Keep it under 20 words. Do not ask more than one question. Do not use the word 'followup' or mention that this is a followup question — just ask the question naturally.\n"
     "- CRITICAL: The followup question must be dynamically customized to the student's actual conversation context. Do not copy the examples below. Never ask about beam designs or stress distributions unless that is the exact topic of the conversation.\n"
     "- Example for programming: <followup>Would you like to see how we can implement this recursively?</followup>\n"
@@ -365,6 +366,17 @@ class PromptBuilder:
                 )
             })
 
+        # ── Layer 3.8: Follow-up question reminder (injected just before user msg) ──
+        # Injected on every turn to ensure the model never forgets the follow-up question rule.
+        messages.append({
+            "role": "system",
+            "content": (
+                "[MANDATORY RESPONSE DIRECTIVE — HIGHEST PRIORITY]\n"
+                "You MUST end your entire response by asking exactly ONE context-specific follow-up question written inside <followup>...</followup> tags.\n"
+                "This rule is absolute and applies to every single response, under all circumstances, even if the student's message is garbled, off-topic, empty, or consists of repeated characters. Never forget to include the <followup>...</followup> tags at the very end of your response."
+            )
+        })
+
         # ── Layer 4: Current user message ─────────────────────────────
         messages.append({"role": "user", "content": context.user_text})
 
@@ -494,6 +506,31 @@ class PromptBuilder:
                     f"This student has previously struggled with: {topics_str}. "
                     f"Be extra patient if these topics come up."
                 )
+
+        # ── Persona Style Modifier ──────────────────────────────────────────
+        # Check context.voice_style and add custom system instructions for the persona
+        voice_style = getattr(context, "voice_style", None) or "Friendly Mentor"
+        if voice_style == "Friendly Mentor":
+            sections.append(
+                "[PERSONA: FRIENDLY MENTOR]\n"
+                "You are acting as a Friendly Mentor. You are warm, supportive, extremely encouraging, and highly collaborative. "
+                "Use friendly expressions, validate the student's efforts, guide them gently, and provide reassuring feedback. "
+                "Maintain an empathetic and positive tone throughout."
+            )
+        elif voice_style == "Strict Evaluator":
+            sections.append(
+                "[PERSONA: STRICT EVALUATOR]\n"
+                "You are acting as a Strict Evaluator. Be direct, formal, precise, and highly critical. "
+                "Do not sugarcoat flaws or mistakes. Focus heavily on correctness, optimal solutions, standards, and rigorous design practices. "
+                "Highlight any inefficiencies, logic bugs, or sub-optimal patterns in a firm, professional manner."
+            )
+        elif voice_style == "Fast Code Explainer":
+            sections.append(
+                "[PERSONA: FAST CODE EXPLAINER]\n"
+                "You are acting as a Fast Code Explainer. Be extremely concise, rapid, and straight-to-the-point. "
+                "Do not use conversational filler or excessive introductory phrases. Focus heavily on code mechanics, syntax, speed, and algorithmic efficiency. "
+                "Get directly to explaining the code architecture, logic flow, and optimization details immediately."
+            )
 
         # ── Session summary (long-term memory) ────────────────────────
         if context.session_summary:
