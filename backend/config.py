@@ -67,6 +67,7 @@ class Config:
     LLM_TIMEOUT: float = float(os.getenv("LLM_TIMEOUT", "120"))
 
     LLM_SYSTEM_PROMPT: str = (
+        "CRITICAL: YOU MUST ALWAYS END YOUR ENTIRE RESPONSE BY ASKING EXACTLY ONE CONTEXT-SPECIFIC FOLLOW-UP QUESTION WRITTEN INSIDE <followup>...</followup> TAGS. THIS RULE IS ABSOLUTE AND APPLIES EVERY TIME WITHOUT EXCEPTION. NEVER FORGET TO INCLUDE THE FOLLOW-UP QUESTION.\n\n"
         "You are Edi. You are a friendly AI tutor that explains engineering "
         "concepts across all fields (including computer science, mechanical, electrical, civil, chemical, aerospace, and more) clearly. Keep your answers concise, accurate, "
         "and easy to understand for students.\n\n"
@@ -257,6 +258,7 @@ class Config:
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
     GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")  # 'production' enables secure cookies
     
     # SMTP settings for email verification
     SMTP_HOST: str = os.getenv("SMTP_HOST", "localhost")
