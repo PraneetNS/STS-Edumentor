@@ -1,9 +1,11 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
-export function EmptyState({ onBack }) {
+export function EmptyState({ onBack, className = "" }) {
+  const containerClasses = `flex flex-col items-center justify-center p-8 text-center bg-neutral-50/50 border border-neutral-200 rounded-2xl shadow-sm my-6 select-none max-w-lg mx-auto ${className}`.trim();
+
   return (
-    <div className="flex flex-col items-center justify-center p-8 text-center bg-neutral-50/50 border border-neutral-200 rounded-2xl shadow-sm my-6 select-none max-w-lg mx-auto">
+    <div className={containerClasses}>
       <motion.div
         className="text-4xl mb-4"
         animate={{ y: [0, -8, 0] }}
