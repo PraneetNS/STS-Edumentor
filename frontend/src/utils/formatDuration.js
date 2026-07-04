@@ -13,11 +13,14 @@
  * @returns {string}
  */
 export function formatSeconds(totalSeconds) {
-  if (!totalSeconds || totalSeconds <= 0) return '0s';
+  const secs = Number(totalSeconds);
+  if (Number.isNaN(secs) || !Number.isFinite(secs) || secs <= 0) {
+    return '0s';
+  }
 
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = Math.floor(totalSeconds % 60);
+  const hours = Math.floor(secs / 3600);
+  const minutes = Math.floor((secs % 3600) / 60);
+  const seconds = Math.floor(secs % 60);
 
   if (hours > 0) {
     return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
