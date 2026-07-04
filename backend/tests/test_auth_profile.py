@@ -192,3 +192,30 @@ async def test_profile_stats_computation_logic():
             await conn.execute("DELETE FROM users WHERE user_id = $1;", temp_user_id)
         db_manager.pool = old_pool
         await pool.close()
+
+
+@pytest.mark.asyncio
+async def test_purge_unverified_expired_registrations_mock():
+    from agent.database import DatabaseManager
+    db = DatabaseManager()
+    
+    mock_conn = mock.AsyncMock()
+    mock_conn.execute.return_value = "DELETE 3"
+    
+    # Setup mock pool with async context manager mock for acquire()
+    mock_pool = mock.MagicMock()
+    mock_acquire_cm = mock.AsyncMock()
+    mock_acquire_cm.__aenter__.return_value = mock_conn
+    mock_pool.acquire.return_value = mock_acquire_cm
+    
+    db.pool = mock_pool
+    db.enabled = True
+    
+    deleted_count = await db.purge_unverified_expired_registrations(24)
+    assert deleted_count == 3
+    mock_conn.execute.assert_called_once()
+    args, kwargs = mock_conn.execute.call_args
+    assert "DELETE FROM users" in args[0]
+    assert "email_verified = FALSE" in args[0]
+    assert args[1] == 24
+

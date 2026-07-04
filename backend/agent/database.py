@@ -428,6 +428,25 @@ class DatabaseManager:
             logger.error("Failed to verify user email: %s", e)
             return False
 
+    async def purge_unverified_expired_registrations(self, age_hours: int = 24) -> int:
+        """Purge stale registrations that were created but never verified within the given hours."""
+        if not self.pool:
+            return 0
+        query = """
+        DELETE FROM users
+        WHERE email_verified = FALSE
+          AND created_at < now() - ($1 * INTERVAL '1 hour');
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                res = await conn.execute(query, age_hours)
+                if res.startswith("DELETE "):
+                    return int(res.split(" ")[1])
+                return 0
+        except Exception as e:
+            logger.error("Failed to purge expired registrations: %s", e)
+            return 0
+
     async def upsert_google_user(self, email: str, display_name: str, avatar_url: str) -> Optional[dict]:
         """Upsert user on Google login to route to the same account by email."""
         if not self.pool:
