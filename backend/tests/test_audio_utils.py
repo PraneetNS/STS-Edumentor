@@ -86,3 +86,43 @@ def test_validate_utterance_duration():
     assert validate_utterance_duration(0.01) is False  # too short
     assert validate_utterance_duration(15.0) is True
     assert validate_utterance_duration(120.0) is False  # too long (default max: 60s)
+
+
+def test_check_audio_frequency_profile_silence():
+    from utils.audio import check_audio_frequency_profile
+    # Low energy
+    pcm = np.zeros(1024, dtype=np.float32)
+    is_safe, reason = check_audio_frequency_profile(pcm)
+    assert is_safe is False
+    assert "Audio energy too low" in reason
+
+
+def test_check_audio_frequency_profile_safe():
+    from utils.audio import check_audio_frequency_profile
+    # Generate 1000 Hz sine wave (safe low frequency) at 16000 Hz sample rate
+    t = np.linspace(0, 0.1, 1600, endpoint=False)
+    pcm = np.sin(2 * np.pi * 1000 * t).astype(np.float32)
+    is_safe, reason = check_audio_frequency_profile(pcm)
+    assert is_safe is True
+    assert reason == ""
+
+
+def test_check_audio_frequency_profile_suspicious():
+    from utils.audio import check_audio_frequency_profile
+    # Generate 6000 Hz sine wave (high frequency, above 4000 Hz threshold)
+    t = np.linspace(0, 0.1, 1600, endpoint=False)
+    pcm = np.sin(2 * np.pi * 6000 * t).astype(np.float32)
+    is_safe, reason = check_audio_frequency_profile(pcm)
+    assert is_safe is False
+    assert "Suspicious frequency profile" in reason
+
+
+def test_check_audio_frequency_profile_invalid_env(monkeypatch):
+    from utils.audio import check_audio_frequency_profile
+    monkeypatch.setenv("HIGH_BAND_POWER_RATIO_THRESHOLD", "invalid-float")
+    # Generate 1000 Hz sine wave (should fall back to 0.40 and be safe)
+    t = np.linspace(0, 0.1, 1600, endpoint=False)
+    pcm = np.sin(2 * np.pi * 1000 * t).astype(np.float32)
+    is_safe, reason = check_audio_frequency_profile(pcm)
+    assert is_safe is True
+

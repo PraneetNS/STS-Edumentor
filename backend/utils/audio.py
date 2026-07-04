@@ -167,7 +167,16 @@ def check_audio_frequency_profile(
     high_power_ratio = power[high_band_mask].sum() / total_power
 
     # If >40% of audio energy is above 4kHz, suspicious
-    threshold = float(os.getenv("HIGH_BAND_POWER_RATIO_THRESHOLD", "0.40"))
+    raw_threshold = os.getenv("HIGH_BAND_POWER_RATIO_THRESHOLD", "0.40")
+    try:
+        threshold = float(raw_threshold)
+    except ValueError:
+        logger.warning(
+            "Invalid HIGH_BAND_POWER_RATIO_THRESHOLD env value: '%s'. Falling back to 0.40.",
+            raw_threshold
+        )
+        threshold = 0.40
+
     if high_power_ratio > threshold:
         return False, f"Suspicious frequency profile: {high_power_ratio:.2f} high-band ratio"
 
