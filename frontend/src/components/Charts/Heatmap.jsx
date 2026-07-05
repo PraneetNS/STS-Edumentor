@@ -1,6 +1,14 @@
 import React from 'react';
 import { Tooltip } from '../Common/Tooltip';
 
+/**
+ * Heatmap component to display a grid of activity counts over the past 4 weeks.
+ *
+ * @param {Object} props
+ * @param {Array<Object>} props.data - Array of daily activity records.
+ * @param {string} props.data[].date - Date of the activity record (e.g. 'YYYY-MM-DD').
+ * @param {number} props.data[].count - Number of interaction turns on that day.
+ */
 export function Heatmap({ data = [] }) {
   // Generate mock days if data is empty
   const getIntensityColor = (count) => {
