@@ -1,6 +1,17 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
+/**
+ * TimelineCard component to display an event or activity in a vertical timeline list.
+ *
+ * @param {Object} props
+ * @param {string} props.time - The timestamp or period for the timeline event.
+ * @param {string} props.title - The title or headline of the timeline card.
+ * @param {string} [props.desc] - Optional description text detail.
+ * @param {React.ComponentType<{ size: number, className: string }>} [props.icon] - Optional React Lucide/SVG icon component.
+ * @param {string} [props.colorClass='bg-white'] - Optional background color class for the icon wrapper.
+ * @param {boolean} [props.isLast=false] - If true, hides the vertical connecting line below the node.
+ */
 export function TimelineCard({ time, title, desc, icon: Icon, colorClass = 'bg-white', isLast = false }) {
   return (
     <div className="flex gap-4 select-none">
