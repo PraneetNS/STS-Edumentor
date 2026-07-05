@@ -1,6 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 
+/**
+ * StatCard component to display a key metric or count with counter counting animation.
+ *
+ * @param {Object} props
+ * @param {string} props.label - The uppercase header label for the stat card.
+ * @param {number|string} props.value - The value to display (counts are animated if type is number).
+ * @param {string} [props.desc] - Optional detail summary sentence.
+ * @param {React.ComponentType<{ size: number, className: string }>} [props.icon] - Optional React Lucide/SVG icon component.
+ * @param {string} [props.colorClass='bg-white'] - Optional extra tailwind background classes.
+ * @param {boolean} [props.animate=true] - If true and value is a number, animates the display counting up.
+ */
 export function StatCard({ label, value, desc, icon: Icon, colorClass = 'bg-white', animate = true }) {
   const [displayValue, setDisplayValue] = useState(0);
 
