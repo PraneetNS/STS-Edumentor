@@ -11,8 +11,9 @@ import { motion } from 'framer-motion';
  * @param {React.ComponentType<{ size: number, className: string }>} [props.icon] - Optional React Lucide/SVG icon component.
  * @param {string} [props.colorClass='bg-white'] - Optional extra tailwind background classes.
  * @param {boolean} [props.animate=true] - If true and value is a number, animates the display counting up.
+ * @param {string} [props.className=''] - Optional CSS class name override for custom styling.
  */
-export function StatCard({ label, value, desc, icon: Icon, colorClass = 'bg-white', animate = true }) {
+export function StatCard({ label, value, desc, icon: Icon, colorClass = 'bg-white', animate = true, className = '' }) {
   const [displayValue, setDisplayValue] = useState(0);
 
   useEffect(() => {
@@ -42,9 +43,11 @@ export function StatCard({ label, value, desc, icon: Icon, colorClass = 'bg-whit
     return () => clearInterval(timer);
   }, [value, animate]);
 
+  const containerClasses = `border border-[var(--border-default)] p-5 rounded-none shadow-sm text-[var(--text-primary)] flex flex-col justify-between relative overflow-hidden cursor-default bg-[var(--bg-primary)] ${colorClass} ${className}`.trim();
+
   return (
     <motion.div
-      className={`border border-[var(--border-default)] p-5 rounded-none shadow-sm text-[var(--text-primary)] flex flex-col justify-between relative overflow-hidden cursor-default bg-[var(--bg-primary)] ${colorClass}`}
+      className={containerClasses}
       whileHover={{ y: -1, boxShadow: 'var(--shadow-md)' }}
       transition={{ type: 'spring', stiffness: 300, damping: 20 }}
       style={{ minWidth: 0 }}
