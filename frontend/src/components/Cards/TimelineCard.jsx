@@ -11,10 +11,13 @@ import { motion } from 'framer-motion';
  * @param {React.ComponentType<{ size: number, className: string }>} [props.icon] - Optional React Lucide/SVG icon component.
  * @param {string} [props.colorClass='bg-white'] - Optional background color class for the icon wrapper.
  * @param {boolean} [props.isLast=false] - If true, hides the vertical connecting line below the node.
+ * @param {string} [props.className=''] - Optional CSS class name override for custom styling.
  */
-export function TimelineCard({ time, title, desc, icon: Icon, colorClass = 'bg-white', isLast = false }) {
+export function TimelineCard({ time, title, desc, icon: Icon, colorClass = 'bg-white', isLast = false, className = '' }) {
+  const containerClasses = `flex gap-4 select-none ${className}`.trim();
+
   return (
-    <div className="flex gap-4 select-none">
+    <div className={containerClasses}>
       <div className="flex flex-col items-center flex-shrink-0">
         <div className={`w-8 h-8 rounded-none border border-[var(--border-default)] flex items-center justify-center shadow-sm relative z-10 ${colorClass}`}>
           {Icon ? <Icon size={14} className="text-[var(--text-primary)]" /> : '📍'}
