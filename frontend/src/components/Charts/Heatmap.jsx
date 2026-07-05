@@ -8,8 +8,9 @@ import { Tooltip } from '../Common/Tooltip';
  * @param {Array<Object>} props.data - Array of daily activity records.
  * @param {string} props.data[].date - Date of the activity record (e.g. 'YYYY-MM-DD').
  * @param {number} props.data[].count - Number of interaction turns on that day.
+ * @param {string} [props.className=''] - Optional CSS class name override for custom styling.
  */
-export function Heatmap({ data = [] }) {
+export function Heatmap({ data = [], className = '' }) {
   // Generate mock days if data is empty
   const getIntensityColor = (count) => {
     if (!count || count === 0) return 'bg-[#FAF8F2] border-black/10';
@@ -30,8 +31,10 @@ export function Heatmap({ data = [] }) {
     });
   });
 
+  const containerClasses = `flex flex-col gap-2 select-none w-full ${className}`.trim();
+
   return (
-    <div className="flex flex-col gap-2 select-none w-full">
+    <div className={containerClasses}>
       <div className="flex justify-between items-center font-mono text-[9px] uppercase text-black/50 mb-2">
         <span>Activity Grid (Past 4 Weeks)</span>
         <div className="flex items-center gap-1">
