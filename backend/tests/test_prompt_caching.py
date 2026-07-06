@@ -256,7 +256,7 @@ async def test_kv_cache_hit_on_repeated_system_prompt():
     msgs_turn1 = build_messages(session_id, "what is dynamic programming", profile)
     cold_start = time.perf_counter()
     response1_tokens = []
-    async for token in engine.stream_tokens_from_messages(msgs_turn1, session_id=session_id):
+    async for token in engine.stream_tokens_from_messages(msgs_turn1, session_id=session_id, max_tokens=10):
         response1_tokens.append(token)
     cold_elapsed_ms = (time.perf_counter() - cold_start) * 1000
     response1_text = "".join(response1_tokens)
@@ -272,7 +272,7 @@ async def test_kv_cache_hit_on_repeated_system_prompt():
     )
     warm_start = time.perf_counter()
     response2_tokens = []
-    async for token in engine.stream_tokens_from_messages(msgs_turn2, session_id=session_id):
+    async for token in engine.stream_tokens_from_messages(msgs_turn2, session_id=session_id, max_tokens=10):
         response2_tokens.append(token)
     warm_elapsed_ms = (time.perf_counter() - warm_start) * 1000
 
