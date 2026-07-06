@@ -44,7 +44,6 @@ const Message = memo(function Message({
       initial={{ opacity: 0, y: 15, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.25 }}
-      layout
     >
       {/* Avatar Container */}
       <div className={`avatar-wrapper shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${isUser ? 'bg-blue-500 text-white' : 'bg-white border border-neutral-200 p-0.5 shadow-sm'}`}>
