@@ -76,7 +76,7 @@ def get_max_tokens_for_intent(user_text: str, intent: Intent) -> int:
     )
     if needs_silent:
         return 512  # Raise token ceiling for visual/code requests
-    return 150      # Keep voice-only or short replies compact and fast
+    return 250      # Keep voice-only or short replies compact and fast
 
 
 class AgentController:
