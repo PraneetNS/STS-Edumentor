@@ -871,6 +871,8 @@ body,
   white-space: normal;
   word-wrap: break-word;
   overflow-wrap: break-word;
+  width: 100%;
+  max-width: 100%;
 }
 
 .msg-bubble--thinking {
