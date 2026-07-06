@@ -121,3 +121,11 @@ async def test_latency_budget_llm_pass():
 
         assert res_timeout == ""
         assert duration < 0.3
+
+
+def test_get_stoplist_words(corrector):
+    stoplist = corrector.get_stoplist_words()
+    assert isinstance(stoplist, list)
+    assert "better" in stoplist
+    assert "cash" in stoplist
+    assert stoplist == sorted(stoplist)
