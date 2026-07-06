@@ -283,6 +283,13 @@ class DomainCorrector:
         fuzzy_threshold = getattr(Config, "FUZZY_MATCH_THRESHOLD", 80.0)
         return self.correct_word_internal(word, discipline, {word.lower()}, fuzzy_threshold)
 
+    def get_stoplist_words(self) -> List[str]:
+        """
+        Return the current list of common words protected from domain correction,
+        sorted alphabetically.
+        """
+        return sorted(list(COMMON_WORDS_STOPLIST))
+
 
 # Module-level singleton
 domain_corrector = DomainCorrector()
