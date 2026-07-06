@@ -1169,7 +1169,7 @@ async def _run_pipeline(
             logger.info("Utterance too short (treated as noise) — responding with clarification prompt.")
             await set_state(ConversationState.THINKING)
             async def _short_audio_stream():
-                yield {"raw": "I didn't hear that. Could you speak a little louder and clearer?", "planned": "I didn't hear that. Could you speak a little louder and clearer?"}
+                yield {"raw": "Can you please repeat it once again?", "planned": "Can you please repeat it once again?"}
             await _stream_llm_and_tts(websocket, _short_audio_stream(), loop, set_state, speed, voice, latency_metrics, start_time)
             await set_state(ConversationState.IDLE)
             await websocket.send_json({"type": "assistant_finished"})
@@ -1218,7 +1218,7 @@ async def _run_pipeline(
         logger.info("Empty transcript — responding with clarification prompt.")
         await set_state(ConversationState.THINKING)
         async def _empty_transcript_stream():
-            yield {"raw": "I didn't hear that. Could you speak a little louder and clearer?", "planned": "I didn't hear that. Could you speak a little louder and clearer?"}
+            yield {"raw": "Can you please repeat it once again?", "planned": "Can you please repeat it once again?"}
         await _stream_llm_and_tts(websocket, _empty_transcript_stream(), loop, set_state, speed, voice, latency_metrics, start_time)
         await set_state(ConversationState.IDLE)
         await websocket.send_json({"type": "assistant_finished"})
