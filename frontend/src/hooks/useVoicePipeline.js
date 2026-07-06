@@ -829,6 +829,16 @@ export function useVoicePipeline({
     }
   }, []);
 
+  const stopRecording = useCallback(() => {
+    cleanupMic();
+    setIsRecording(false);
+    setIsProcessing(true);
+    setStatus('processing');
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'end_of_speech' }));
+    }
+  }, [cleanupMic]);
+
   // ── Recording controls ────────────────────────────────────────────────
   const startRecording = useCallback(async () => {
     // FIX 3 — block recording if permission denied or mic unsupported
@@ -915,26 +925,14 @@ export function useVoicePipeline({
 
     clientInactivityTimerRef.current = setTimeout(() => {
       if (!hasSpeechRef.current) {
-        cleanupMic();
-        setIsRecording(false);
-        setStatus('connected');
+        stopRecording();
       }
-    }, 5000);
+    }, 4000);
   }, [
     micPermission, isDuplicateTab, isPlaying, isProcessing,
     connectWS, getAudioContext, resetPlayback,
-    clearTimeouts, clearClientSilenceTimer, cleanupMic, requestMicStream,
+    clearTimeouts, clearClientSilenceTimer, cleanupMic, requestMicStream, stopRecording,
   ]);
-
-  const stopRecording = useCallback(() => {
-    cleanupMic();
-    setIsRecording(false);
-    setIsProcessing(true);
-    setStatus('processing');
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'end_of_speech' }));
-    }
-  }, [cleanupMic]);
 
   const toggleRecording = useCallback(() => {
     if (isPlaying || isProcessing) {
