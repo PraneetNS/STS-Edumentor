@@ -16,7 +16,8 @@ logger = logging.getLogger("edumentor.speech.domain_corrector")
 # Common English words that sound like engineering terms but should not be aggressively corrected
 COMMON_WORDS_STOPLIST: Set[str] = {
     "cash", "catch", "trust", "talk", "bite", "get", "see", "sea", "sharp",
-    "dock", "port", "host", "key", "force", "mass", "flow", "wing", "column", "some"
+    "dock", "port", "host", "key", "force", "mass", "flow", "wing", "column", "some",
+    "better", "butter", "batter", "bitter", "bother"
 }
 
 
