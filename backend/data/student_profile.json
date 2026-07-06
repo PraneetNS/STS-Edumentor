@@ -19,7 +19,9 @@
     "Deep Learning",
     "System Design",
     "JavaScript",
-    "Electronics Engineering"
+    "Electronics Engineering",
+    "Electrical Engineering",
+    "Chemical Engineering"
   ],
   "weak_topics": [
     "Python",
@@ -37,9 +39,9 @@
     "JavaScript"
   ],
   "preferred_style": "examples",
-  "session_count": 104,
+  "session_count": 120,
   "discipline": "cse",
   "active_topics": [
-    "Python"
+    "Computer Science"
   ]
 }
