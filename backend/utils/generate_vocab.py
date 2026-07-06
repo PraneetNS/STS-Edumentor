@@ -228,7 +228,7 @@ async def run_session_feedback(vocab_path: str):
 async def main():
     parser = argparse.ArgumentParser(description="Bootstrap and personalize technical vocabulary variants.")
     parser.add_argument("--from-corrections", action="store_true", help="Extract raw-corrected variants from real PostgreSQL session data.")
-    parser.add_argument("--vocab-path", default="../engineering_vocab.json", help="Path to engineering_vocab.json.")
+    parser.add_argument("--vocab-path", default="../speech/data/engineering_vocab.json", help="Path to engineering_vocab.json.")
     args = parser.parse_args()
 
     vocab_path = os.path.abspath(args.vocab_path)
