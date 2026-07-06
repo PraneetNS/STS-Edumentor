@@ -42,10 +42,10 @@ class WhisperEngine:
         import json
         import os
         self.vocab = {}
-        vocab_path = os.path.join(os.path.dirname(__file__), "..", "..", "engineering_vocab.json")
+        vocab_path = os.path.join(os.path.dirname(__file__), "..", "speech", "data", "engineering_vocab.json")
         try:
             if os.path.exists(vocab_path):
-                with open(vocab_path, "r", encoding="utf-8") as f:
+                with open(vocab_path, "r", encoding="utf-8-sig") as f:
                     self.vocab = json.load(f)
                 logger.info("[OK] WhisperEngine loaded engineering vocabulary for prompt biasing.")
             else:
@@ -111,11 +111,7 @@ class WhisperEngine:
             audio_array,
             language="en",
             task="transcribe",
-            vad_filter=True,
-            vad_parameters=dict(
-                min_silence_duration_ms=300,
-                speech_pad_ms=200,
-            ),
+            vad_filter=False,
             beam_size=Config.WHISPER_BEAM_SIZE,
             best_of=Config.WHISPER_BEAM_SIZE,
             temperature=0.0,
@@ -169,11 +165,7 @@ class WhisperEngine:
             audio_array,
             language="en",
             task="transcribe",
-            vad_filter=True,                       # Skip silent/noisy segments before decoding
-            vad_parameters=dict(
-                min_silence_duration_ms=300,       # Minimum silence gap to split on
-                speech_pad_ms=200,                 # Padding around detected speech
-            ),
+            vad_filter=False,
             # Using beam size greater than 1 increases vocabulary accuracy and resolves name-mangling
             beam_size=Config.WHISPER_BEAM_SIZE,
             best_of=Config.WHISPER_BEAM_SIZE,
