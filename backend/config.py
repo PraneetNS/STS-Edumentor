@@ -15,13 +15,13 @@ class Config:
     # ─────────────────────────────────────────────
     # Whisper (STT) settings
     # ─────────────────────────────────────────────
-    WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "base.en")
+    WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "small.en")
     WHISPER_BEAM_SIZE: int = int(os.getenv("WHISPER_BEAM_SIZE", "5"))
     WHISPER_CORRECTION_THRESHOLD: float = float(os.getenv("WHISPER_CORRECTION_THRESHOLD", "-0.5"))
     WHISPER_CORRECTION_TIMEOUT: float = float(os.getenv("WHISPER_CORRECTION_TIMEOUT", "0.4"))
     WHISPER_CORRECTION_MAX_TOKENS: int = int(os.getenv("WHISPER_CORRECTION_MAX_TOKENS", "20"))
     FUZZY_MATCH_THRESHOLD: float = float(os.getenv("FUZZY_MATCH_THRESHOLD", "80.0"))
-    VOCAB_PATH: str = os.getenv("VOCAB_PATH", "../engineering_vocab.json")
+    VOCAB_PATH: str = os.getenv("VOCAB_PATH", "speech/data/engineering_vocab.json")
 
     # Auto-detect GPU; fall back to CPU
     WHISPER_DEVICE: str = "cuda" if torch.cuda.is_available() else "cpu"
