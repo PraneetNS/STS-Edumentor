@@ -54,6 +54,13 @@ def test_stoplist_guard(corrector):
     corrected_context, changes_context = corrector.correct_sentence("explain cash memory to me", "cse")
     assert "cache" in corrected_context.lower()
 
+    corrected_clean_better, changes_clean_better = corrector.correct_sentence("this is a better option", "cse")
+    assert "b-tree" not in corrected_clean_better.lower()
+    assert len(changes_clean_better) == 0
+
+    corrected_context_better, changes_context_better = corrector.correct_sentence("explain better tree to me", "cse")
+    assert "b-tree" in corrected_context_better.lower()
+
 
 def test_cross_discipline_isolation(corrector):
     corrected, changes = corrector.correct_sentence("this column is load bearing", "civil")
