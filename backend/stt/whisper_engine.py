@@ -111,7 +111,7 @@ class WhisperEngine:
             audio_array,
             language="en",
             task="transcribe",
-            vad_filter=False,
+            vad_filter=False, # Disable VAD filter to prevent accidental truncation of low-volume or quiet student responses
             beam_size=Config.WHISPER_BEAM_SIZE,
             best_of=Config.WHISPER_BEAM_SIZE,
             temperature=0.0,
@@ -165,7 +165,7 @@ class WhisperEngine:
             audio_array,
             language="en",
             task="transcribe",
-            vad_filter=False,
+            vad_filter=False, # Disable VAD filter to prevent accidental truncation of low-volume or quiet student responses
             # Using beam size greater than 1 increases vocabulary accuracy and resolves name-mangling
             beam_size=Config.WHISPER_BEAM_SIZE,
             best_of=Config.WHISPER_BEAM_SIZE,
