@@ -29,8 +29,8 @@ class Config:
     # float16 on GPU for speed; int8 on CPU for efficiency
     WHISPER_COMPUTE_TYPE: str = "float16" if WHISPER_DEVICE == "cuda" else "int8"
 
-    # VAD filter is always enabled in WhisperEngine to suppress silent hallucinations
-    WHISPER_VAD_FILTER: bool = True
+    # VAD filter is disabled in WhisperEngine to prevent dropping low-volume student responses
+    WHISPER_VAD_FILTER: bool = False
 
     # ── Voice Activity Detection (VAD) ───────────────────────────────────────
     VAD_ENGINE: str = os.getenv("VAD_ENGINE", "silero")
