@@ -5,8 +5,9 @@ export function TimelineStrategy({ block }) {
   // Parse lines representing steps
   const items = block.content
     .split('\n')
-    .map((line) => line.trim().replace(/^[-*+]\s*/, '').replace(/^\d+\.\s*/, ''))
-    .filter((line) => line.length > 0);
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith('#'))
+    .map((line) => line.replace(/^[-*+]\s*/, '').replace(/^\d+\.\s*/, ''));
 
   return (
     <div className="flex flex-col gap-6 p-6 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-sm">
