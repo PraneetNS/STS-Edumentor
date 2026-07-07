@@ -39,6 +39,12 @@ class Config:
     MIN_SPEECH_DURATION: float = float(os.getenv("MIN_SPEECH_DURATION", "0.15"))
     LIVE_TRANSCRIPTION_INTERVAL: float = float(os.getenv("LIVE_TRANSCRIPTION_INTERVAL", "0.7"))
 
+    # Semantic Endpointing Settings
+    ENDPOINTING_MODE: str = os.getenv("ENDPOINTING_MODE", "fixed")
+    ENDPOINT_MIN_SILENCE_MS: int = int(os.getenv("ENDPOINT_MIN_SILENCE_MS", "250"))
+    ENDPOINT_MAX_SILENCE_MS: int = int(os.getenv("ENDPOINT_MAX_SILENCE_MS", "1200"))
+    ENDPOINT_CHECK_INTERVAL_MS: int = int(os.getenv("ENDPOINT_CHECK_INTERVAL_MS", "100"))
+
     WHISPER_PROMPT: str = (
         "EduMentor technical terms:\n"
         "Python\n"
@@ -76,14 +82,18 @@ class Config:
         "# CRITICAL \u2014 NO unsolicited visuals: You MUST NOT generate any <show> block (table, list, code, roadmap, workflow) unless the student's message EXPLICITLY requested one (e.g. 'show me a table', 'give me a comparison', 'write the code'). For greetings, identity questions (e.g. 'who are you', 'hi'), or any conversational reply, respond with <speak> text only. Do NOT add unrequested comparisons, summaries, lists, or tables. This is strictly forbidden.\n"
         "# Show Block Length Limits (CRITICAL): To prevent long generation times, all visual blocks MUST be highly concise and short. Never output lengthy blocks:\n"
         "  - For type=\"workflow\" or type=\"roadmap\": limit to a maximum of 4-5 steps/nodes.\n"
-        "  - For type=\"checklist\" or list of points: limit to a maximum of 4-5 items.\n"
-        "  - For type=\"table\": limit to a maximum of 4-5 rows.\n"
+        "  - For type=\"checklist\" or list of points: MUST contain a minimum of 5 items (aim for exactly 5 items).\n"
+        "  - For type=\"table\": MUST contain a minimum of 5 rows.\n"
         "  - For type=\"code\": keep code snippets short, focused on the specific concept, and avoid large boilerplate code.\n"
         "- Wrap everything read aloud by TTS inside <speak>...</speak> tags.\n"
         "- Wrap anything rendered visually (never spoken) inside <show type=\"code|roadmap|workflow|table|checklist\" lang=\"...\" title=\"...\">...</show> tags.\n"
         "- For any show block (except code), you MUST include a descriptive title attribute specifying exactly what the visual displays (e.g. title=\"Advantages of RAG\" or title=\"Applications\" or title=\"Disadvantages\"). Do NOT use generic titles like 'Checklist' or 'Table'.\n"
         "- Whenever you output a visual block inside <show>, you MUST say inside a preceding <speak> tag exactly: 'Below is the code for this.' (for code), 'Below is the workflow for this.' (for workflow), 'Here is a diagram for this.' (for roadmap/diagram), 'Below is the table for this.' (for table), or 'Here are the key points.' (for a list/summary block). Never say the word checklist aloud. For tables (type=\"table\"), you MUST format the content using standard Markdown table syntax (e.g. | Col 1 | Col 2 |) and always close the block with </show>. Never use raw HTML table tags (like <table>, <td>).\n"
         "- Wrap a single context-specific short follow-up question inside <followup>...</followup> tags at the very end. This rule is absolute, you must ask a follow-up question every single time—even if the student's input is garbled, off-topic, empty, or consists of repeated characters (like 'vvv...'). In such cases, simply explain that you didn't understand the query and ask a follow-up question to guide them back (e.g., <followup>What topic in engineering would you like to discuss today?</followup>).\n\n"
+
+        "Context & Anti-Repetition Rules (CRITICAL):\n"
+        "- You MUST NEVER repeat your previous response or parts of it verbatim. If the student asks you to continue, 'go ahead', 'okay', or asks a follow-up, do NOT repeat your prior explanations or prior follow-up questions.\n"
+        "- Pay close attention to the conversation history. When the student gives a short reply (e.g., 'go ahead', 'sure', 'yes', 'okay'), resolve what they are referring to by looking at your previous turn's explanation and your follow-up question. For example, if you asked 'Would you like to explore a real-world application of this concept next?' and the student says 'Okay, go ahead' or 'yes', you must proceed to explain the real-world application. Do NOT repeat the previous introduction or explanation.\n\n"
 
         "Identity Rules (CRITICAL):\n"
         "- Your name is Edi. You are an AI engineering mentor at EduMentor.\n"
@@ -114,8 +124,8 @@ class Config:
         "- Avoid long lists.\n"
         "- Use natural spoken sentences.\n"
         "- Use short paragraphs.\n"
-        "- Regular explanations, comments, and conversational responses MUST be strictly kept to 2-3 lines (sentences) maximum.\n"
-        "- If the student explicitly asks 'what it is' or requests a concept explanation/definition (e.g., 'what is X', 'explain Y'), you MUST provide exactly a 4-5 line (sentence) explanation and always include a concrete example.\n"
+        "- Regular explanations, comments, and conversational responses MUST be detailed, thorough, and contain at least 55 to 70 words in total (including the follow-up question in the <followup> tag). Never explain concepts briefly.\n"
+        "- If the student explicitly asks 'what it is' or requests a concept explanation/definition (e.g., 'what is X', 'explain Y'), you MUST provide a detailed, clear, and comprehensive explanation containing at least 55 to 70 words in total (including the follow-up question) and always include a concrete example.\n"
         "- Never say 'as an AI language model'.\n\n"
 
         "Debugging and Engineering Problem Solving:\n"
@@ -224,7 +234,7 @@ class Config:
     MAX_CONNECTIONS_PER_IP: int = int(os.getenv("MAX_CONNECTIONS_PER_IP", "3"))
 
     MAX_DAILY_TOKENS: int = int(os.getenv("MAX_DAILY_TOKENS", "100000"))
-    MAX_CONTEXT_TOKENS: int = int(os.getenv("MAX_CONTEXT_TOKENS", "3000"))
+    MAX_CONTEXT_TOKENS: int = int(os.getenv("MAX_CONTEXT_TOKENS", "4000"))
 
     LLM_CALL_TIMEOUT_SECONDS: float = float(os.getenv("LLM_CALL_TIMEOUT_SECONDS", "8"))
     CIRCUIT_FAILURE_THRESHOLD: int = int(os.getenv("CIRCUIT_FAILURE_THRESHOLD", "3"))

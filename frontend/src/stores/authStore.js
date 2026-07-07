@@ -30,6 +30,7 @@ export const authStore = createStore((set, get) => ({
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ email, password })
     });
     if (!res.ok) {
@@ -47,7 +48,7 @@ export const authStore = createStore((set, get) => ({
 
   logout: async () => {
     try {
-      await fetch(`${API_BASE}/auth/logout`, { method: 'POST' });
+      await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' });
     } catch (e) {
       console.error('Logout request failed:', e);
     }
@@ -61,7 +62,7 @@ export const authStore = createStore((set, get) => ({
 
   silentRefresh: async () => {
     try {
-      const res = await fetch(`${API_BASE}/auth/refresh`, { method: 'POST' });
+      const res = await fetch(`${API_BASE}/auth/refresh`, { method: 'POST', credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         const jwtPayload = JSON.parse(atob(data.access_token.split('.')[1]));
