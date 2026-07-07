@@ -130,6 +130,9 @@ class AgentController:
         # session_id → {"last_topic": str, "partial_response": str, "start_time": float}
         self._turn_state: Dict[str, Dict] = {}
 
+        # Per-session custom name tracking (session_id -> custom_name)
+        self._session_names: Dict[str, str] = {}
+
         logger.info(
             "[OK] AgentController ready. intent_enabled=%s safety_enabled=%s",
             intent_enabled, safety_enabled
@@ -151,6 +154,89 @@ class AgentController:
         if not text:
             return 0
         return max(1, len(text) // 4)
+
+    def _is_harsh_word(self, word: str) -> bool:
+        harsh_words = {
+            "fuck", "shit", "ass", "bitch", "bastard", "dick", "cunt", "pussy", 
+            "idiot", "stupid", "moron", "asshole", "nigger", "retard", "faggot",
+            "whore", "slut", "crap", "dumb", "jerk", "fool"
+        }
+        word_lower = word.lower()
+        return word_lower in harsh_words or any(hw in word_lower for hw in harsh_words)
+
+    def _check_name_change(self, text: str) -> Optional[str]:
+        import re
+        clean_text = re.sub(r'[^\w\s]', '', text).strip()
+        
+        ignored = {
+            "hello", "hi", "hey", "what", "how", "why", "who", "when", "where", "yes", "no", 
+            "ok", "okay", "yeah", "yaa", "you", "me", "he", "she", "they", "it", "we", "this", 
+            "that", "there", "here", "the", "a", "an", "and", "or", "but", "so", "if", "not", 
+            "is", "are", "am", "was", "were", "be", "been", "have", "has", "had", "do", "does", 
+            "did", "go", "come", "get", "make", "say", "tell", "now", "always", "from", "on",
+            "your", "my", "name"
+        }
+        
+        # Pattern 1: [name] yaa
+        match_yaa = re.search(r'\b([a-zA-Z0-9_-]+)\s+(?:yaa|yeah|ya|yup)\b', clean_text, re.IGNORECASE)
+        if match_yaa:
+            candidate = match_yaa.group(1)
+            if candidate.lower() not in ignored:
+                return candidate
+                
+        # Pattern 2: explicit rename patterns
+        patterns = [
+            r'\byour name is\s+(?:now\s+|here\s+|always\s+|from\s+now\s+on\s+)?([a-zA-Z0-9_-]+)\b',
+            r'\bcall you\s+(?:now\s+|here\s+|always\s+)?([a-zA-Z0-9_-]+)\b',
+            r'\bcall yourself\s+(?:now\s+|here\s+|always\s+)?([a-zA-Z0-9_-]+)\b',
+            r'\bchange your name to\s+(?:now\s+|here\s+|always\s+)?([a-zA-Z0-9_-]+)\b',
+            r'\bset your name to\s+(?:now\s+|here\s+|always\s+)?([a-zA-Z0-9_-]+)\b',
+            r'\brename you to\s+(?:now\s+|here\s+|always\s+)?([a-zA-Z0-9_-]+)\b',
+            r'\bfrom now on your name is\s+(?:now\s+|here\s+|always\s+)?([a-zA-Z0-9_-]+)\b',
+        ]
+        
+        for p in patterns:
+            match = re.search(p, clean_text, re.IGNORECASE)
+            if match:
+                candidate = match.group(1)
+                if candidate.lower() not in ignored:
+                    return candidate
+        return None
+
+    def _check_name_query(self, text: str) -> bool:
+        import re
+        clean_text = re.sub(r'[^\w\s]', '', text).strip().lower()
+        
+        patterns = [
+            r'\bwhat name (?:did i|i had|i|did we)\s+(?:keep|gave|give|choose|set)\b',
+            r'\bdo you remember the name i (?:gave|kept|chose)\b',
+            r'\bwhat is the name i (?:gave|kept|chose)\b',
+            r'\bwhat name did you get\b',
+            r'\bwhat did i name you\b',
+            r'\bwhat name did i keep\b',
+            r'\bwhat is your name\b',
+            r'\bwhats your name\b',
+            r'\bwho are you\b',
+            r'\btell me your name\b',
+            r'\byour name\b',
+        ]
+        
+        return any(re.search(p, clean_text) for p in patterns)
+
+    async def _stream_confirmation(
+        self,
+        confirmation_text: str,
+        followup_text: str,
+        session_id: str,
+    ) -> AsyncIterator[dict]:
+        words = confirmation_text.split()
+        for i, word in enumerate(words):
+            separator = " " if i > 0 else ""
+            token = separator + word
+            yield {"raw": token, "planned": token}
+            await asyncio.sleep(0.005)
+        # Yield the followup at the end
+        yield {"raw": "", "planned": "", "followup": followup_text}
 
     def _run_pre_guardrail(self, text: str) -> tuple[str, bool, Optional[str], Optional[str]]:
         import re
@@ -347,6 +433,64 @@ class AgentController:
         # Reset response planner for new turn
         self._response_planner.reset()
 
+        # Check if the user is setting a new name
+        name_candidate = self._check_name_change(user_text)
+        if name_candidate:
+            if self._is_harsh_word(name_candidate):
+                refusal_message = "I cannot use that name. Please choose a different name."
+                async for token in self._stream_refusal(refusal_message, session_id):
+                    yield token
+                return
+            else:
+                self._session_names[session_id] = name_candidate
+                confirmation_msg = f"yaa thats a nice name from now my name {name_candidate}"
+                followup_msg = "What topic in engineering would you like to discuss today?"
+                async for token in self._stream_confirmation(confirmation_msg, followup_msg, session_id):
+                    yield token
+                if self._db_manager and self._db_manager.enabled:
+                    latency_ms = int((time.perf_counter() - start_time) * 1000)
+                    asyncio.create_task(
+                        self._db_manager.write_log(
+                            user_id=user_uuid,
+                            session_id=session_uuid,
+                            query_text=user_text,
+                            response_text=f"{confirmation_msg} <followup>{followup_msg}</followup>",
+                            intent_category="GREETING",
+                            input_flagged=False,
+                            output_flagged=False,
+                            flag_reason=None,
+                            latency_ms=latency_ms
+                        )
+                    )
+                return
+
+        # Check if the user is asking about the name they set
+        if self._check_name_query(user_text):
+            custom_name = self._session_names.get(session_id, "Edi")
+            if custom_name != "Edi":
+                response_text = f"My name is {custom_name}. You chose the name {custom_name} for me."
+            else:
+                response_text = "My name is Edi. You haven't set a custom name for me yet."
+            followup_text = "What engineering topic would you like to discuss today?"
+            async for token in self._stream_confirmation(response_text, followup_text, session_id):
+                yield token
+            if self._db_manager and self._db_manager.enabled:
+                latency_ms = int((time.perf_counter() - start_time) * 1000)
+                asyncio.create_task(
+                    self._db_manager.write_log(
+                        user_id=user_uuid,
+                        session_id=session_uuid,
+                        query_text=user_text,
+                        response_text=f"{response_text} <followup>{followup_text}</followup>",
+                        intent_category="GREETING",
+                        input_flagged=False,
+                        output_flagged=False,
+                        flag_reason=None,
+                        latency_ms=latency_ms
+                    )
+                )
+            return
+
         log_written = False
         input_flagged = False
         output_flagged = False
@@ -512,6 +656,7 @@ class AgentController:
             voice_style     = voice_style,
         )
         context_obj.history_messages = history_messages
+        context_obj.custom_name = self._session_names.get(session_id, "Edi")
         messages = self._prompt_builder.build_messages(context_obj)
 
         # Truncate prompt context if total tokens exceeds budget by popping oldest turns
