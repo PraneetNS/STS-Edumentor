@@ -109,6 +109,10 @@ class SemanticEndpointer:
         self.config = config or EndpointingConfig()
 
     def classify_completeness(self, confirmed_text: str) -> Completeness:
+        """
+        Classifies the confirmed text into CONFIDENT_COMPLETE, AMBIGUOUS, or TRAILING_INCOMPLETE completeness categories
+        by checking terminal punctuation, question patterns, and trailing grammatical fillers.
+        """
         text = confirmed_text.strip()
         if not text:
             return Completeness.AMBIGUOUS
