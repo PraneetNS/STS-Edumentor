@@ -234,6 +234,7 @@ class Config:
     MAX_CONNECTIONS_PER_IP: int = int(os.getenv("MAX_CONNECTIONS_PER_IP", "3"))
 
     MAX_DAILY_TOKENS: int = int(os.getenv("MAX_DAILY_TOKENS", "100000"))
+    # Maximum context tokens allowed for the LLM prompt (increased to support detailed identity naming and conversation summaries)
     MAX_CONTEXT_TOKENS: int = int(os.getenv("MAX_CONTEXT_TOKENS", "4000"))
 
     LLM_CALL_TIMEOUT_SECONDS: float = float(os.getenv("LLM_CALL_TIMEOUT_SECONDS", "8"))
