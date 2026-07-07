@@ -1,5 +1,12 @@
 import asyncio
 
+"""
+EduMentor Voice — Request Queue Unit Test Suite
+
+This test suite covers reliability guarantees of the Redis Request Queue, including
+successful enqueues, streaming consumer group reads, backpressure limits, and worker crash recovery.
+"""
+
 import fakeredis.aioredis as fakeaioredis
 from fakeredis import FakeServer
 import pytest
