@@ -95,6 +95,9 @@ EduMentor-Voice/
 │   │   └── llm_engine.py        # OpenAI-compatible llama.cpp HTTP client
 │   ├── tts/
 │   │   └── kokoro_engine.py     # Local Text-to-Speech via Kokoro
+│   ├── request_queue/           # Redis request queue logic (consumer/producer)
+│   │   ├── __init__.py
+│   │   └── llm_queue.py         # Streams request broker implementation
 │   ├── utils/
 │   │   └── audio.py             # PCM conversion utilities and VAD sentence splitters
 │   ├── data/                    # JSON data storage (Student Profile, Summaries)
