@@ -5,16 +5,24 @@ import { CheckCircle2, Circle, ArrowRight, BookOpen, Compass } from 'lucide-reac
 export default function RoadmapStrategy({ block }) {
   const [steps, setSteps] = useState([]);
   const [expandedIndex, setExpandedIndex] = useState(0);
+  const [subheading, setSubheading] = useState('');
 
   useEffect(() => {
     // Parse roadmap steps from block content
     const parsedSteps = [];
     const lines = block.content.split('\n');
     let currentStep = null;
+    let foundSubheading = '';
 
     lines.forEach((line) => {
       const trimmed = line.trim();
       if (!trimmed) return;
+
+      // Handle Markdown headings
+      if (trimmed.startsWith('#')) {
+        foundSubheading = trimmed.replace(/^#+\s*/, '');
+        return;
+      }
 
       // Check if line represents a new step (e.g., "1. Topic" or "- [x] Topic" or "* [ ] Topic")
       const checklistMatch = trimmed.match(/^[-*]\s+\[([ xX])\]\s+(?:(\d+)\.\s+)?(.*)/);
@@ -57,6 +65,7 @@ export default function RoadmapStrategy({ block }) {
     
     // Auto-mark first few as completed or set initial state
     setSteps(parsedSteps);
+    setSubheading(foundSubheading);
   }, [block.content]);
 
   const toggleStepCompleted = (index, e) => {
@@ -67,15 +76,20 @@ export default function RoadmapStrategy({ block }) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#121214] rounded-lg border border-zinc-800 overflow-hidden font-sans">
+    <div className="flex flex-col h-full bg-[#161619] rounded-xl border border-zinc-800/80 overflow-hidden font-sans shadow-lg select-text">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 bg-[#18181B] border-b border-zinc-800 select-none">
-        <Compass size={16} className="text-indigo-400" />
-        <span className="font-semibold text-xs text-zinc-200">{block.title || 'Learning Roadmap'}</span>
+      <div className="flex items-center gap-2.5 px-5 py-4 bg-[#1e1e24] border-b border-zinc-800 select-none">
+        <Compass size={18} className="text-indigo-400" />
+        <span className="font-bold text-sm text-zinc-100">{block.title || 'Learning Roadmap'}</span>
       </div>
 
       {/* Main steps container */}
-      <div className="flex-1 overflow-y-auto p-4 select-text relative">
+      <div className="flex-1 overflow-y-auto p-5 select-text relative">
+        {subheading && (
+          <h4 className="text-[11px] font-bold uppercase tracking-wider text-indigo-400 mb-4 ml-3 select-none">
+            {subheading}
+          </h4>
+        )}
         {steps.length === 0 ? (
           <p className="text-zinc-500 text-xs text-center mt-8">No roadmap milestones parsed.</p>
         ) : (
