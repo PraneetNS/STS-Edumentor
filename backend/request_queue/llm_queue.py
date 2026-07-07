@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+"""
+EduMentor Voice — Redis Request Queue Module
+
+This module implements a Redis-backed request queue system using Redis Streams
+and consumer groups. It enables reliable message delivery (at-least-once) to
+the GPU worker pool, tracks in-flight messages, and allows other workers to reclaim
+stale tasks in the event of a worker crash.
+"""
+
 import asyncio
 import json
 import time
