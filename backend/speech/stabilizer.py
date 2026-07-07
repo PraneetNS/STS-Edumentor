@@ -19,10 +19,16 @@ class TranscriptStabilizer:
 
     def __init__(self) -> None:
         self.prev_words: List[str] = []
+        self.confirmed_words: List[str] = []
 
     def reset(self) -> None:
         """Reset the stabilizer state for a new speaking turn."""
         self.prev_words = []
+        self.confirmed_words = []
+
+    def get_confirmed_text(self) -> str:
+        """Returns the confirmed text from the last stabilization pass."""
+        return " ".join(self.confirmed_words)
 
     def stabilize(self, text: str) -> List[Dict[str, Any]]:
         """
@@ -45,6 +51,9 @@ class TranscriptStabilizer:
         # everything except the last 2 words of the current utterance.
         safe_confirm_len = max(matching_len, len(new_words) - 2)
         safe_confirm_len = min(safe_confirm_len, len(new_words))
+
+        # Store confirmed words in state so it can be retrieved by endpointing
+        self.confirmed_words = new_words[:safe_confirm_len]
 
         words_payload = []
         for i, w in enumerate(new_words):

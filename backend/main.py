@@ -45,6 +45,7 @@ from utils.audio import int16_bytes_to_float32, is_sentence_complete, validate_a
 import time
 from agent.models import ConversationState, Emotion
 from speech.stabilizer import TranscriptStabilizer
+from speech.endpointing import SemanticEndpointer, EndpointingConfig, EndpointingMode
 from speech.domain_corrector import DomainCorrector
 
 # Agent layer imports
@@ -674,6 +675,15 @@ async def voice_endpoint(websocket: WebSocket):
     # Initialize TranscriptStabilizer
     stabilizer = TranscriptStabilizer()
 
+    # Initialize SemanticEndpointer
+    endpointer = SemanticEndpointer(EndpointingConfig(
+        mode=EndpointingMode(Config.ENDPOINTING_MODE),
+        min_silence_ms=Config.ENDPOINT_MIN_SILENCE_MS,
+        default_silence_ms=int(Config.VAD_SILENCE_TIMEOUT * 1000),
+        max_silence_ms=Config.ENDPOINT_MAX_SILENCE_MS,
+        check_interval_ms=Config.ENDPOINT_CHECK_INTERVAL_MS,
+    ))
+
     # Conversation State Machine
     current_state = ConversationState.IDLE
 
@@ -871,8 +881,10 @@ async def voice_endpoint(websocket: WebSocket):
                         else:
                             if speech_started:
                                 silence_duration += 0.032
-                                if silence_duration >= Config.VAD_SILENCE_TIMEOUT:
-                                    logger.info("VAD: Silence timeout reached. Auto-triggering pipeline.")
+                                silence_elapsed_ms = int(silence_duration * 1000)
+                                decision = endpointer.decide(stabilizer.get_confirmed_text(), silence_elapsed_ms)
+                                if decision.should_finalize:
+                                    logger.info("VAD: Silence timeout reached (reason=%s) at %dms. Auto-triggering pipeline.", decision.reason, silence_elapsed_ms)
                                     speech_started = False
                                     speech_duration = 0.0
                                     silence_duration = 0.0
