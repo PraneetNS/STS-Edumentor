@@ -44,6 +44,7 @@ def endpointer(cfg):
 # --- FIXED mode: must exactly reproduce legacy behavior -------------------
 
 def test_fixed_mode_never_fires_before_default_timeout():
+    """Verify that under FIXED mode, endpointing never triggers if the silence is less than the default timeout."""
     fixed_cfg = EndpointingConfig(mode=EndpointingMode.FIXED, default_silence_ms=800)
     ep = SemanticEndpointer(fixed_cfg)
     decision = ep.decide("what's a pointer?", silence_elapsed_ms=799)
@@ -51,6 +52,7 @@ def test_fixed_mode_never_fires_before_default_timeout():
 
 
 def test_fixed_mode_fires_exactly_at_default_timeout():
+    """Verify that under FIXED mode, endpointing triggers exactly at the default silence timeout."""
     fixed_cfg = EndpointingConfig(mode=EndpointingMode.FIXED, default_silence_ms=800)
     ep = SemanticEndpointer(fixed_cfg)
     decision = ep.decide("what's a pointer?", silence_elapsed_ms=800)
