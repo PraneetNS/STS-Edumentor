@@ -27,7 +27,10 @@ class TranscriptStabilizer:
         self.confirmed_words = []
 
     def get_confirmed_text(self) -> str:
-        """Returns the confirmed text from the last stabilization pass."""
+        """
+        Returns the confirmed text from the last stabilization pass.
+        This is used by the semantic endpointer to evaluate completeness on stable transcript data.
+        """
         return " ".join(self.confirmed_words)
 
     def stabilize(self, text: str) -> List[Dict[str, Any]]:
