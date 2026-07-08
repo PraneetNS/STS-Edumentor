@@ -106,3 +106,25 @@ async def simulate_session(
             result.done_time = time.monotonic()
 
     return result
+
+async def worker_loop(worker: LLMWorker, stop_event: asyncio.Event):
+    while not stop_event.is_set():
+        try:
+            await worker.run_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            print(f"[worker {worker.consumer_name}] error: {e}", file=sys.stderr)
+
+async def reclaim_loop(
+    worker: LLMWorker, stop_event: asyncio.Event, interval_s: float, reclaim_counter: List[int]
+):
+    while not stop_event.is_set():
+        await asyncio.sleep(interval_s)
+        try:
+            n = await worker.reclaim_stale()
+            reclaim_counter[0] += n
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            print(f"[reclaim loop] error: {e}", file=sys.stderr)
