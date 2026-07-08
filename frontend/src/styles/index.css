@@ -850,7 +850,7 @@ body,
   letter-spacing: 0.005em;
   transition: box-shadow 0.3s ease;
   overflow-wrap: break-word;
-  word-break: break-word;
+  word-break: normal;
   overflow: hidden;
 }
 
@@ -860,7 +860,7 @@ body,
   color: #3730A3;
   border-radius: 16px 4px 16px 16px;
   box-shadow: var(--shadow-sm);
-}
+  }
 
 .message.assistant .msg-bubble {
   background: #FAFAFA;
