@@ -100,8 +100,6 @@ EduMentor-Voice/
 │   │   └── llm_queue.py         # Streams request broker implementation
 │   ├── loadtest/                # Redis request queue load test suite
 │   │   └── load_test.py         # Load-test harness (Poisson arrivals, chaos, percentiles)
-│   ├── loadtest/                # Redis request queue load test suite
-│   │   └── load_test.py         # Load-test harness (Poisson arrivals, chaos, percentiles)
 │   ├── utils/
 │   │   └── audio.py             # PCM conversion utilities and VAD sentence splitters
 │   ├── data/                    # JSON data storage (Student Profile, Summaries)
@@ -338,10 +336,6 @@ pytest
 *   `test_speech_alignment.py`: Evaluates synthesised audio alignment with character offsets.
 *   `test_interrupt_manager.py`: Tests VAD barge-in thresholds, characters sent logging, and saved states.
 *   `test_student_profile.py`: Verifies dynamic learning topic tracking and JSON profiles load/save sequences.
-*   `load_test.py` (under `backend/loadtest/`): High-throughput stress-testing and crash-recovery simulation of the Redis requests queue against a live Redis database. Run via:
-    ```bash
-    python backend/loadtest/load_test.py --sessions 200 --arrival-rate 5 --workers 4
-    ```
 *   `load_test.py` (under `backend/loadtest/`): High-throughput stress-testing and crash-recovery simulation of the Redis requests queue against a live Redis database. Run via:
     ```bash
     python backend/loadtest/load_test.py --sessions 200 --arrival-rate 5 --workers 4
