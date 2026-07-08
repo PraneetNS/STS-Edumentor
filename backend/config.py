@@ -16,7 +16,7 @@ class Config:
     # Whisper (STT) settings
     # ─────────────────────────────────────────────
     WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "small.en")
-    WHISPER_BEAM_SIZE: int = int(os.getenv("WHISPER_BEAM_SIZE", "5"))
+    WHISPER_BEAM_SIZE: int = int(os.getenv("WHISPER_BEAM_SIZE", "2"))
     WHISPER_CORRECTION_THRESHOLD: float = float(os.getenv("WHISPER_CORRECTION_THRESHOLD", "-0.5"))
     WHISPER_CORRECTION_TIMEOUT: float = float(os.getenv("WHISPER_CORRECTION_TIMEOUT", "0.4"))
     WHISPER_CORRECTION_MAX_TOKENS: int = int(os.getenv("WHISPER_CORRECTION_MAX_TOKENS", "20"))
@@ -35,7 +35,7 @@ class Config:
     # ── Voice Activity Detection (VAD) ───────────────────────────────────────
     VAD_ENGINE: str = os.getenv("VAD_ENGINE", "silero")
     VAD_THRESHOLD: float = float(os.getenv("VAD_THRESHOLD", "0.45"))
-    VAD_SILENCE_TIMEOUT: float = float(os.getenv("VAD_SILENCE_TIMEOUT", "0.8"))
+    VAD_SILENCE_TIMEOUT: float = float(os.getenv("VAD_SILENCE_TIMEOUT", "0.5"))
     MIN_SPEECH_DURATION: float = float(os.getenv("MIN_SPEECH_DURATION", "0.15"))
     LIVE_TRANSCRIPTION_INTERVAL: float = float(os.getenv("LIVE_TRANSCRIPTION_INTERVAL", "0.7"))
 
