@@ -128,3 +128,53 @@ async def reclaim_loop(
             raise
         except Exception as e:
             print(f"[reclaim loop] error: {e}", file=sys.stderr)
+
+def _percentiles(values: List[float], pcts=(50, 95, 99)):
+    if not values:
+        return {f"p{p}": None for p in pcts}
+    ordered = sorted(values)
+    out = {}
+    for p in pcts:
+        idx = min(len(ordered) - 1, int(round(p / 100 * (len(ordered) - 1))))
+        out[f"p{p}"] = ordered[idx]
+    return out
+
+def summarize(results: List[SessionResult], reclaimed_during_healthy_run: int) -> None:
+    total = len(results)
+    rejected = [r for r in results if r.rejected]
+    completed = [r for r in results if r.done_time is not None]
+    errored = [r for r in completed if r.error]
+
+    ttft_values = [r.ttft_s for r in completed if r.ttft_s is not None]
+    latency_values = [r.total_latency_s for r in completed if r.total_latency_s is not None]
+
+    print("\n=== Load test results ===")
+    print(f"Total simulated sessions : {total}")
+    print(f"Rejected (queue full)    : {len(rejected)} ({_pct(len(rejected), total)}%)")
+    print(f"Completed                : {len(completed)} ({_pct(len(completed), total)}%)")
+    print(f"Worker-side errors       : {len(errored)} ({_pct(len(errored), total)}%)")
+
+    print(f"\nTime-to-first-token (s)  : {_fmt_percentiles(_percentiles(ttft_values))}")
+    print(f"Total turn latency (s)   : {_fmt_percentiles(_percentiles(latency_values))}")
+
+    flag = "  <-- investigate: claim_stale_after_ms may be too low" if reclaimed_during_healthy_run else ""
+    print(f"\nStale-job reclaims during healthy run: {reclaimed_during_healthy_run}{flag}")
+
+def _pct(n: int, total: int) -> str:
+    return f"{(n / total * 100):.1f}" if total else "0.0"
+
+def _fmt_percentiles(p: dict) -> str:
+    return ", ".join(
+        f"{k}={v:.3f}" if v is not None else f"{k}=n/a" for k, v in p.items()
+    )
+
+def write_csv(results: List[SessionResult], path: str) -> None:
+    with open(path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            ["session_id", "rejected", "ttft_s", "total_latency_s", "error"]
+        )
+        for r in results:
+            writer.writerow(
+                [r.session_id, r.rejected, r.ttft_s, r.total_latency_s, r.error or ""]
+            )
