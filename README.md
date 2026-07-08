@@ -98,6 +98,10 @@ EduMentor-Voice/
 │   ├── request_queue/           # Redis request queue logic (consumer/producer)
 │   │   ├── __init__.py
 │   │   └── llm_queue.py         # Streams request broker implementation
+│   ├── loadtest/                # Redis request queue load test suite
+│   │   └── load_test.py         # Load-test harness (Poisson arrivals, chaos, percentiles)
+│   ├── loadtest/                # Redis request queue load test suite
+│   │   └── load_test.py         # Load-test harness (Poisson arrivals, chaos, percentiles)
 │   ├── utils/
 │   │   └── audio.py             # PCM conversion utilities and VAD sentence splitters
 │   ├── data/                    # JSON data storage (Student Profile, Summaries)
@@ -334,6 +338,10 @@ pytest
 *   `test_speech_alignment.py`: Evaluates synthesised audio alignment with character offsets.
 *   `test_interrupt_manager.py`: Tests VAD barge-in thresholds, characters sent logging, and saved states.
 *   `test_student_profile.py`: Verifies dynamic learning topic tracking and JSON profiles load/save sequences.
+*   `load_test.py` (under `backend/loadtest/`): High-throughput stress-testing and crash-recovery simulation of the Redis requests queue against a live Redis database. Run via:
+    ```bash
+    python backend/loadtest/load_test.py --sessions 200 --arrival-rate 5 --workers 4
+    ```
 
 ---
 
@@ -344,6 +352,9 @@ pytest
 2. **Whisper Acceleration**: On a GPU machine, ensure `WHISPER_DEVICE` is set to `cuda` and `WHISPER_COMPUTE_TYPE` is `float16`.
 3. **Intent Classifier Gating**: If latency is still high, set `AGENT_INTENT_CLASSIFY=false` in `.env` to skip semantic intent classification.
 4. **Prompt Caching**: With `cache_prompt` enabled and stable prefix ordering (static system prompt → dynamic context → history → new message), repeat turns within a session see prefill time drop by **60–85%** compared to a cold turn, since only the newest message tokens need fresh computation. This does NOT reduce generation time (token-by-token decoding is unaffected) — it only reduces prefill time, which is most noticeable when the system prompt is large relative to the new message length. This is exactly EduMentor's case given the detailed Edi persona prompt. The server must be started with `--cache-reuse 256` and `-np 4` (see `run_llm_server.bat`).
+5. **Whisper Decoding Pacing**: Set `WHISPER_BEAM_SIZE=2` in `.env` to speed up transcription by **40-50%** while preserving technical vocabulary biasing.
+6. **Responsive VAD Silent Timeout**: Set `VAD_SILENCE_TIMEOUT=0.5` in `.env` to trigger the backend transcription pipeline **300ms faster** as soon as the student pauses speaking.
+7. **Aggressive First-Chunk TTS Chunker**: The server chunks streaming LLM tokens aggressively (10 characters for clause punctuation, 15 characters for space boundaries) for the very first audio segment, causing the tutor to start speaking almost instantly while the rest of the turn generates in the background.
 
 ### Out of GPU Memory (OOM)
 *   If your system runs out of VRAM, reduce the llama-server offloading layer count (e.g., `-ngl 15` instead of `20` in `run_llm_server.bat`).
