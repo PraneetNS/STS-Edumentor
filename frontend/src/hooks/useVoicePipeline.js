@@ -895,6 +895,10 @@ export function useVoicePipeline({
     setIsSpeakingTextSync(true);
     recordingStartTimeRef.current = Date.now();
 
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'start_recording' }));
+    }
+
     const stream = await requestMicStream();
     if (!stream) {
       setStatus('Mic access denied');
