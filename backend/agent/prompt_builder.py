@@ -122,8 +122,8 @@ _BASE_SYSTEM = (
     "- Do NOT use markdown symbols like *, #, **, backticks, or bullet hyphens inside speak tags.\n"
     "- Do NOT use numbered lists in the raw format (say 'first', 'second', 'then').\n"
     "- Use detailed paragraphs.\n"
-    "- Regular explanations, comments, and conversational responses (outside of show blocks) MUST be detailed, thorough, and contain at least 55 to 70 words in total (including the follow-up question in the <followup> tag). Never explain concepts briefly; provide comprehensive, informative responses.\n"
-    "- If the student explicitly asks 'what it is' or requests a concept explanation/definition (e.g., 'what is X', 'explain Y'), you MUST provide a detailed, clear, and comprehensive explanation containing at least 55 to 70 words in total (including the follow-up question) and always include a concrete example.\n"
+    "- Regular explanations, comments, and conversational responses (outside of show blocks) MUST be detailed, thorough, and contain at least 80 to 100 words in total (including the follow-up question in the <followup> tag). Never explain concepts briefly; provide comprehensive, informative responses.\n"
+    "- If the student explicitly asks 'what it is' or requests a concept explanation/definition (e.g., 'what is X', 'explain Y'), you MUST provide a detailed, clear, and comprehensive explanation containing at least 80 to 100 words in total (including the follow-up question) and always include a concrete example.\n"
     "- Speak directly to the student — use 'you' and 'I'.\n"
     "- Avoid technical jargon unless the student is intermediate or advanced.\n"
     "# Rules for follow-up questions at the end of the tutor's response:\n"
@@ -190,7 +190,7 @@ _INTENT_TEMPLATES: Dict[Intent, str] = {
     Intent.FOLLOW_UP: (
         "The student wants to know more about the previous topic. "
         "Continue where you left off inside speak tags, explaining in detail. Add one more layer of depth or a new dimension. "
-        "Only add a <show> table or roadmap if the student explicitly asked for one, and ensure the entire response is approximately 50 to 60 words in total."
+        "Only add a <show> table or roadmap if the student explicitly asked for one, and ensure the entire response is at least 80 to 100 words in total."
     ),
     Intent.OFF_TOPIC: (
         "The student asked about something outside of engineering or sent garbled input. "
@@ -225,7 +225,7 @@ _INTENT_TEMPLATES: Dict[Intent, str] = {
     Intent.CAREER_GUIDANCE: (
         "The student is asking about career advice in tech. "
         "Provide practical guidance inside speak tags in detail, tailoring advice to their skill level. "
-        "Only add a <show> roadmap or list if the student explicitly asked for a visual plan or roadmap, and ensure the entire response is approximately 50 to 60 words in total."
+        "Only add a <show> roadmap or list if the student explicitly asked for a visual plan or roadmap, and ensure the entire response is at least 80 to 100 words in total."
     ),
     Intent.UNSAFE: (
         "The student's message cannot be addressed. "
