@@ -178,3 +178,77 @@ def write_csv(results: List[SessionResult], path: str) -> None:
             writer.writerow(
                 [r.session_id, r.rejected, r.ttft_s, r.total_latency_s, r.error or ""]
             )
+
+async def run_load_test(args: argparse.Namespace) -> List[SessionResult]:
+    redis_client = redis.from_url(args.redis_url, decode_responses=True)
+
+    queue_config = QueueConfig(
+        stream_key=args.stream_key,
+        group_name="loadtest-workers",
+        max_queue_depth=args.max_queue_depth,
+        claim_stale_after_ms=args.claim_stale_after_ms,
+        block_ms=args.worker_block_ms,
+        response_timeout_s=args.response_timeout_s,
+    )
+    queue = LLMRequestQueue(redis_client, queue_config)
+
+    # Clean slate for repeatable runs.
+    await redis_client.delete(queue_config.stream_key)
+    await redis_client.delete(f"{queue_config.stream_key}:acked_count")
+    await queue.ensure_group()
+
+    profile = MockGenerationProfile(
+        ttft_mean_s=args.ttft_mean,
+        ttft_std_s=args.ttft_std,
+        token_interval_mean_s=args.token_interval_mean,
+        token_interval_std_s=args.token_interval_std,
+        min_tokens=args.min_tokens,
+        max_tokens=args.max_tokens,
+        failure_rate=args.failure_rate,
+    )
+    generate_fn = make_mock_generate_fn(profile)
+
+    workers = [
+        LLMWorker(redis_client, generate_fn, f"loadtest-worker-{i}", queue_config)
+        for i in range(args.workers)
+    ]
+
+    stop_event = asyncio.Event()
+    reclaimed_counter = [0]
+
+    worker_tasks = [asyncio.create_task(worker_loop(w, stop_event)) for w in workers]
+    reclaim_task = asyncio.create_task(
+        reclaim_loop(workers[0], stop_event, interval_s=2.0, reclaim_counter=reclaimed_counter)
+    )
+
+    crash_task = None
+    if args.simulate_crash_after is not None and worker_tasks:
+        async def crash_one_worker():
+            await asyncio.sleep(args.simulate_crash_after)
+            victim = worker_tasks[0]
+            victim.cancel()
+            print(
+                f"\n[chaos] simulated crash: {workers[0].consumer_name} killed at "
+                f"t={args.simulate_crash_after}s -- watching if reclaim recovers its work\n"
+            )
+        crash_task = asyncio.create_task(crash_one_worker())
+
+    # Poisson arrivals: exponential inter-arrival times at the given rate.
+    session_tasks = []
+    for i in range(args.sessions):
+        session_tasks.append(asyncio.create_task(simulate_session(queue, i)))
+        if args.arrival_rate > 0 and i < args.sessions - 1:
+            await asyncio.sleep(random.expovariate(args.arrival_rate))
+
+    results = await asyncio.gather(*session_tasks)
+
+    stop_event.set()
+    for t in worker_tasks:
+        t.cancel()
+    reclaim_task.cancel()
+    if crash_task:
+        crash_task.cancel()
+    await asyncio.gather(*worker_tasks, reclaim_task, *([crash_task] if crash_task else []), return_exceptions=True)
+
+    await redis_client.aclose()
+    return results, reclaimed_counter[0]
