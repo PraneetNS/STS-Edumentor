@@ -168,6 +168,7 @@ export function useVoicePipeline({
   const activeTimeoutsRef = useRef([]);
   const totalEnqueuedWordsRef    = useRef(0);
   const hasFinishedStreamingRef  = useRef(false);
+  const recordingStartTimeRef    = useRef(null);
 
   useEffect(() => {
     onTranscriptRef.current = onTranscript;
@@ -830,8 +831,17 @@ export function useVoicePipeline({
   }, []);
 
   const stopRecording = useCallback(() => {
+    const duration = recordingStartTimeRef.current ? Date.now() - recordingStartTimeRef.current : 0;
     cleanupMic();
     setIsRecording(false);
+
+    if (duration < 800) {
+      setIsProcessing(false);
+      setStatus('connected');
+      console.log('[Pipeline] Recording too short (' + duration + 'ms). Aborting transcription.');
+      return;
+    }
+
     setIsProcessing(true);
     setStatus('processing');
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -883,6 +893,7 @@ export function useVoicePipeline({
     clearClientSilenceTimer();
     clearTimeouts();
     setIsSpeakingTextSync(true);
+    recordingStartTimeRef.current = Date.now();
 
     const stream = await requestMicStream();
     if (!stream) {
