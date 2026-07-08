@@ -1,3 +1,41 @@
+"""
+backend/loadtest/load_test.py
+
+Load-test harness for backend/request_queue/llm_queue.py.
+
+Runs against a REAL Redis instance (fakeredis is deliberately not used here --
+queue-full behavior, XREADGROUP blocking semantics, and timing under real
+concurrency are exactly the things an in-memory fake can't tell you about).
+
+Two swappable pieces let you run this today without llama-server loaded,
+then point it at real hardware later with no changes to the harness itself:
+
+  1. generate_fn: defaults to a MOCK generator with realistic timing
+     (sampled first-token latency + per-token pacing). Swap in a real
+     wrapper around llm_engine.py's streaming client when you're ready to
+     test against actual hardware -- see `real_llama_generate_fn` stub
+     near the bottom.
+
+  2. Everything else (queue, workers, reclaim loop, client simulation) is
+     the exact same code path that will run in production, just pointed
+     at a mock instead of llama-server.
+
+Usage:
+    python load_test.py --sessions 200 --arrival-rate 5 --workers 4
+
+What it measures:
+    - Time-to-first-token (TTFT) per session -- p50/p95/p99
+    - Total turn latency (enqueue -> done) -- p50/p95/p99
+    - Queue-full rejection rate (backpressure kicking in)
+    - Worker-side error rate
+    - Stale-job reclaims during a HEALTHY run (should be ~0 -- any
+      nonzero count here means claim_stale_after_ms is set too
+      aggressively relative to real generation duration, and a live
+      job that was never lost could get double-processed)
+    - Optional: simulate one worker crashing mid-test (--simulate-crash-after)
+      to see whether the system recovers under load, not just at rest
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -19,6 +57,11 @@ from request_queue.llm_queue import (
     QueueFullError,
 )
 
+
+# ---------------------------------------------------------------------------
+# Mock generation with realistic timing. Swap for the real thing later.
+# ---------------------------------------------------------------------------
+
 @dataclass
 class MockGenerationProfile:
     ttft_mean_s: float = 0.30     # mimics prefill + first-token latency
@@ -28,6 +71,7 @@ class MockGenerationProfile:
     min_tokens: int = 20
     max_tokens: int = 150
     failure_rate: float = 0.0     # fraction of generations that raise
+
 
 def make_mock_generate_fn(profile: MockGenerationProfile):
     async def generate(prompt: str) -> AsyncIterator[str]:
@@ -48,16 +92,33 @@ def make_mock_generate_fn(profile: MockGenerationProfile):
 
     return generate
 
+
 def real_llama_generate_fn(llm_base_url: str):
     """
     STUB -- fill this in with your actual llm_engine.py streaming client
     when you're ready to test against real hardware. Same signature as the
     mock above: async def generate(prompt: str) -> AsyncIterator[str].
+
+    async def generate(prompt: str):
+        async with httpx.AsyncClient() as client:
+            async with client.stream(
+                "POST", f"{llm_base_url}/completion",
+                json={"prompt": prompt, "stream": True, "cache_prompt": True},
+            ) as resp:
+                async for line in resp.aiter_lines():
+                    token = parse_sse_token(line)  # your existing SSE parsing
+                    if token is not None:
+                        yield token
     """
     raise NotImplementedError(
         "Wire this up to llm_engine.py's real streaming client before "
         "running with --use-real-llm."
     )
+
+
+# ---------------------------------------------------------------------------
+# Per-session result tracking
+# ---------------------------------------------------------------------------
 
 @dataclass
 class SessionResult:
@@ -80,6 +141,7 @@ class SessionResult:
         if self.done_time is None:
             return None
         return self.done_time - self.enqueue_time
+
 
 async def simulate_session(
     queue: LLMRequestQueue, session_idx: int
@@ -107,6 +169,11 @@ async def simulate_session(
 
     return result
 
+
+# ---------------------------------------------------------------------------
+# Worker + reclaim loops
+# ---------------------------------------------------------------------------
+
 async def worker_loop(worker: LLMWorker, stop_event: asyncio.Event):
     while not stop_event.is_set():
         try:
@@ -115,6 +182,7 @@ async def worker_loop(worker: LLMWorker, stop_event: asyncio.Event):
             raise
         except Exception as e:
             print(f"[worker {worker.consumer_name}] error: {e}", file=sys.stderr)
+
 
 async def reclaim_loop(
     worker: LLMWorker, stop_event: asyncio.Event, interval_s: float, reclaim_counter: List[int]
@@ -129,6 +197,11 @@ async def reclaim_loop(
         except Exception as e:
             print(f"[reclaim loop] error: {e}", file=sys.stderr)
 
+
+# ---------------------------------------------------------------------------
+# Main harness
+# ---------------------------------------------------------------------------
+
 def _percentiles(values: List[float], pcts=(50, 95, 99)):
     if not values:
         return {f"p{p}": None for p in pcts}
@@ -138,6 +211,7 @@ def _percentiles(values: List[float], pcts=(50, 95, 99)):
         idx = min(len(ordered) - 1, int(round(p / 100 * (len(ordered) - 1))))
         out[f"p{p}"] = ordered[idx]
     return out
+
 
 def summarize(results: List[SessionResult], reclaimed_during_healthy_run: int) -> None:
     total = len(results)
@@ -160,13 +234,16 @@ def summarize(results: List[SessionResult], reclaimed_during_healthy_run: int) -
     flag = "  <-- investigate: claim_stale_after_ms may be too low" if reclaimed_during_healthy_run else ""
     print(f"\nStale-job reclaims during healthy run: {reclaimed_during_healthy_run}{flag}")
 
+
 def _pct(n: int, total: int) -> str:
     return f"{(n / total * 100):.1f}" if total else "0.0"
+
 
 def _fmt_percentiles(p: dict) -> str:
     return ", ".join(
         f"{k}={v:.3f}" if v is not None else f"{k}=n/a" for k, v in p.items()
     )
+
 
 def write_csv(results: List[SessionResult], path: str) -> None:
     with open(path, "w", newline="") as f:
@@ -178,6 +255,7 @@ def write_csv(results: List[SessionResult], path: str) -> None:
             writer.writerow(
                 [r.session_id, r.rejected, r.ttft_s, r.total_latency_s, r.error or ""]
             )
+
 
 async def run_load_test(args: argparse.Namespace) -> List[SessionResult]:
     redis_client = redis.from_url(args.redis_url, decode_responses=True)
@@ -252,3 +330,47 @@ async def run_load_test(args: argparse.Namespace) -> List[SessionResult]:
 
     await redis_client.aclose()
     return results, reclaimed_counter[0]
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Load test for the LLM request queue")
+    p.add_argument("--redis-url", default="redis://localhost:6379")
+    p.add_argument("--stream-key", default="loadtest:llm:requests")
+    p.add_argument("--sessions", type=int, default=200, help="total simulated sessions")
+    p.add_argument("--arrival-rate", type=float, default=5.0, help="avg sessions/sec (Poisson)")
+    p.add_argument("--workers", type=int, default=4, help="simulated GPU worker processes")
+    p.add_argument("--max-queue-depth", type=int, default=200)
+    p.add_argument("--claim-stale-after-ms", type=int, default=30_000)
+    p.add_argument("--worker-block-ms", type=int, default=5_000)
+    p.add_argument("--response-timeout-s", type=float, default=30.0)
+
+    p.add_argument("--ttft-mean", type=float, default=0.30)
+    p.add_argument("--ttft-std", type=float, default=0.08)
+    p.add_argument("--token-interval-mean", type=float, default=0.03)
+    p.add_argument("--token-interval-std", type=float, default=0.01)
+    p.add_argument("--min-tokens", type=int, default=20)
+    p.add_argument("--max-tokens", type=int, default=150)
+    p.add_argument("--failure-rate", type=float, default=0.0)
+
+    p.add_argument("--simulate-crash-after", type=float, default=None,
+                    help="seconds into the test to kill one worker (chaos test)")
+    p.add_argument("--csv-out", default=None, help="optional path to write per-session results")
+
+    return p.parse_args()
+
+
+def main():
+    args = parse_args()
+    print(
+        f"Running load test: {args.sessions} sessions, arrival_rate={args.arrival_rate}/s, "
+        f"{args.workers} workers, max_queue_depth={args.max_queue_depth}"
+    )
+    results, reclaimed = asyncio.run(run_load_test(args))
+    summarize(results, reclaimed)
+    if args.csv_out:
+        write_csv(results, args.csv_out)
+        print(f"\nPer-session results written to {args.csv_out}")
+
+
+if __name__ == "__main__":
+    main()
