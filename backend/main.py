@@ -927,6 +927,22 @@ async def voice_endpoint(websocket: WebSocket):
                         })
                         pipeline_task = asyncio.create_task(_run_pipeline_wrapper(b"", query_text))
 
+                elif msg_type == "start_recording":
+                    logger.info("Client started recording. Clearing audio chunks and resetting VAD/STT state.")
+                    if live_transcribe_task and not live_transcribe_task.done():
+                        live_transcribe_task.cancel()
+                    if pipeline_task and not pipeline_task.done():
+                        pipeline_task.cancel()
+                    audio_chunks.clear()
+                    vad_buffer = b""
+                    speech_started = False
+                    speech_duration = 0.0
+                    silence_duration = 0.0
+                    is_pipeline_running = False
+                    final_transcript = ""
+                    latest_live_transcript = ""
+                    stabilizer.reset()
+
                 elif msg_type == "end_of_speech":
                     # User clicked stop manually
                     if not audio_chunks:
