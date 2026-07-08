@@ -342,6 +342,10 @@ pytest
     ```bash
     python backend/loadtest/load_test.py --sessions 200 --arrival-rate 5 --workers 4
     ```
+*   `load_test.py` (under `backend/loadtest/`): High-throughput stress-testing and crash-recovery simulation of the Redis requests queue against a live Redis database. Run via:
+    ```bash
+    python backend/loadtest/load_test.py --sessions 200 --arrival-rate 5 --workers 4
+    ```
 
 ---
 
