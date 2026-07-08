@@ -47,3 +47,14 @@ def make_mock_generate_fn(profile: MockGenerationProfile):
                 await asyncio.sleep(gap)
 
     return generate
+
+def real_llama_generate_fn(llm_base_url: str):
+    """
+    STUB -- fill this in with your actual llm_engine.py streaming client
+    when you're ready to test against real hardware. Same signature as the
+    mock above: async def generate(prompt: str) -> AsyncIterator[str].
+    """
+    raise NotImplementedError(
+        "Wire this up to llm_engine.py's real streaming client before "
+        "running with --use-real-llm."
+    )
