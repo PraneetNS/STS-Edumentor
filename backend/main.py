@@ -1470,11 +1470,11 @@ async def _stream_llm_and_tts(
                         # Flush on any sentence ending punctuation if minimum length (3 chars) is met (handles quotes/brackets)
                         if len(stripped) >= 3 and re.search(r"(?<=\S{2})[.!?]+['\"`’”\]\)]*(?:\s|$)", stripped):
                             should_flush = True
-                        # Flush on comma/clause ending punctuation only if minimum context length (20 chars) is met
-                        elif len(stripped) >= 20 and re.search(r"(?<=\S{2})[,;:—\n\r]+['\"`’”\]\)]*(?:\s|$)", stripped):
+                        # Flush on comma/clause ending punctuation only if minimum context length (10 chars) is met
+                        elif len(stripped) >= 10 and re.search(r"(?<=\S{2})[,;:—\n\r]+['\"`’”\]\)]*(?:\s|$)", stripped):
                             should_flush = True
-                        # Flush on space/word boundary if we've accumulated at least 30 characters (fast phrase split)
-                        elif len(stripped) >= 30 and (raw_token and (raw_token.isspace() or any(char in raw_token for char in ".,!?;:-—"))):
+                        # Flush on space/word boundary if we've accumulated at least 15 characters (fast phrase split)
+                        elif len(stripped) >= 15 and (raw_token and (raw_token.isspace() or any(char in raw_token for char in ".,!?;:-—"))):
                             should_flush = True
                     else:
                         # Standard chunking logic for subsequent sentences
