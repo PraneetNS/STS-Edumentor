@@ -8,6 +8,7 @@ export const authStore = createStore((set, get) => ({
   isAuthenticated: false,
   isLoading: true,
   profileStats: null,
+  _refreshPromise: null,
 
   setUser: (user) => set({ user, isAuthenticated: !!user }),
   setToken: (token) => set({ token }),
@@ -61,27 +62,40 @@ export const authStore = createStore((set, get) => ({
   },
 
   silentRefresh: async () => {
-    try {
-      const res = await fetch(`${API_BASE}/auth/refresh`, { method: 'POST', credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        const jwtPayload = JSON.parse(atob(data.access_token.split('.')[1]));
-        set({
-          token: data.access_token,
-          user: {
-            user_id: jwtPayload.user_id,
-            email: jwtPayload.email,
-            display_name: get().user?.display_name || jwtPayload.email.split('@')[0],
-            avatar_url: get().user?.avatar_url || null
-          },
-          isAuthenticated: true
-        });
-        return true;
-      }
-    } catch (e) {
-      console.error('Silent refresh failed:', e);
+    // If a refresh request is already in progress, reuse its promise to avoid duplicate network calls.
+    if (get()._refreshPromise) {
+      return get()._refreshPromise;
     }
-    return false;
+
+    const promise = (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/auth/refresh`, { method: 'POST', credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          const jwtPayload = JSON.parse(atob(data.access_token.split('.')[1]));
+          set({
+            token: data.access_token,
+            user: {
+              user_id: jwtPayload.user_id,
+              email: jwtPayload.email,
+              display_name: get().user?.display_name || jwtPayload.email.split('@')[0],
+              avatar_url: get().user?.avatar_url || null
+            },
+            isAuthenticated: true
+          });
+          return true;
+        }
+      } catch (e) {
+        console.error('Silent refresh failed:', e);
+      } finally {
+        // Clear the in-progress promise once done
+        set({ _refreshPromise: null });
+      }
+      return false;
+    })();
+
+    set({ _refreshPromise: promise });
+    return promise;
   },
 
   fetchStats: async () => {
