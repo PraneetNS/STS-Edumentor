@@ -58,3 +58,51 @@ def real_llama_generate_fn(llm_base_url: str):
         "Wire this up to llm_engine.py's real streaming client before "
         "running with --use-real-llm."
     )
+
+@dataclass
+class SessionResult:
+    session_id: str
+    enqueue_time: float
+    request_id: Optional[str] = None
+    first_token_time: Optional[float] = None
+    done_time: Optional[float] = None
+    rejected: bool = False
+    error: Optional[str] = None
+
+    @property
+    def ttft_s(self) -> Optional[float]:
+        if self.first_token_time is None:
+            return None
+        return self.first_token_time - self.enqueue_time
+
+    @property
+    def total_latency_s(self) -> Optional[float]:
+        if self.done_time is None:
+            return None
+        return self.done_time - self.enqueue_time
+
+async def simulate_session(
+    queue: LLMRequestQueue, session_idx: int
+) -> SessionResult:
+    session_id = f"loadtest-session-{session_idx}"
+    result = SessionResult(session_id=session_id, enqueue_time=time.monotonic())
+
+    try:
+        result.request_id = await queue.enqueue(
+            session_id, f"synthetic loadtest question #{session_idx}"
+        )
+    except QueueFullError as e:
+        result.rejected = True
+        result.error = str(e)
+        return result
+
+    async for chunk in queue.stream_response(result.request_id):
+        if chunk["type"] == "token" and result.first_token_time is None:
+            result.first_token_time = time.monotonic()
+        elif chunk["type"] == "done":
+            result.done_time = time.monotonic()
+        elif chunk["type"] == "error":
+            result.error = chunk.get("error")
+            result.done_time = time.monotonic()
+
+    return result
