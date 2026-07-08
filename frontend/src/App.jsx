@@ -198,14 +198,14 @@ export default function App() {
   } = useConversationStore();
 
   useEffect(() => {
-    if (isAuthenticated && activeConversation) {
+    if (isAuthenticated && view === 'chat' && activeConversation) {
       document.title = activeConversation.title === 'New Conversation'
-        ? 'EduMentor Voice — AI Tutor'
+        ? 'EduMentor - AI Tutor'
         : `EduMentor — ${activeConversation.title}`;
     } else {
-      document.title = 'EduMentor Voice — AI Tutor';
+      document.title = 'EduMentor - AI Tutor';
     }
-  }, [isAuthenticated, activeConversation, activeConversation?.title]);
+  }, [isAuthenticated, view, activeConversation, activeConversation?.title]);
 
   const messages = activeConversation?.messages ?? [];
 
