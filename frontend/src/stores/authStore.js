@@ -150,6 +150,27 @@ export const authStore = createStore((set, get) => ({
   checkAuth: async () => {
     set({ isLoading: true });
     const success = await get().silentRefresh();
+    if (!success) {
+      // Fallback check: if silentRefresh failed, check if stored access token is still active (not expired)
+      const token = get().token;
+      if (token) {
+        try {
+          const jwtPayload = JSON.parse(atob(token.split('.')[1]));
+          if (jwtPayload.exp && jwtPayload.exp > Date.now() / 1000) {
+            set({ isLoading: false, isAuthenticated: true });
+            return true;
+          }
+        } catch (e) {
+          console.warn('Failed to check token validity:', e);
+        }
+      }
+      // If the token is indeed missing or expired, clear localStorage and log out
+      try {
+        localStorage.removeItem('edumentor_access_token');
+        localStorage.removeItem('edumentor_user');
+      } catch (e) {}
+      set({ user: null, token: null, isAuthenticated: false });
+    }
     set({ isLoading: false });
     return success;
   }
