@@ -27,12 +27,12 @@ def check_password(password: str, password_hash: str) -> bool:
         return False
 
 def generate_access_token(user_id: uuid.UUID, email: str) -> str:
-    """Generate a short-lived access JWT (15 minutes)."""
+    """Generate a short-lived access JWT (24 hours)."""
     payload = {
         "user_id": str(user_id),
         "email": email,
         "type": "access",
-        "exp": time.time() + 900 # 15 minutes
+        "exp": time.time() + 86400 # 24 hours
     }
     return jwt.encode(payload, Config.JWT_SECRET, algorithm=Config.JWT_ALGORITHM)
 
