@@ -66,6 +66,7 @@ logger = logging.getLogger("edumentor.agent.integrity_check")
 
 EXPECTED_HASHES: dict[str, str] = {
     "EduMentor-Qwen3-Q6_K.gguf": "",  # TODO: compute and pin before release
+    "edumentor-v2-Q4_K_M.gguf": "",   # TODO: compute and pin before release
     "kokoro-v1_0.pth": "",            # TODO: compute and pin before release
 }
 
