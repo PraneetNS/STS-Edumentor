@@ -459,7 +459,9 @@ class AgentController:
                             input_flagged=False,
                             output_flagged=False,
                             flag_reason=None,
-                            latency_ms=latency_ms
+                            latency_ms=latency_ms,
+                            tokens_in=self._count_tokens(user_text),
+                            tokens_out=self._count_tokens(f"{confirmation_msg} <followup>{followup_msg}</followup>"),
                         )
                     )
                 return
@@ -486,7 +488,9 @@ class AgentController:
                         input_flagged=False,
                         output_flagged=False,
                         flag_reason=None,
-                        latency_ms=latency_ms
+                        latency_ms=latency_ms,
+                        tokens_in=self._count_tokens(user_text),
+                        tokens_out=self._count_tokens(f"{response_text} <followup>{followup_text}</followup>"),
                     )
                 )
             return
@@ -607,7 +611,9 @@ class AgentController:
                     input_flagged=True,
                     output_flagged=False,
                     flag_reason="daily_token_budget_exceeded",
-                    latency_ms=latency_ms
+                    latency_ms=latency_ms,
+                    tokens_in=self._count_tokens(original_text),
+                    tokens_out=self._count_tokens(refusal_message),
                 )
             )
             async for token in self._stream_refusal(refusal_message, session_id):
@@ -808,7 +814,9 @@ class AgentController:
                     input_flagged=False,
                     output_flagged=True,
                     flag_reason="system_leak_detected",
-                    latency_ms=latency_ms
+                    latency_ms=latency_ms,
+                    tokens_in=prompt_tokens,
+                    tokens_out=completion_tokens,
                 )
             )
             return
@@ -876,7 +884,9 @@ class AgentController:
                     input_flagged=input_flagged,
                     output_flagged=output_flagged or is_blocked,
                     flag_reason=flag_reason,
-                    latency_ms=latency_ms
+                    latency_ms=latency_ms,
+                    tokens_in=prompt_tokens,
+                    tokens_out=completion_tokens,
                 )
             )
             
