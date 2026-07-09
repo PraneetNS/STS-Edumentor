@@ -126,3 +126,18 @@ def test_check_audio_frequency_profile_invalid_env(monkeypatch):
     is_safe, reason = check_audio_frequency_profile(pcm)
     assert is_safe is True
 
+
+def test_is_utterance_substantial():
+    from utils.audio import is_utterance_substantial
+
+    # Too short duration (click/noise) -> rejected
+    assert is_utterance_substantial("Hello there this is an explanation", 250.0) is False
+    assert is_utterance_substantial("Thank you.", 300.0) is False
+
+    # Empty transcript -> rejected
+    assert is_utterance_substantial("", 800.0) is False
+
+    # Good length and duration -> accepted
+    assert is_utterance_substantial("Yes.", 500.0) is True
+    assert is_utterance_substantial("Explain recursion.", 1200.0) is True
+
