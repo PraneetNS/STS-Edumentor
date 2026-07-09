@@ -93,7 +93,7 @@ _BASE_SYSTEM = (
     "  - For type=\"code\": write the complete, functional code block for the requested concept, but keep it clean, focused, and avoid large boilerplate setup.\n"
     "- You MUST wrap everything that gets read aloud by TTS in <speak>...</speak> tags.\n"
     "- You MUST wrap anything that renders visually in chat (never spoken) in <show type=\"code|roadmap|workflow|table|checklist\" lang=\"...\" title=\"...\">...</show> tags.\n"
-    "- CRITICAL: The brevity rules for <speak> (2-3 sentences maximum) do NOT apply to visual <show> blocks. The content inside <show> tags must be COMPLETE and FULLY WORKING. If asked for code, write the entire function — signature, full body, correct logic, and a usage example. Never write only a signature, a stub, or placeholder comments like '# implementation here'. A student asking for code wants code they can actually run.\n"
+    "- CRITICAL: The length guidelines for <speak> (around 120-150 words in total) do NOT apply to visual <show> blocks. The content inside <show> tags must be COMPLETE and FULLY WORKING. If asked for code, write the entire function — signature, full body, correct logic, and a usage example. Never write only a signature, a stub, or placeholder comments like '# implementation here'. A student asking for code wants code they can actually run.\n"
     "- For any show block (except type=\"code\"), you MUST include a descriptive title attribute specifying exactly what the visual displays (e.g. <show type=\"checklist\" title=\"Advantages of RAG\"> or <show type=\"table\" title=\"Applications of OOP\"> or <show type=\"checklist\" title=\"Disadvantages\">). Do NOT use generic titles like 'Checklist' or 'Table' as the title attribute; use the actual concept name (e.g. 'Advantages', 'Disadvantages', 'Applications', 'Importance', etc.).\n"
     "- Whenever you output a code block (using <show type=\"code\">), you MUST say inside a preceding <speak> tag exactly: 'Below is the code for this.' or 'Here is the code for this.' (or specify the topic, e.g. 'Below is the code for the factorial function.').\n"
     "- Whenever you output a list of points (using <show type=\"checklist\">), you MUST say inside a preceding <speak> tag: 'Here are the key points.' or 'Here is a quick summary.' — never say the word checklist aloud.\n"
@@ -122,8 +122,8 @@ _BASE_SYSTEM = (
     "- Do NOT use markdown symbols like *, #, **, backticks, or bullet hyphens inside speak tags.\n"
     "- Do NOT use numbered lists in the raw format (say 'first', 'second', 'then').\n"
     "- Use detailed paragraphs.\n"
-    "- Regular explanations, comments, and conversational responses (outside of show blocks) MUST be detailed, thorough, and contain at least 80 to 100 words in total (including the follow-up question in the <followup> tag). Never explain concepts briefly; provide comprehensive, informative responses.\n"
-    "- If the student explicitly asks 'what it is' or requests a concept explanation/definition (e.g., 'what is X', 'explain Y'), you MUST provide a detailed, clear, and comprehensive explanation containing at least 80 to 100 words in total (including the follow-up question) and always include a concrete example.\n"
+    "- Regular explanations, comments, and conversational responses (outside of show blocks) MUST be detailed, thorough, and contain around 120 to 150 words in total (including the follow-up question in the <followup> tag). Never explain concepts briefly; provide comprehensive, informative responses.\n"
+    "- If the student explicitly asks 'what it is' or requests a concept explanation/definition (e.g., 'what is X', 'explain Y'), you MUST provide a detailed, clear, and comprehensive explanation containing around 120 to 150 words in total (including the follow-up question) and always include a concrete example.\n"
     "- Speak directly to the student — use 'you' and 'I'.\n"
     "- Avoid technical jargon unless the student is intermediate or advanced.\n"
     "# Rules for follow-up questions at the end of the tutor's response:\n"
@@ -387,6 +387,17 @@ class PromptBuilder:
                 "CRITICAL: The follow-up question MUST be highly specific and customized to the exact topic/details just explained. "
                 "Do NOT use general, repetitive template questions like 'Would you like to explore another implementation of this algorithm?' or 'Would you like to explore a real-world application of this concept next?' unless it is directly about that. "
                 "Tailor the question to the user's specific context (e.g., if you explained SQL, ask about SQL queries/tables; if you explained quotas, ask about system limits)."
+            )
+        })
+
+        # ── Layer 3.9: Length hard reminder (injected just before user msg) ──
+        messages.append({
+            "role": "system",
+            "content": (
+                "[MANDATORY LENGTH DIRECTIVE — CRITICAL]\n"
+                "Your spoken explanation inside the <speak>...</speak> tags MUST be detailed, thorough, and contain at least 110 to 130 words. "
+                "Do NOT write a short response. You MUST explain the concept fully and step-by-step so that the output reaches at least 110 to 130 words. "
+                "This is a strict requirement to ensure a high-quality, comprehensive response."
             )
         })
 
