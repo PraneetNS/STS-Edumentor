@@ -93,6 +93,8 @@ class DatabaseManager:
             output_flagged  BOOLEAN DEFAULT FALSE,
             flag_reason     TEXT,
             latency_ms      INTEGER,
+            tokens_in       INTEGER,
+            tokens_out      INTEGER,
             created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
         );
         """
@@ -176,6 +178,9 @@ class DatabaseManager:
                 await conn.execute(query_users_table)
                 await conn.execute(query_session_stats_table)
                 await conn.execute(query_table)
+                # Alter table migration to support existing/prior database setups
+                await conn.execute("ALTER TABLE conversation_logs ADD COLUMN IF NOT EXISTS tokens_in INTEGER;")
+                await conn.execute("ALTER TABLE conversation_logs ADD COLUMN IF NOT EXISTS tokens_out INTEGER;")
                 await conn.execute(query_index_user)
                 await conn.execute(query_index_session)
                 await conn.execute(query_corr_table)
@@ -208,6 +213,8 @@ class DatabaseManager:
         output_flagged: bool = False,
         flag_reason: Optional[str] = None,
         latency_ms: Optional[int] = None,
+        tokens_in: Optional[int] = None,
+        tokens_out: Optional[int] = None,
     ) -> None:
         """
         Write a conversation log row. Executed asynchronously (non-blocking).
@@ -226,8 +233,10 @@ class DatabaseManager:
             input_flagged,
             output_flagged,
             flag_reason,
-            latency_ms
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
+            latency_ms,
+            tokens_in,
+            tokens_out
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
         """
         try:
             async with self.pool.acquire() as conn:
@@ -242,6 +251,8 @@ class DatabaseManager:
                     output_flagged,
                     flag_reason,
                     latency_ms,
+                    tokens_in,
+                    tokens_out,
                 )
                 logger.info(
                     "Successfully logged turn to DB. user_id=%s, session_id=%s, input_flagged=%s, output_flagged=%s",
