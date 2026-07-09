@@ -53,6 +53,8 @@ class InMemoryDBMock:
         output_flagged: bool = False,
         flag_reason: str | None = None,
         latency_ms: int | None = None,
+        tokens_in: int | None = None,
+        tokens_out: int | None = None,
     ) -> None:
         self._counter += 0.001
         self.logs.append({
@@ -65,6 +67,8 @@ class InMemoryDBMock:
             "output_flagged": output_flagged,
             "flag_reason": flag_reason,
             "latency_ms": latency_ms,
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
             "created_at": time.time() + self._counter
         })
 
@@ -371,3 +375,19 @@ async def test_post_guardrail_timeout_fails_closed(controller, mock_db):
     log = mock_db.logs[-1]
     assert log["output_flagged"] is True
     assert log["flag_reason"] == "timeout"
+
+
+@pytest.mark.asyncio
+async def test_query_token_logging(controller, mock_db):
+    """
+    Confirm tokens_in and tokens_out are successfully saved to the conversation log.
+    """
+    async for _ in controller.stream("Explain recursion simply please.", "session_token_test", user_id="user_token_test"):
+        pass
+    await asyncio.sleep(0.005)
+
+    log = mock_db.logs[-1]
+    assert log["tokens_in"] is not None
+    assert log["tokens_out"] is not None
+    assert log["tokens_in"] > 0
+    assert log["tokens_out"] > 0
