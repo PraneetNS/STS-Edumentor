@@ -192,11 +192,17 @@ def is_utterance_substantial(
     speech_duration_ms: float
 ) -> bool:
     import os
-    MIN_UTTERANCE_WORDS = int(os.getenv("MIN_UTTERANCE_WORDS", "2"))
     MIN_UTTERANCE_DURATION_MS = float(os.getenv("MIN_UTTERANCE_DURATION_MS", "400"))
-    words = len(transcript.strip().split())
-    if words < MIN_UTTERANCE_WORDS and speech_duration_ms < MIN_UTTERANCE_DURATION_MS:
+    
+    # Strictly reject anything shorter than the minimum duration threshold (noise/clicks)
+    if speech_duration_ms < MIN_UTTERANCE_DURATION_MS:
         return False
+        
+    words = len(transcript.strip().split())
+    # Reject empty transcripts
+    if words == 0:
+        return False
+        
     return True
 
 
