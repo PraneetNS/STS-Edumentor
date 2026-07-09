@@ -137,7 +137,8 @@ async def lifespan(app: FastAPI):
     try:
         model_gguf_path = Config.LLM_MODEL_PATH if hasattr(Config, "LLM_MODEL_PATH") else ""
         if model_gguf_path and os.path.isfile(model_gguf_path):
-            verify_model_integrity(model_gguf_path, "EduMentor-Qwen3-Q6_K.gguf")
+            model_filename = os.path.basename(model_gguf_path)
+            verify_model_integrity(model_gguf_path, model_filename)
         else:
             logger.info(
                 "[INTEGRITY] GGUF model path not configured or not found. "
