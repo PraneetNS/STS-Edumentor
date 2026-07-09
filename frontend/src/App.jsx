@@ -96,14 +96,21 @@ export default function App() {
     if (urlToken) {
       try {
         const jwtPayload = JSON.parse(atob(urlToken.split('.')[1]));
+        const userObj = {
+          user_id: jwtPayload.user_id,
+          email: jwtPayload.email,
+          display_name: jwtPayload.email.split('@')[0],
+          avatar_url: null
+        };
+        try {
+          localStorage.setItem('edumentor_access_token', urlToken);
+          localStorage.setItem('edumentor_user', JSON.stringify(userObj));
+        } catch (e) {
+          console.warn("Failed to save SSO token to localStorage:", e);
+        }
         authStore.setState({
           token: urlToken,
-          user: {
-            user_id: jwtPayload.user_id,
-            email: jwtPayload.email,
-            display_name: jwtPayload.email.split('@')[0],
-            avatar_url: null
-          },
+          user: userObj,
           isAuthenticated: true,
           isLoading: false
         });
