@@ -11,6 +11,9 @@ from agent.controller       import AgentController
 from agent.interrupt_manager import InterruptManager
 from agent.memory_manager   import MemoryManager
 from agent.session_summarizer import SessionSummarizer
+from agent.memory_store    import MemoryRecord, RecalledMemory, EmbeddingFn, VectorStore
+from agent.memory_indexer  import MemoryIndexer
+from agent.memory_retriever import MemoryRetriever, RetrievalConfig, format_recall_context
 from agent.student_profile  import StudentProfileManager
 from agent.models           import (
     AgentContext,
@@ -37,6 +40,15 @@ from agent.integrity_check  import (
 from agent.knowledge_router import sanitize_rag_content, ContentRejectedError
 
 __all__ = [
+    # Cross-session memory
+    "MemoryRecord",
+    "RecalledMemory",
+    "EmbeddingFn",
+    "VectorStore",
+    "MemoryIndexer",
+    "MemoryRetriever",
+    "RetrievalConfig",
+    "format_recall_context",
     # Main classes
     "AgentController",
     "InterruptManager",
