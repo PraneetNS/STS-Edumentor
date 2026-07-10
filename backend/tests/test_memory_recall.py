@@ -215,3 +215,80 @@ async def test_unresolved_weak_area_is_always_surfaced_regardless_of_current_pro
     ))
     result = await retriever.retrieve("s1", "recursion base cases", current_weak_areas=set())
     assert len(result) == 1
+
+
+# --- Age cutoff and recency weighting ---------------------------------------
+
+async def test_memory_older_than_max_age_is_excluded(indexer, store, embed):
+    retriever = MemoryRetriever(
+        store, embed,
+        RetrievalConfig(enabled=True, max_age_days=30.0, min_relevance_score=0.0),
+    )
+    await indexer.index(MemoryRecord(
+        student_id="s1", session_id="sess1", timestamp=days_ago(100),
+        topic="recursion", summary_text="recursion base cases discussion",
+        was_weak_area=False, resolved=False,
+    ))
+    result = await retriever.retrieve("s1", "recursion base cases", current_weak_areas=set())
+    assert result == []
+
+
+async def test_more_recent_memory_ranks_above_older_equally_relevant_one(indexer, store, embed):
+    retriever = MemoryRetriever(
+        store, embed,
+        RetrievalConfig(enabled=True, top_k=2, recency_half_life_days=7.0, min_relevance_score=0.0),
+    )
+    await indexer.index(MemoryRecord(
+        student_id="s1", session_id="sess_old", timestamp=days_ago(60),
+        topic="recursion", summary_text="recursion base cases explained in detail",
+        was_weak_area=False, resolved=False,
+    ))
+    await indexer.index(MemoryRecord(
+        student_id="s1", session_id="sess_new", timestamp=days_ago(1),
+        topic="recursion", summary_text="recursion base cases explained in detail",
+        was_weak_area=False, resolved=False,
+    ))
+    result = await retriever.retrieve("s1", "recursion base cases explained in detail", current_weak_areas=set())
+    assert len(result) == 2
+    assert result[0].age_days < result[1].age_days  # more recent ranks first
+
+
+# --- Relevance floor and top_k limiting --------------------------------------
+
+async def test_irrelevant_memory_is_excluded_by_min_relevance_score(indexer, store, embed):
+    retriever = MemoryRetriever(
+        store, embed,
+        RetrievalConfig(enabled=True, min_relevance_score=0.9),  # very strict
+    )
+    await indexer.index(MemoryRecord(
+        student_id="s1", session_id="sess1", timestamp=days_ago(1),
+        topic="malloc", summary_text="dynamic memory allocation and freeing pointers",
+        was_weak_area=False, resolved=False,
+    ))
+    result = await retriever.retrieve("s1", "completely unrelated topic about databases", current_weak_areas=set())
+    assert result == []
+
+
+async def test_top_k_limits_results(indexer, retriever):
+    for i in range(5):
+        await indexer.index(MemoryRecord(
+            student_id="s1", session_id=f"sess{i}", timestamp=days_ago(i + 1),
+            topic="recursion", summary_text="recursion base cases discussion",
+            was_weak_area=False, resolved=False,
+        ))
+    result = await retriever.retrieve("s1", "recursion base cases discussion", current_weak_areas=set())
+    assert len(result) == 3  # retriever fixture has top_k=3
+
+
+# --- Formatting --------------------------------------------------------------
+
+def test_format_recall_context_empty_list_returns_empty_string():
+    assert format_recall_context([]) == ""
+
+
+def test_format_recall_context_includes_summary_and_age():
+    from agent.memory_store import RecalledMemory
+    memories = [RecalledMemory(topic="recursion", summary_text="worked through base cases", age_days=5, relevance_score=0.8)]
+    text = format_recall_context(memories)
+    assert "worked through base cases" in text
+    assert "5 days ago" in text
