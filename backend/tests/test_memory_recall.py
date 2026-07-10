@@ -82,3 +82,41 @@ class FakeVectorStore:
 def _cosine(a: List[float], b: List[float]) -> float:
     dot = sum(x * y for x, y in zip(a, b))
     return dot  # both already unit-normalized in FakeEmbeddingFn
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def store():
+    return FakeVectorStore()
+
+
+@pytest.fixture
+def embed():
+    return FakeEmbeddingFn()
+
+
+@pytest.fixture
+def indexer(store, embed):
+    return MemoryIndexer(store, embed)
+
+
+@pytest.fixture
+def retriever(store, embed):
+    return MemoryRetriever(
+        store,
+        embed,
+        RetrievalConfig(
+            enabled=True,
+            top_k=3,
+            max_age_days=90.0,
+            recency_half_life_days=14.0,
+            min_relevance_score=0.05,  # low, so ranking differences are visible in tests
+        ),
+    )
+
+
+def days_ago(n: float) -> float:
+    return time.time() - n * 86400.0
