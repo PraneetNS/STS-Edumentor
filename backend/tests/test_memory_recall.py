@@ -120,3 +120,16 @@ def retriever(store, embed):
 
 def days_ago(n: float) -> float:
     return time.time() - n * 86400.0
+
+
+# --- Disabled is a true no-op -----------------------------------------------
+
+async def test_disabled_returns_nothing(store, embed, indexer):
+    retriever = MemoryRetriever(store, embed, RetrievalConfig(enabled=False))
+    await indexer.index(MemoryRecord(
+        student_id="s1", session_id="sess1", timestamp=days_ago(1),
+        topic="recursion", summary_text="worked through recursion base cases",
+        was_weak_area=True, resolved=True,
+    ))
+    result = await retriever.retrieve("s1", "recursion base cases", current_weak_areas=set())
+    assert result == []
