@@ -132,3 +132,31 @@ class MemoryRetriever:
 
         scored.sort(key=lambda m: -m.relevance_score)
         return scored[: self.config.top_k]
+
+
+def format_recall_context(memories: List[RecalledMemory]) -> str:
+    """
+    Turns recalled memories into a short prompt-injection blurb. Kept
+    deliberately terse -- this is context for the LLM to draw on
+    naturally, not a script to read verbatim to the student.
+    """
+    if not memories:
+        return ""
+
+    lines = ["Relevant context from past sessions with this student:"]
+    for m in memories:
+        age_desc = _describe_age(m.age_days)
+        lines.append(f"- ({age_desc}) {m.summary_text}")
+    return "\n".join(lines)
+
+
+def _describe_age(age_days: float) -> str:
+    if age_days < 1:
+        return "earlier today"
+    if age_days < 2:
+        return "yesterday"
+    if age_days < 14:
+        return f"{int(age_days)} days ago"
+    if age_days < 60:
+        return f"{int(age_days / 7)} weeks ago"
+    return f"{int(age_days / 30)} months ago"
