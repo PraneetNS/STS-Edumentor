@@ -175,3 +175,43 @@ async def test_one_student_with_no_memories_gets_nothing_even_if_another_student
         "student-B", "pointer arithmetic and dangling pointers", current_weak_areas={"pointers"}
     )
     assert results_b == []
+
+
+# --- Staleness: resolved + no-longer-weak must be excluded ------------------
+
+async def test_resolved_weak_area_no_longer_current_is_excluded(indexer, retriever):
+    await indexer.index(MemoryRecord(
+        student_id="s1", session_id="sess1", timestamp=days_ago(20),
+        topic="recursion", summary_text="student struggled with recursion base cases",
+        was_weak_area=True, resolved=True,
+    ))
+    # Student has since mastered recursion -- it's no longer in their
+    # current weak areas.
+    result = await retriever.retrieve("s1", "recursion base cases", current_weak_areas=set())
+    assert result == []
+
+
+async def test_still_current_weak_area_is_surfaced_even_if_marked_resolved_that_session(
+    indexer, retriever
+):
+    await indexer.index(MemoryRecord(
+        student_id="s1", session_id="sess1", timestamp=days_ago(5),
+        topic="recursion", summary_text="student worked through recursion base cases",
+        was_weak_area=True, resolved=True,
+    ))
+    # Topic is STILL a current weak area (maybe regressed, or that
+    # session only partially resolved it) -- should still surface.
+    result = await retriever.retrieve("s1", "recursion base cases", current_weak_areas={"recursion"})
+    assert len(result) == 1
+
+
+async def test_unresolved_weak_area_is_always_surfaced_regardless_of_current_profile(
+    indexer, retriever
+):
+    await indexer.index(MemoryRecord(
+        student_id="s1", session_id="sess1", timestamp=days_ago(5),
+        topic="recursion", summary_text="student still struggling with recursion base cases",
+        was_weak_area=True, resolved=False,
+    ))
+    result = await retriever.retrieve("s1", "recursion base cases", current_weak_areas=set())
+    assert len(result) == 1
