@@ -133,3 +133,45 @@ async def test_disabled_returns_nothing(store, embed, indexer):
     ))
     result = await retriever.retrieve("s1", "recursion base cases", current_weak_areas=set())
     assert result == []
+
+
+# --- Isolation: the property that matters most -----------------------------
+
+async def test_students_never_see_each_others_memories(indexer, retriever):
+    await indexer.index(MemoryRecord(
+        student_id="student-A", session_id="sessA", timestamp=days_ago(2),
+        topic="recursion", summary_text="student worked through recursion base cases",
+        was_weak_area=True, resolved=False,
+    ))
+    await indexer.index(MemoryRecord(
+        student_id="student-B", session_id="sessB", timestamp=days_ago(2),
+        topic="recursion", summary_text="student worked through recursion base cases",
+        was_weak_area=True, resolved=False,
+    ))
+
+    results_a = await retriever.retrieve("student-A", "recursion base cases", current_weak_areas={"recursion"})
+    results_b = await retriever.retrieve("student-B", "recursion base cases", current_weak_areas={"recursion"})
+
+    assert len(results_a) == 1
+    assert len(results_b) == 1
+    # Both retrieved successfully but each only sees their OWN record --
+    # verified indirectly here since content is identical; the isolation
+    # test that actually matters is the next one.
+
+
+async def test_one_student_with_no_memories_gets_nothing_even_if_another_students_content_matches(
+    indexer, retriever
+):
+    await indexer.index(MemoryRecord(
+        student_id="student-A", session_id="sessA", timestamp=days_ago(1),
+        topic="pointers", summary_text="deep dive into pointer arithmetic and dangling pointers",
+        was_weak_area=True, resolved=False,
+    ))
+
+    # student-B has no memories at all -- even though their query is
+    # highly semantically similar to student-A's indexed content, they
+    # must get zero results.
+    results_b = await retriever.retrieve(
+        "student-B", "pointer arithmetic and dangling pointers", current_weak_areas={"pointers"}
+    )
+    assert results_b == []
