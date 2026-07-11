@@ -256,6 +256,94 @@ _OUTPUT_CHECKERS: List[_BaseChecker] = [
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Profanity Filter
+# ─────────────────────────────────────────────────────────────────────────────
+
+from dataclasses import dataclass
+
+# Conservative blocklist: strictly offensive terms not relevant to education.
+# All entries are lowercase; matching is case-insensitive with word boundaries.
+# Technical / educational terms (e.g., "class", "execution", "pointer") are
+# intentionally excluded to avoid false positives.
+_PROFANITY_BLOCKLIST: List[str] = [
+    # Common offensive slurs and severe profanity
+    "asshole", "bastard", "bitch", "bullshit", "cunt", "douchebag",
+    "dipshit", "fag", "faggot", "fuck", "fucking", "motherfucker",
+    "nigger", "nigga", "prick", "shithead", "slut", "twat", "wanker",
+    "whore", "jackass", "retard", "retarded", "spastic",
+    # Abusive / harassing phrases directed at the assistant
+    "shut the fuck up", "go to hell", "piece of shit", "son of a bitch",
+]
+
+_PROFANITY_PATTERNS: List[re.Pattern] = [
+    re.compile(r"\b" + re.escape(w) + r"\b", re.IGNORECASE)
+    for w in _PROFANITY_BLOCKLIST
+]
+
+
+@dataclass(frozen=True)
+class ProfanityResult:
+    """
+    Result of a profanity scan.
+
+    Attributes:
+        detected:   True if one or more blocked words were found.
+        matched:    The first matched word/phrase, or None.
+        clean_text: Input text with blocked words replaced by asterisks.
+    """
+    detected: bool
+    matched: Optional[str]
+    clean_text: str
+
+
+def check_profanity(text: str) -> ProfanityResult:
+    """
+    Scan ``text`` for blocked words / severe profanity.
+
+    This is a *supplementary* filter that runs in addition to the main
+    safety-guard stack.  It is intentionally conservative — only severe,
+    unambiguous offensive words are blocked to avoid false positives on
+    legitimate educational content.
+
+    Args:
+        text: The input string to scan (user utterance or LLM output).
+
+    Returns:
+        :class:`ProfanityResult` with ``detected``, ``matched``, and
+        ``clean_text`` fields.
+
+    Example::
+
+        result = check_profanity("What the fuck is recursion?")
+        # result.detected  → True
+        # result.matched   → "fuck"
+        # result.clean_text → "What the **** is recursion?"
+    """
+    clean = text
+    first_match: Optional[str] = None
+    detected = False
+
+    for pattern in _PROFANITY_PATTERNS:
+        def _replace(m: re.Match) -> str:
+            return "*" * len(m.group(0))
+
+        new_clean = pattern.sub(_replace, clean)
+        if new_clean != clean:
+            detected = True
+            if first_match is None:
+                first_match = pattern.search(text)
+                first_match = first_match.group(0) if first_match else None
+            clean = new_clean
+
+    if detected:
+        logger.debug("[PROFANITY] Blocked word detected: '%s'", first_match)
+
+    return ProfanityResult(detected=detected, matched=first_match, clean_text=clean)
+
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Public API
 # ─────────────────────────────────────────────────────────────────────────────
 
