@@ -1,10 +1,32 @@
 from collections import defaultdict
+import logging
+import secrets
 import time
 from config import Config
 
-# NOTE: This implementation is in-memory and local-first, suitable for single-instance deployments.
-# In a multi-instance / horizontally scaled deployment, these dictionaries would need to be replaced
-# with a shared database or caching layer like Redis (using sliding window rate limiters or token buckets).
+logger = logging.getLogger("edumentor.rate_limiter")
+
+
+def is_bypass_token(token: str) -> bool:
+    """
+    Return True if *token* matches ``Config.RATE_LIMIT_BYPASS_TOKEN``.
+
+    Uses :func:`secrets.compare_digest` to prevent timing-based token leakage.
+    Returns False immediately when the bypass token is empty (default), so
+    the feature is inert unless explicitly configured.
+
+    Args:
+        token: Value supplied by the client (e.g. from the
+               ``X-RateLimit-Bypass`` HTTP header or WebSocket query param).
+
+    Returns:
+        True only when bypass is configured AND the token matches exactly.
+    """
+    configured = getattr(Config, "RATE_LIMIT_BYPASS_TOKEN", "").strip()
+    if not configured or not token:
+        return False
+    return secrets.compare_digest(configured, token.strip())
+
 
 class RateLimiter:
     def __init__(self):
@@ -28,7 +50,11 @@ class RateLimiter:
     def release_connection(self, ip: str):
         self.connections_per_ip[ip] = max(0, self.connections_per_ip[ip] - 1)
 
-    def check_rate_limit(self, student_id: str, max_per_minute: int = None) -> bool:
+    def check_rate_limit(self, student_id: str, max_per_minute: int = None, bypass_token: str = "") -> bool:
+        # Developer bypass: skip rate limiting when a valid bypass token is provided
+        if bypass_token and is_bypass_token(bypass_token):
+            logger.debug("[RATE_LIMIT] Bypass token accepted for student_id=%s", student_id)
+            return True
         now = time.time()
         if max_per_minute is None:
             if student_id in self.strict_mode_until and now < self.strict_mode_until[student_id]:
@@ -62,7 +88,11 @@ class RateLimiter:
         window.append(now)
         return len(window)
 
-    def check_voice_rate_limit(self, student_id: str) -> tuple[bool, str]:
+    def check_voice_rate_limit(self, student_id: str, bypass_token: str = "") -> tuple[bool, str]:
+        # Developer bypass: skip voice rate limiting when a valid bypass token is provided
+        if bypass_token and is_bypass_token(bypass_token):
+            logger.debug("[VOICE_RATE_LIMIT] Bypass token accepted for student_id=%s", student_id)
+            return True, ""
         import os
         now = time.time()
         window = self.requests_per_student[student_id]

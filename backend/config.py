@@ -232,6 +232,11 @@ class Config:
     RATE_LIMIT_DAILY_REQUESTS: int = int(os.getenv("RATE_LIMIT_DAILY_REQUESTS", "500"))
     MAX_CONNECTIONS_PER_IP: int = int(os.getenv("MAX_CONNECTIONS_PER_IP", "3"))
 
+    # Developer/testing bypass token — set a strong secret value in .env.
+    # When a request provides this token via the X-RateLimit-Bypass header,
+    # rate limiting is skipped.  Leave empty (default) to disable the bypass.
+    RATE_LIMIT_BYPASS_TOKEN: str = os.getenv("RATE_LIMIT_BYPASS_TOKEN", "")
+
     MAX_DAILY_TOKENS: int = int(os.getenv("MAX_DAILY_TOKENS", "100000"))
     # Maximum context tokens allowed for the LLM prompt (increased to support detailed identity naming and conversation summaries)
     MAX_CONTEXT_TOKENS: int = int(os.getenv("MAX_CONTEXT_TOKENS", "4000"))
