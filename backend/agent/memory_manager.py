@@ -25,7 +25,11 @@ Design notes:
 
 from __future__ import annotations
 
+import json
 import logging
+import os
+import sqlite3
+import time
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
 
@@ -116,64 +120,234 @@ class InMemoryBackend(MemoryBackend):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SQLite Backend (stub — future implementation)
+# SQLite Backend
 # ─────────────────────────────────────────────────────────────────────────────
 
 class SQLiteBackend(MemoryBackend):
     """
     SQLite-backed memory backend for cross-restart persistence.
 
-    TODO: Implement using sqlite3 stdlib module.
+    Uses Python's stdlib sqlite3 module — zero external dependencies.
+    All turns are persisted to disk and survive server restarts.
+
     Schema:
         CREATE TABLE memory_turns (
-            session_id TEXT,
-            user_text  TEXT,
-            assistant_text TEXT,
-            timestamp  REAL,
-            intent     TEXT,
-            emotion    TEXT
+            session_id     TEXT    NOT NULL,
+            user_text      TEXT    NOT NULL,
+            assistant_text TEXT    NOT NULL,
+            timestamp      REAL    NOT NULL,
+            intent         TEXT,
+            emotion        TEXT
         );
+        CREATE INDEX idx_memory_session ON memory_turns (session_id, timestamp);
     """
 
     def __init__(self, db_path: str = "data/memory.db") -> None:
-        raise NotImplementedError(
-            "SQLiteBackend is not yet implemented. "
-            "Use InMemoryBackend (default) or implement this class."
+        os.makedirs(os.path.dirname(db_path) if os.path.dirname(db_path) else ".", exist_ok=True)
+        self._db_path = db_path
+        self._init_db()
+        logger.info("[OK] SQLiteBackend ready (db=%s).", db_path)
+
+    # ── internal helpers ───────────────────────────────────────────────────────
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self._db_path, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _init_db(self) -> None:
+        with self._connect() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS memory_turns (
+                    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id     TEXT    NOT NULL,
+                    user_text      TEXT    NOT NULL,
+                    assistant_text TEXT    NOT NULL,
+                    timestamp      REAL    NOT NULL,
+                    intent         TEXT,
+                    emotion        TEXT
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_memory_session
+                ON memory_turns (session_id, timestamp)
+            """)
+            conn.commit()
+
+    @staticmethod
+    def _row_to_turn(row: sqlite3.Row) -> MemoryTurn:
+        return MemoryTurn(
+            user=row["user_text"],
+            assistant=row["assistant_text"],
+            timestamp=row["timestamp"],
+            intent=row["intent"],
+            emotion=row["emotion"],
         )
 
-    def get(self, session_id: str) -> List[MemoryTurn]: ...
-    def append(self, session_id: str, turn: MemoryTurn) -> None: ...
-    def prune(self, session_id: str, max_turns: int) -> None: ...
-    def clear(self, session_id: str) -> None: ...
-    def count(self, session_id: str) -> int: ...
+    # ── MemoryBackend interface ────────────────────────────────────────────────
+
+    def get(self, session_id: str) -> List[MemoryTurn]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM memory_turns WHERE session_id=? ORDER BY timestamp ASC",
+                (session_id,),
+            ).fetchall()
+        return [self._row_to_turn(r) for r in rows]
+
+    def append(self, session_id: str, turn: MemoryTurn) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO memory_turns
+                    (session_id, user_text, assistant_text, timestamp, intent, emotion)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (session_id, turn.user, turn.assistant, turn.timestamp, turn.intent, turn.emotion),
+            )
+            conn.commit()
+
+    def prune(self, session_id: str, max_turns: int) -> None:
+        """Delete oldest rows keeping only the most recent max_turns."""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                DELETE FROM memory_turns
+                WHERE session_id=? AND id NOT IN (
+                    SELECT id FROM memory_turns
+                    WHERE session_id=?
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                )
+                """,
+                (session_id, session_id, max_turns),
+            )
+            conn.commit()
+
+    def clear(self, session_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM memory_turns WHERE session_id=?", (session_id,))
+            conn.commit()
+
+    def count(self, session_id: str) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM memory_turns WHERE session_id=?",
+                (session_id,),
+            ).fetchone()
+        return row["cnt"] if row else 0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Redis Backend (stub — future implementation)
+# Redis Backend
 # ─────────────────────────────────────────────────────────────────────────────
 
 class RedisBackend(MemoryBackend):
     """
     Redis-backed memory backend for distributed / multi-instance deployments.
 
-    TODO: Implement using redis-py (pip install redis).
-    Pattern:
-        key = f"edumentor:memory:{session_id}"
-        Store as Redis list of JSON-encoded MemoryTurn dicts.
-        LTRIM to implement pruning.
+    Requires: pip install redis
+
+    Storage pattern:
+        key  = f"edumentor:memory:{session_id}"     — list of JSON-encoded turns
+        key2 = f"edumentor:count:{session_id}"      — total turn counter (INCR)
+
+    Each MemoryTurn is JSON-serialised and pushed to the right of a Redis list.
+    Pruning uses LTRIM to keep only the most recent N items.
     """
 
     def __init__(self, redis_url: str = "redis://localhost:6379") -> None:
-        raise NotImplementedError(
-            "RedisBackend is not yet implemented. "
-            "Set MEMORY_BACKEND=memory (default) in .env to use InMemoryBackend."
+        try:
+            import redis as redis_lib  # type: ignore
+        except ImportError as exc:
+            raise ImportError(
+                "RedisBackend requires 'redis' package. "
+                "Install it with: pip install redis"
+            ) from exc
+
+        self._client = redis_lib.Redis.from_url(redis_url, decode_responses=True)
+        # Ping to validate connection at startup
+        self._client.ping()
+        logger.info("[OK] RedisBackend ready (url=%s).", redis_url)
+
+    # ── helpers ────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _mem_key(session_id: str) -> str:
+        return f"edumentor:memory:{session_id}"
+
+    @staticmethod
+    def _count_key(session_id: str) -> str:
+        return f"edumentor:count:{session_id}"
+
+    @staticmethod
+    def _serialise(turn: MemoryTurn) -> str:
+        return json.dumps(turn.to_dict())
+
+    @staticmethod
+    def _deserialise(raw: str) -> MemoryTurn:
+        d = json.loads(raw)
+        return MemoryTurn(
+            user=d["user"],
+            assistant=d["assistant"],
+            timestamp=d.get("timestamp", time.time()),
+            intent=d.get("intent"),
+            emotion=d.get("emotion"),
         )
 
-    def get(self, session_id: str) -> List[MemoryTurn]: ...
-    def append(self, session_id: str, turn: MemoryTurn) -> None: ...
-    def prune(self, session_id: str, max_turns: int) -> None: ...
-    def clear(self, session_id: str) -> None: ...
-    def count(self, session_id: str) -> int: ...
+    # ── MemoryBackend interface ────────────────────────────────────────────────
+
+    def get(self, session_id: str) -> List[MemoryTurn]:
+        raw_list = self._client.lrange(self._mem_key(session_id), 0, -1)
+        return [self._deserialise(r) for r in raw_list]
+
+    def append(self, session_id: str, turn: MemoryTurn) -> None:
+        self._client.rpush(self._mem_key(session_id), self._serialise(turn))
+        self._client.incr(self._count_key(session_id))
+
+    def prune(self, session_id: str, max_turns: int) -> None:
+        """Keep only the most recent max_turns entries (LTRIM from the right)."""
+        self._client.ltrim(self._mem_key(session_id), -max_turns, -1)
+
+    def clear(self, session_id: str) -> None:
+        self._client.delete(self._mem_key(session_id))
+        self._client.delete(self._count_key(session_id))
+
+    def count(self, session_id: str) -> int:
+        val = self._client.get(self._count_key(session_id))
+        return int(val) if val is not None else 0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Backend Factory
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_backend(backend_name: str, **kwargs) -> MemoryBackend:
+    """
+    Instantiate and return a MemoryBackend from a config string.
+
+    Args:
+        backend_name: One of ``"memory"``, ``"sqlite"``, or ``"redis"``.
+        **kwargs:     Forwarded to the backend constructor.
+                      - SQLiteBackend: ``db_path``
+                      - RedisBackend:  ``redis_url``
+
+    Returns:
+        A fully-initialised MemoryBackend instance.
+
+    Raises:
+        ValueError: For unknown backend names.
+    """
+    name = backend_name.lower().strip()
+    if name == "memory":
+        return InMemoryBackend()
+    if name == "sqlite":
+        return SQLiteBackend(**kwargs)
+    if name == "redis":
+        return RedisBackend(**kwargs)
+    raise ValueError(
+        f"Unknown MEMORY_BACKEND '{backend_name}'. "
+        "Choose one of: 'memory', 'sqlite', 'redis'."
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
