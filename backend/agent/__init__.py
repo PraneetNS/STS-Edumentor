@@ -9,7 +9,7 @@ Usage from main.py:
 
 from agent.controller       import AgentController
 from agent.interrupt_manager import InterruptManager
-from agent.memory_manager   import MemoryManager
+from agent.memory_manager   import MemoryManager, InMemoryBackend, SQLiteBackend, RedisBackend, get_backend
 from agent.session_summarizer import SessionSummarizer
 from agent.memory_store    import MemoryRecord, RecalledMemory, EmbeddingFn, VectorStore
 from agent.memory_indexer  import MemoryIndexer
@@ -53,6 +53,10 @@ __all__ = [
     "AgentController",
     "InterruptManager",
     "MemoryManager",
+    "InMemoryBackend",
+    "SQLiteBackend",
+    "RedisBackend",
+    "get_backend",
     "SessionSummarizer",
     "StudentProfileManager",
     # Data models

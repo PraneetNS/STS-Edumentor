@@ -55,6 +55,7 @@ from agent import (
     MemoryManager,
     SessionSummarizer,
     StudentProfileManager,
+    get_backend,
 )
 from agent.database import DatabaseManager
 from agent.access_control import AccessControl
@@ -182,8 +183,10 @@ async def lifespan(app: FastAPI):
         logger.info("Initializing Agent Layer...")
 
         interrupt_manager  = InterruptManager()
+        _memory_backend    = get_backend(Config.MEMORY_BACKEND)
         memory_manager     = MemoryManager(
             max_turns = Config.MEMORY_MAX_TURNS,
+            backend   = _memory_backend,
         )
         session_summarizer = SessionSummarizer(
             llm_engine  = llm_engine,
