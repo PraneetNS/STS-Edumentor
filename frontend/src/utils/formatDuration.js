@@ -69,3 +69,32 @@ export function formatRelativeDate(timestamp) {
 
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
+
+/**
+ * Convert a raw number of minutes into a compact readable string.
+ * @param {number} totalMinutes
+ * @returns {string} e.g. "1h 30m", "45m", "0m"
+ */
+export function formatMinutes(totalMinutes) {
+  const mins = Math.round(Number(totalMinutes));
+  if (Number.isNaN(mins) || mins <= 0) return '0m';
+  const hours = Math.floor(mins / 60);
+  const remaining = mins % 60;
+  if (hours > 0) return remaining > 0 ? `${hours}h ${remaining}m` : `${hours}h`;
+  return `${remaining}m`;
+}
+
+/**
+ * Format the remaining time until a future timestamp as a countdown string.
+ * @param {string|Date|number} futureTimestamp
+ * @returns {string} e.g. "2h 15m left", "45m left", or "Expired"
+ */
+export function formatCountdown(futureTimestamp) {
+  const target = new Date(futureTimestamp).getTime();
+  const now = Date.now();
+  const remainingMs = target - now;
+
+  if (remainingMs <= 0) return 'Expired';
+  const remainingSeconds = Math.floor(remainingMs / 1000);
+  return `${formatSeconds(remainingSeconds)} left`;
+}
