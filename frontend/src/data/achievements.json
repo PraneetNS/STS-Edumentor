@@ -55,6 +55,38 @@
       "description": "Complete mock placement tests with excellent grade score.",
       "unlocked": false,
       "date_unlocked": null
+    },
+    {
+      "id": "b8",
+      "name": "30 Day Streak",
+      "icon": "⚡",
+      "description": "Practiced engineering voice sessions for 30 consecutive days.",
+      "unlocked": false,
+      "date_unlocked": null
+    },
+    {
+      "id": "b9",
+      "name": "First Session",
+      "icon": "🚀",
+      "description": "Completed your very first EduMentor voice session.",
+      "unlocked": true,
+      "date_unlocked": "2026-06-01"
+    },
+    {
+      "id": "b10",
+      "name": "Debug Master",
+      "icon": "🐛",
+      "description": "Solved 10+ debugging challenges in the coding track.",
+      "unlocked": true,
+      "date_unlocked": "2026-07-05"
+    },
+    {
+      "id": "b11",
+      "name": "Speed Learner",
+      "icon": "⏱️",
+      "description": "Completed a topic module in under 30 minutes with 90%+ score.",
+      "unlocked": false,
+      "date_unlocked": null
     }
   ]
 }
