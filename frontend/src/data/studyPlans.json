@@ -1,0 +1,61 @@
+{
+  "plans": [
+    {
+      "id": "sp1",
+      "title": "DSA Mastery",
+      "icon": "🌳",
+      "color": "#f59e0b",
+      "duration_weeks": 8,
+      "topics": [
+        { "week": 1, "title": "Arrays & Strings", "done": true },
+        { "week": 2, "title": "Linked Lists & Stacks", "done": true },
+        { "week": 3, "title": "Trees & Binary Search Trees", "done": true },
+        { "week": 4, "title": "Graphs & BFS/DFS", "done": false },
+        { "week": 5, "title": "Dynamic Programming I", "done": false },
+        { "week": 6, "title": "Dynamic Programming II", "done": false },
+        { "week": 7, "title": "Greedy & Backtracking", "done": false },
+        { "week": 8, "title": "Mock Contest + Review", "done": false }
+      ],
+      "progress_percent": 37,
+      "active": true
+    },
+    {
+      "id": "sp2",
+      "title": "System Design",
+      "icon": "🌐",
+      "color": "#6366f1",
+      "duration_weeks": 6,
+      "topics": [
+        { "week": 1, "title": "Scalability Fundamentals", "done": true },
+        { "week": 2, "title": "Databases & Caching", "done": false },
+        { "week": 3, "title": "Distributed Systems", "done": false },
+        { "week": 4, "title": "Load Balancing & CDN", "done": false },
+        { "week": 5, "title": "Design Twitter / Uber", "done": false },
+        { "week": 6, "title": "Mock System Design Round", "done": false }
+      ],
+      "progress_percent": 16,
+      "active": false
+    },
+    {
+      "id": "sp3",
+      "title": "ML Foundations",
+      "icon": "🤖",
+      "color": "#10b981",
+      "duration_weeks": 10,
+      "topics": [
+        { "week": 1, "title": "Linear & Logistic Regression", "done": true },
+        { "week": 2, "title": "Decision Trees & Ensembles", "done": true },
+        { "week": 3, "title": "Neural Networks Basics", "done": true },
+        { "week": 4, "title": "Convolutional Neural Networks", "done": false },
+        { "week": 5, "title": "Recurrent Networks & LSTMs", "done": false },
+        { "week": 6, "title": "Transformers & Attention", "done": false },
+        { "week": 7, "title": "NLP Fundamentals", "done": false },
+        { "week": 8, "title": "Deployment & MLOps", "done": false },
+        { "week": 9, "title": "Prompt Engineering", "done": false },
+        { "week": 10, "title": "Capstone Project", "done": false }
+      ],
+      "progress_percent": 30,
+      "active": false
+    }
+  ]
+}
