@@ -39,7 +39,9 @@ def async_retry(
     base_delay: float = 1.0,
     backoff: float = 2.0,
     jitter: float = 0.25,
+    max_delay: float = 30.0,
     retry_on: tuple[Type[Exception], ...] = (Exception,),
+    on_retry: Callable | None = None,
 ) -> Callable:
     """
     Decorator factory: wrap an async function with retry logic.
@@ -49,7 +51,10 @@ def async_retry(
         base_delay:   Seconds to wait before the second attempt.
         backoff:      Exponential multiplier applied to delay each retry.
         jitter:       Fraction of delay to randomise (0 = no jitter).
+        max_delay:    Hard ceiling on the computed wait (default 30 s).
         retry_on:     Exception types that trigger a retry (default: all).
+        on_retry:     Optional async callable ``(attempt, exc, wait)`` invoked
+                      before each sleep, e.g. to emit metrics or send alerts.
 
     Returns:
         Decorator that adds retry behaviour to a coroutine function.
@@ -75,7 +80,7 @@ def async_retry(
                         raise
 
                     jitter_offset = random.uniform(-jitter * delay, jitter * delay)
-                    wait = max(0.0, delay + jitter_offset)
+                    wait = min(max(0.0, delay + jitter_offset), max_delay)
                     log.warning(
                         "Attempt %d/%d for %s failed (%s). Retrying in %.2fs…",
                         attempt,
@@ -84,8 +89,13 @@ def async_retry(
                         exc,
                         wait,
                     )
+                    if on_retry is not None:
+                        try:
+                            await on_retry(attempt, exc, wait)
+                        except Exception:
+                            pass  # Never let the callback abort the retry loop
                     await asyncio.sleep(wait)
-                    delay *= backoff
+                    delay = min(delay * backoff, max_delay)
 
             # Should never be reached, but satisfies type checkers
             raise last_exc  # type: ignore[misc]
