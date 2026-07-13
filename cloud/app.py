@@ -1,9 +1,16 @@
+import logging
 import os
 import sys
 import asyncio
 import uuid
 
 import gradio as gr
+
+log = logging.getLogger("edumentor.cloud")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -58,7 +65,7 @@ async def initialize_agent():
     if agent_controller is not None:
         return
 
-    print("Initializing EduMentor Cloud Agent...")
+    log.info("Initializing EduMentor Cloud Agent…")
 
     # Cloud LLM
     llm_engine = CloudLLMEngine()
@@ -76,7 +83,7 @@ async def initialize_agent():
 
     await db_manager.initialize()
 
-    print("Neon PostgreSQL initialized successfully.")
+    log.info("Neon PostgreSQL initialized successfully.")
 
     # Existing EduMentor components
     interrupt_manager = InterruptManager()
@@ -108,7 +115,7 @@ async def initialize_agent():
         db_manager=db_manager,
     )
 
-    print("EduMentor Cloud Agent initialized.")
+    log.info("EduMentor Cloud Agent initialized.")
 
 
 async def run_agent(
@@ -116,7 +123,11 @@ async def run_agent(
     session_id: str,
 ):
 
-    await initialize_agent()
+    try:
+        await initialize_agent()
+    except Exception as exc:
+        log.error("Agent initialization failed: %s", exc, exc_info=True)
+        return "⚠️ EduMentor is temporarily unavailable. Please try again later."
 
     if not message or not message.strip():
         return "Please enter a question."
