@@ -217,13 +217,21 @@ class Config:
     # ─────────────────────────────────────────────
     # PostgreSQL settings
     # ─────────────────────────────────────────────
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+
     POSTGRES_HOST: str = os.getenv("POSTGRES_HOST", "localhost")
     POSTGRES_PORT: int = int(os.getenv("POSTGRES_PORT", "5432"))
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
     POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "postgres")
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "edumentor")
-    POSTGRES_POOL_SIZE: int = int(os.getenv("POSTGRES_POOL_SIZE", "15"))
-    POSTGRES_ENABLED: bool = os.getenv("POSTGRES_ENABLED", "true").lower() == "true"
+
+    POSTGRES_POOL_SIZE: int = int(
+        os.getenv("POSTGRES_POOL_SIZE", "5")
+    )
+
+    POSTGRES_ENABLED: bool = (
+        os.getenv("POSTGRES_ENABLED", "true").lower() == "true"
+    )
 
     # ─────────────────────────────────────────────
     # Production Guardrails Settings (Part 9)

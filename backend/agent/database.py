@@ -27,6 +27,7 @@ class DatabaseManager:
 
     def __init__(self) -> None:
         self.pool: Optional[asyncpg.Pool] = None
+        self.database_url = Config.DATABASE_URL
         self.host = Config.POSTGRES_HOST
         self.port = Config.POSTGRES_PORT
         self.user = Config.POSTGRES_USER
@@ -44,23 +45,38 @@ class DatabaseManager:
             return
 
         try:
-            logger.info(
-                "Connecting to PostgreSQL at %s:%d/%s (pool_size=%d)...",
-                self.host,
-                self.port,
-                self.database,
-                self.pool_size,
-            )
-            # Create connection pool
-            self.pool = await asyncpg.create_pool(
-                host=self.host,
-                port=self.port,
-                user=self.user,
-                password=self.password,
-                database=self.database,
-                min_size=self.pool_size,
-                max_size=self.pool_size,
-            )
+            if self.database_url:
+                logger.info(
+                    "Connecting to PostgreSQL using DATABASE_URL (pool_size=%d)...",
+                    self.pool_size,
+                )
+
+                self.pool = await asyncpg.create_pool(
+                    dsn=self.database_url,
+                    min_size=1,
+                    max_size=self.pool_size,
+                    command_timeout=60,
+                )
+
+            else:
+                logger.info(
+                    "Connecting to PostgreSQL at %s:%d/%s (pool_size=%d)...",
+                    self.host,
+                    self.port,
+                    self.database,
+                    self.pool_size,
+                )
+
+                self.pool = await asyncpg.create_pool(
+                    host=self.host,
+                    port=self.port,
+                    user=self.user,
+                    password=self.password,
+                    database=self.database,
+                    min_size=1,
+                    max_size=self.pool_size,
+                    command_timeout=60,
+                )
             global db_pool
             db_pool = self.pool
             logger.info("[OK] PostgreSQL connection pool initialized.")
