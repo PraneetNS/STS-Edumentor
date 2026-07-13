@@ -18,10 +18,13 @@ Usage::
     print(snapshot())  # {"llm.requests": 1, "ws.connections": 12, ...}
 """
 
+import logging
 import threading
 import time
 from collections import defaultdict
 from typing import Any
+
+_log = logging.getLogger("edumentor.metrics")
 
 _lock = threading.Lock()
 
@@ -150,7 +153,22 @@ def snapshot() -> dict[str, Any]:
 
 def reset() -> None:
     """Clear all metrics (useful in tests)."""
+    _log.warning("Metrics store reset — all counters, gauges, and histograms cleared.")
     with _lock:
         _counters.clear()
         _gauges.clear()
         _histograms.clear()
+
+
+# ---------------------------------------------------------------------------
+# Convenience named-metric helpers
+# ---------------------------------------------------------------------------
+
+ws_sessions    = gauge("ws.active_sessions")
+llm_requests   = counter("llm.requests")
+llm_errors     = counter("llm.errors")
+tts_requests   = counter("tts.requests")
+stt_requests   = counter("stt.requests")
+llm_latency_ms = histogram("llm.latency_ms")
+stt_latency_ms = histogram("stt.latency_ms")
+tts_latency_ms = histogram("tts.latency_ms")
