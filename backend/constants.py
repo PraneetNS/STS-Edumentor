@@ -29,6 +29,10 @@ class WSEvent:
     FOLLOWUP          = "followup"
     # Error conditions
     ERROR             = "error"
+    # Non-fatal server warnings (e.g. soft rate-limit, degraded mode)
+    WARN              = "warn"
+    # Rate-limit reached — client should back off
+    RATE_LIMITED      = "rate_limited"
     # Server health / meta
     HEALTH            = "health"
     SESSION_READY     = "session_ready"
@@ -79,8 +83,9 @@ class ShowType:
     WORKFLOW  = "workflow"
     CHECKLIST = "checklist"
     MERMAID   = "mermaid"
+    DIAGRAM   = "diagram"  # alias for mermaid-rendered diagrams
 
-    ALL = {CODE, TABLE, ROADMAP, WORKFLOW, CHECKLIST, MERMAID}
+    ALL = {CODE, TABLE, ROADMAP, WORKFLOW, CHECKLIST, MERMAID, DIAGRAM}
 
 
 # ── Reconnect / session limits ─────────────────────────────────────────────
