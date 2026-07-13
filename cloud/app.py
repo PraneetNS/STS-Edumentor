@@ -62,17 +62,26 @@ async def initialize_agent():
 
     # Cloud LLM
     llm_engine = CloudLLMEngine()
-
+    from cloud.cloud_whisper import transcribe_audio
     # Database disabled for first integration test.
     #
     # We intentionally do NOT connect Neon yet.
+    # Neon PostgreSQL database
     db_manager = DatabaseManager()
-    db_manager.enabled = False
+
+    if not db_manager.enabled:
+        raise RuntimeError(
+            "PostgreSQL is not enabled. Check POSTGRES_ENABLED and DATABASE_URL."
+        )
+
+    await db_manager.initialize()
+
+    print("Neon PostgreSQL initialized successfully.")
 
     # Existing EduMentor components
     interrupt_manager = InterruptManager()
 
-    memory_backend = get_backend("in_memory")
+    memory_backend = get_backend("memory")
 
     memory_manager = MemoryManager(
         max_turns=10,
@@ -130,16 +139,13 @@ async def run_agent(
     return "".join(chunks).strip()
 
 
-def chat(
+async def chat(
     message: str,
     session_id: str,
 ):
-
-    return asyncio.run(
-        run_agent(
-            message,
-            session_id,
-        )
+    return await run_agent(
+        message,
+        session_id,
     )
 
 
@@ -155,9 +161,7 @@ with gr.Blocks() as demo:
         "Existing EduMentor AgentController + ZeroGPU Cloud LLM"
     )
 
-    session_id = gr.State(
-        value=lambda: str(uuid.uuid4())
-    )
+    session_id = gr.State(value=str(uuid.uuid4()))
 
     message = gr.Textbox(
         label="Student Question",
