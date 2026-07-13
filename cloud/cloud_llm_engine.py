@@ -1,4 +1,16 @@
+"""
+cloud_llm_engine.py — ZeroGPU-backed LLM inference engine for EduMentor Cloud.
+
+Uses Hugging Face Transformers with the @spaces.GPU decorator so inference
+runs on a GPU slice allocated dynamically by the ZeroGPU runtime.
+
+Configuration (env vars):
+  CLOUD_MODEL_ID    HF model repo to load  (default: Qwen/Qwen2.5-1.5B-Instruct)
+  CLOUD_MAX_TOKENS  Default token budget    (default: 250)
+"""
+
 import asyncio
+import os
 from typing import AsyncIterator, Optional
 
 import spaces
@@ -6,7 +18,8 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
-MODEL_ID = "Qwen/Qwen2.5-1.5B-Instruct"
+MODEL_ID   = os.getenv("CLOUD_MODEL_ID", "Qwen/Qwen2.5-1.5B-Instruct")
+_MAX_TOKENS = int(os.getenv("CLOUD_MAX_TOKENS", "250"))
 
 
 @spaces.GPU(duration=120)
@@ -96,7 +109,7 @@ class CloudLLMEngine:
         response = await asyncio.to_thread(
             _generate_sync,
             messages,
-            max_tokens or 250,
+            max_tokens or _MAX_TOKENS,
         )
 
         # Compatibility streaming.
