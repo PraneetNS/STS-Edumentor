@@ -1,0 +1,11 @@
+gradio
+spaces
+faster-whisper
+nvidia-cublas-cu12
+nvidia-cudnn-cu12
+transformers
+accelerate
+sentencepiece
+asyncpg
+httpx
+numpy
