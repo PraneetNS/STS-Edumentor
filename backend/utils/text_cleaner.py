@@ -103,3 +103,37 @@ def clean_transcript(text: str, *, strip_fillers: bool = True, max_sentences: in
     if max_sentences is not None:
         text = truncate_to_sentences(text, max_sentences)
     return text
+
+
+# ---------------------------------------------------------------------------
+# TTS-specific cleaner
+# ---------------------------------------------------------------------------
+
+_URL_RE          = re.compile(r'https?://\S+')
+_CODE_FENCE_RE   = re.compile(r'```[^\n]*\n.*?```', re.DOTALL)
+_INLINE_CODE_RE  = re.compile(r'`[^`]+`')
+_MARKDOWN_RE     = re.compile(r'[*_~#>|\\]')
+_ELLIPSIS_RE     = re.compile(r'\.{2,}')
+
+
+def sanitise_for_tts(text: str) -> str:
+    """
+    Prepare LLM output text for TTS synthesis.
+
+    Strips elements that should not be spoken aloud:
+      - Code fences (``` blocks ```)
+      - Inline backtick code spans
+      - URLs (http/https)
+      - Markdown formatting characters (* _ ~ # > | \\)
+      - Excessive ellipses (converted to a natural pause marker)
+
+    Returns:
+        Cleaned text suitable for passing directly to a TTS engine.
+    """
+    text = _CODE_FENCE_RE.sub('', text)
+    text = _INLINE_CODE_RE.sub('', text)
+    text = _URL_RE.sub('', text)
+    text = _MARKDOWN_RE.sub('', text)
+    text = _ELLIPSIS_RE.sub('…', text)
+    return normalise_whitespace(text)
+
