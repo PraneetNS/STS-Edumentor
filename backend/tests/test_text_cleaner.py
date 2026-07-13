@@ -22,6 +22,7 @@ from utils.text_cleaner import (
     remove_control_chars,
     truncate_to_sentences,
     clean_transcript,
+    sanitise_for_tts,
 )
 
 
@@ -173,3 +174,47 @@ class TestCleanTranscript:
 
     def test_empty(self):
         assert clean_transcript("") == ""
+
+
+# ---------------------------------------------------------------------------
+# sanitise_for_tts
+# ---------------------------------------------------------------------------
+
+class TestSanitiseForTts:
+    def test_removes_code_fence(self):
+        text = "Here is a snippet:\n```python\nprint('hello')\n```\nDone."
+        result = sanitise_for_tts(text)
+        assert "```" not in result
+        assert "print" not in result
+        assert "Done" in result
+
+    def test_removes_inline_code(self):
+        result = sanitise_for_tts("Call the `compute()` function.")
+        assert "`" not in result
+        assert "compute" not in result
+        assert "function" in result
+
+    def test_removes_urls(self):
+        result = sanitise_for_tts("See https://docs.python.org for more info.")
+        assert "https" not in result
+        assert "more info" in result
+
+    def test_removes_markdown_symbols(self):
+        result = sanitise_for_tts("**Bold** and _italic_ and ~strike~")
+        assert "*" not in result
+        assert "_" not in result
+        assert "~" not in result
+        assert "Bold" in result
+
+    def test_normalises_ellipsis(self):
+        result = sanitise_for_tts("Hmm....let me think.")
+        # Multiple dots should become a single ellipsis character or single dot
+        assert "...." not in result
+
+    def test_empty_string(self):
+        assert sanitise_for_tts("") == ""
+
+    def test_plain_text_unchanged(self):
+        text = "The quick brown fox jumps over the lazy dog."
+        result = sanitise_for_tts(text)
+        assert result == text
