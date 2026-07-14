@@ -52,6 +52,7 @@ The platform runs entirely offline on your local hardware to preserve privacy, u
 *   **Personalized Student Profile**: Persistently tracks your name, skill level (beginner, intermediate, advanced), active learning topics, and weak areas. Tailors explanation depth and style on the fly.
 *   **Rolling Session Summarizer**: Summarizes context logs after every 10 turns and feeds condensed information back to the prompt, preventing context window overflow.
 *   **Interactive Visuals**: Renders structured code blocks step-by-step, checklists, roadmaps, and workflows inside clean React components via `<show>` HTML tags while TTS speaks the introductory descriptions.
+*   **VAD & Table Parser Optimizations**: Refined Voice Activity Detection silence timeouts, integrated hesitation/thinking token checks, and streamlined the markdown table streaming rendering strategies.
 
 ---
 
