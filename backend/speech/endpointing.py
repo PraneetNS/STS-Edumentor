@@ -64,11 +64,14 @@ class EndpointingConfig:
 # ---------------------------------------------------------------------------
 
 # Words that, if trailing, strongly signal "more is coming."
+# Hesitation, thinking, and filler tokens (like hmm, hmmm, err, mhm) are included here
+# to prevent the VAD from cutting the user off early when they pause to think.
 _TRAILING_INCOMPLETE = {
     "and", "but", "so", "or", "because", "um", "uh", "like", "the", "a",
     "an", "to", "with", "for", "of", "in", "on", "is", "are", "was",
     "were", "that", "which", "if", "then", "also", "well", "actually",
-    "basically", "i", "you", "we", "my", "your",
+    "basically", "i", "you", "we", "my", "your", "hmm", "hmmm", "uhm",
+    "err", "mhm", "ah", "eh",
 }
 
 # Sentence-final punctuation from the normalizer/stabilizer output.
