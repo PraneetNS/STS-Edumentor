@@ -36,12 +36,15 @@
     "DSA",
     "Databases",
     "System Design",
-    "JavaScript"
+    "JavaScript",
+    "Deep Learning"
   ],
   "preferred_style": "examples",
-  "session_count": 152,
-  "discipline": "civil",
+  "session_count": 163,
+  "discipline": "cse",
   "active_topics": [
-    "Civil Engineering"
+    "Machine Learning",
+    "Deep Learning",
+    "Computer Science"
   ]
 }
