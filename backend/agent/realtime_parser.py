@@ -536,11 +536,20 @@ class RealtimeStreamingParser:
                 # Fallback heal for LLMs writing HTML tables but omitting wrapping <table>
                 if not cleaned.lower().startswith("<table") and any(cleaned.lower().startswith(x) for x in ("<thead", "<tr", "<tbody", "<td", "<th")):
                     cleaned = f"<table>\n{cleaned}\n</table>"
-            display_title = self.show_title if self.show_title else self.show_type.capitalize()
-            yield {
-                "raw": f"\n\n### 📋 {display_title}\n{cleaned}\n\n",
-                "planned": ""
-            }
+                # For tables: yield only the raw markdown rows — the title is already
+                # carried by the `title=` attribute in the <show> tag and displayed
+                # by ComparisonTableStrategy's header bar. Injecting a `### ...` heading
+                # here was polluting block.content and making the markdown parser fragile.
+                yield {
+                    "raw": f"\n\n{cleaned}\n\n",
+                    "planned": ""
+                }
+            else:
+                display_title = self.show_title if self.show_title else self.show_type.capitalize()
+                yield {
+                    "raw": f"\n\n### 📋 {display_title}\n{cleaned}\n\n",
+                    "planned": ""
+                }
             
         self.show_buffer = ""
         self.state = "OUTSIDE"
