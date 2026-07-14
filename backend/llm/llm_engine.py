@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 # Slot affinity — deterministic session-to-slot mapping
 # Must match -np value passed to llama-server (see run_llm_server.bat/sh).
 # ─────────────────────────────────────────────────────────────────────────────
-NUM_SLOTS: int = 4
+NUM_SLOTS: int = 1
 
 
 def get_slot_for_session(session_id: str, num_slots: int = NUM_SLOTS) -> int:
