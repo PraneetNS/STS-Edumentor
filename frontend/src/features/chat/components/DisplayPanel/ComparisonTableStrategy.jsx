@@ -7,7 +7,11 @@ export default function ComparisonTableStrategy({ block }) {
   const [filterQuery, setFilterQuery] = useState('');
 
   useEffect(() => {
-    const rawLines = block.content.split('\n');
+    // Defensive fix: Strip any leading ### heading line injected by the backend parser (e.g. "### 📋 Title")
+    // before attempting to parse the markdown table rows. Keeping this heading in block.content
+    // caused the index-based separator search to misalign headers and rows.
+    const rawContent = (block.content || '').replace(/^#{1,6}\s+.*\n?/, '').trim();
+    const rawLines = rawContent.split('\n');
     
     // Clean and split lines into cells
     const lineCells = rawLines
