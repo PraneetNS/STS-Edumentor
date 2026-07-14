@@ -42,7 +42,7 @@ echo.
 "C:\Users\savan\.docker\bin\inference\llama-server.exe" ^
   -m %MODEL% ^
   -c 4096 ^
-  -ngl 24 ^
+  -ngl 28 ^
   --host 0.0.0.0 ^
   --port 8080 ^
   --temp 0.6 ^
