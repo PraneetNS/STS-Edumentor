@@ -26,7 +26,7 @@ from typing import Any
 
 _log = logging.getLogger("edumentor.metrics")
 
-_lock = threading.Lock()
+_lock = threading.RLock()
 
 _counters: dict[str, float] = defaultdict(float)
 _gauges: dict[str, float] = {}
