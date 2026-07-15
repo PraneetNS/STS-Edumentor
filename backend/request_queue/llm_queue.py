@@ -71,7 +71,10 @@ class LLMRequestQueue:
         total = await self.redis.xlen(self.config.stream_key)
         acked = await self.redis.get(self._acked_counter_key())
         acked = int(acked) if acked is not None else 0
-        return max(0, total - acked)
+        depth = max(0, total - acked)
+        from observability.metrics import queue_depth
+        queue_depth.set(depth)
+        return depth
 
     def _acked_counter_key(self) -> str:
         return f"{self.config.stream_key}:acked_count"
@@ -82,23 +85,29 @@ class LLMRequestQueue:
         the caller must handle this (tell the user the system is busy),
         never silently swallow it.
         """
-        depth = await self.queue_depth()
-        if depth >= self.config.max_queue_depth:
-            raise QueueFullError(
-                f"queue at capacity ({depth}/{self.config.max_queue_depth})"
-            )
+        from observability.metrics import queue_enqueued_total, queue_rejected_total
+        try:
+            depth = await self.queue_depth()
+            if depth >= self.config.max_queue_depth:
+                raise QueueFullError(
+                    f"queue at capacity ({depth}/{self.config.max_queue_depth})"
+                )
 
-        request_id = str(uuid.uuid4())
-        await self.redis.xadd(
-            self.config.stream_key,
-            {
-                "request_id": request_id,
-                "session_id": session_id,
-                "prompt": prompt,
-                "enqueued_at": str(time.time()),
-            },
-        )
-        return request_id
+            request_id = str(uuid.uuid4())
+            await self.redis.xadd(
+                self.config.stream_key,
+                {
+                    "request_id": request_id,
+                    "session_id": session_id,
+                    "prompt": prompt,
+                    "enqueued_at": str(time.time()),
+                },
+            )
+            queue_enqueued_total.inc()
+            return request_id
+        except QueueFullError:
+            queue_rejected_total.inc()
+            raise
 
     async def stream_response(self, request_id: str) -> AsyncIterator[Dict[str, Any]]:
         """
@@ -212,6 +221,8 @@ class LLMWorker:
             # deliberate addition, not an accident of missing the ack.)
             await self.redis.xack(self.config.stream_key, self.config.group_name, entry_id)
             await self.redis.incr(f"{self.config.stream_key}:acked_count")
+            from observability.metrics import queue_acked_total
+            queue_acked_total.inc()
 
     async def reclaim_stale(self) -> int:
         """
@@ -244,4 +255,7 @@ class LLMWorker:
         for entry_id, fields in claimed:
             await self._process(entry_id, fields)
             reclaimed += 1
+        if reclaimed > 0:
+            from observability.metrics import queue_reclaimed_total
+            queue_reclaimed_total.inc(reclaimed)
         return reclaimed
