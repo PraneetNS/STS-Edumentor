@@ -1,0 +1,38 @@
+groups:
+  - name: edumentor_alerts
+    rules:
+      - alert: QueueReclaimingDuringHealthyOperation
+        expr: increase(edumentor_queue_reclaimed_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Stale-job reclaims detected outside of a known worker crash"
+          description: "Stale-job reclaims detected outside of a known worker crash — per our earlier load testing, this indicates claim_stale_after_ms or heartbeat_interval_ms is misconfigured relative to real generation time. Investigate immediately, this can cause double-processing."
+
+      - alert: QueueDepthSustainedHigh
+        expr: edumentor_queue_depth > 150
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Queue depth has been above 150 for 5+ minutes"
+          description: "Queue depth has been above 150 for 5+ minutes — check whether more GPU workers are needed."
+
+      - alert: HighRejectionRate
+        expr: rate(edumentor_queue_rejected_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High LLM request queue rejection rate"
+          description: "More than 10% of enqueue attempts are being rejected as queue-full — the system is at sustained capacity."
+
+      - alert: TTFTLatencyRegression
+        expr: histogram_quantile(0.95, rate(edumentor_llm_ttft_seconds_bucket[10m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 time-to-first-token has exceeded 2 seconds"
+          description: "p95 time-to-first-token has exceeded 2 seconds — check GPU worker load and whether this correlates with a queue depth spike."
