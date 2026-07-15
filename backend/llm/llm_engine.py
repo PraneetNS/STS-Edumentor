@@ -14,15 +14,11 @@ slot, the server skips re-computing those tokens (prefill shortcut).
 For caching to engage reliably across turns:
   1. The prompt must start with identical tokens every time (stable
      static system prompt — see PromptBuilder).
-  2. Each session must always land on the SAME slot. If session A's
-     requests are scattered across slot 1, 2, 3 at random, no slot
-     ever accumulates a useful cached prefix for that session.
-     get_slot_for_session() provides deterministic slot affinity.
-  3. The server must be started with -np > 1. Without multiple slots,
-     a second concurrent session evicts the first session's cached
-     prefix even though they share an identical static system prompt.
-     This is the most common reason prompt caching silently fails in
-     multi-user llama-server deployments — see run_llm_server.bat/sh.
+  2. With a single slot (-np 1) all sessions share the same KV cache.
+     This is fine for a single-user dev setup: the system prompt prefix
+     is cached after the first turn and reused every subsequent turn.
+     If you need true multi-user concurrency, increase -np and NUM_SLOTS
+     to match (e.g. -np 2 / NUM_SLOTS = 2).
 """
 
 import asyncio
@@ -35,12 +31,11 @@ import httpx
 
 from config import Config
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("edumentor.agent.llm")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Slot affinity — deterministic session-to-slot mapping
-# Must match -np value passed to llama-server (see run_llm_server.bat/sh).
-# ─────────────────────────────────────────────────────────────────────────────
+# Slot affinity — must match the -np value on llama-server (run_llm_server.bat).
+# With -np 1 (single slot) this is always 0. Increase to match -np if you
+# scale up to multiple parallel sessions.
 NUM_SLOTS: int = 1
 
 
@@ -50,11 +45,8 @@ def get_slot_for_session(session_id: str, num_slots: int = NUM_SLOTS) -> int:
     The same session always lands on the same slot so its KV cache
     accumulates across turns instead of being scattered across slots.
 
-    With -np 4, four concurrent active sessions each get their own slot.
-    Beyond 4 concurrent sessions, hash collisions become likely: two
-    sessions on the same slot will evict each other's prefix. Size -np
-    to your expected peak concurrency (not total user count — most
-    students are idle between turns, not all sending simultaneously).
+    With NUM_SLOTS=1 (-np 1) this always returns 0. Increase NUM_SLOTS
+    and -np together when scaling to multiple concurrent users.
 
     Args:
         session_id: Unique session identifier (WebSocket session ID).
@@ -63,7 +55,7 @@ def get_slot_for_session(session_id: str, num_slots: int = NUM_SLOTS) -> int:
     Returns:
         Slot index in [0, num_slots).
     """
-    if not session_id:
+    if not session_id or num_slots <= 1:
         return 0
     return int(hashlib.md5(session_id.encode()).hexdigest(), 16) % num_slots
 
@@ -86,6 +78,33 @@ class LLMEngine:
         )
         self.last_usage = None
         logger.info("[OK] LLM engine ready -> %s", self.base_url)
+
+    def _merge_consecutive_messages(self, messages: list) -> list:
+        """Merge consecutive messages of the same role (especially system prompts) 
+        to prevent templates from ignoring earlier instructions.
+        """
+        if not messages:
+            return []
+        
+        merged = []
+        current = None
+        
+        for msg in messages:
+            role = msg.get("role")
+            content = msg.get("content", "")
+            
+            if current is None:
+                current = {"role": role, "content": content}
+            elif current["role"] == role:
+                current["content"] += "\n\n" + content
+            else:
+                merged.append(current)
+                current = {"role": role, "content": content}
+                
+        if current is not None:
+            merged.append(current)
+            
+        return merged
 
     async def stream_tokens(self, user_text: str) -> AsyncIterator[str]:
         """
@@ -136,32 +155,37 @@ class LLMEngine:
         Yields:
             Individual token strings.
         """
+        self.last_usage = None
         slot_id = get_slot_for_session(session_id)
+        # Ensure a system prompt is always present. Some callers may supply
+        # only a user message (legacy paths). Prepend the configured
+        # system prompt if no system role is found so the model always sees
+        # the system instructions on every request.
+        has_system = any((m.get("role") == "system") for m in messages)
+        if not has_system:
+            messages = [{"role": "system", "content": Config.LLM_SYSTEM_PROMPT}] + list(messages)
+
+        merged_messages = self._merge_consecutive_messages(messages)
         payload = {
             "model":          Config.LLM_MODEL_NAME,
-            "messages":       messages,
+            "messages":       merged_messages,
             "stream":         True,
             "max_tokens":     max_tokens if max_tokens is not None else Config.LLM_MAX_TOKENS,
             "temperature":    Config.LLM_TEMPERATURE,
             "top_p":          Config.LLM_TOP_P,
             "repeat_penalty": Config.LLM_REPEAT_PENALTY,
-            # Explicit cache_prompt — tells llama-server to attempt prefix reuse.
-            # Even though llama-server defaults to True, being explicit ensures
-            # the intent survives any future server default changes.
             "cache_prompt":   True,
-            # Slot affinity — same session always uses the same KV slot so its
-            # cached prefix (static system prompt + profile + prior history)
-            # accumulates across turns instead of being evicted.
             "slot_id":        slot_id,
-            # Qwen ChatML stop tokens — prevent model bleeding past turn boundaries
             "stop": ["<|im_end|>", "<|im_start|>", "<|endoftext|>"],
+            "stream_options": {"include_usage": True},
         }
 
         logger.info(
-            "LLM <- %d messages, first_user=%r",
+            "LLM <- %d messages (merged to %d), first_user=%r",
             len(messages),
+            len(merged_messages),
             next(
-                (m["content"][:60] for m in messages if m["role"] == "user"),
+                (m["content"][:60] for m in merged_messages if m["role"] == "user"),
                 ""
             ),
         )
@@ -234,8 +258,15 @@ class LLMEngine:
                 if "usage" in chunk and chunk["usage"]:
                     self.last_usage = chunk["usage"]
 
+        except (httpx.ConnectError, httpx.RemoteProtocolError, ConnectionRefusedError) as exc:
+            # LLM server dropped mid-stream (e.g. restarting). Don't trip circuit breaker.
+            logger.warning("[LLM] Connection lost during streaming: %s", exc)
+            yield (
+                "<speak>I'm currently offline, but the team is actively working to bring me "
+                "back up. Thank you so much for your patience — I'll be with you very soon!</speak>"
+            )
         except Exception as exc:
-            # Track stream reading failures toward circuit breaker threshold
+            # Track unexpected stream reading failures toward circuit breaker threshold
             llm_circuit.failure_count += 1
             llm_circuit.last_failure_time = time.time()
             if llm_circuit.failure_count >= llm_circuit.failure_threshold:
@@ -257,15 +288,21 @@ class LLMEngine:
         max_tokens: int = 20,
         timeout: float = 0.4,
         session_id: str = "",
-    ) -> str:
+     ) -> str:
         """
         Get a single non-streaming completion from the LLM with strict token limits and timeout.
         Used for the low-latency context-aware STT correction pass.
         """
         slot_id = get_slot_for_session(session_id)
+        # Same safety: ensure a system message exists for non-streaming calls.
+        has_system = any((m.get("role") == "system") for m in messages)
+        if not has_system:
+            messages = [{"role": "system", "content": Config.LLM_SYSTEM_PROMPT}] + list(messages)
+
+        merged_messages = self._merge_consecutive_messages(messages)
         payload = {
             "model":          Config.LLM_MODEL_NAME,
-            "messages":       messages,
+            "messages":       merged_messages,
             "stream":         False,
             "max_tokens":     max_tokens,
             "temperature":    0.0,  # greedy decoding = faster & consistent
