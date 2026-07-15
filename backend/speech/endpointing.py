@@ -149,49 +149,51 @@ class SemanticEndpointer:
 
         if cfg.mode == EndpointingMode.FIXED:
             should_finalize = silence_elapsed_ms >= cfg.default_silence_ms
-            return EndpointDecision(
+            decision = EndpointDecision(
                 should_finalize=should_finalize,
                 reason="fixed_mode",
                 completeness=Completeness.AMBIGUOUS,
                 effective_wait_ms=cfg.default_silence_ms,
             )
+        else:
+            completeness = self.classify_completeness(confirmed_text)
 
-        completeness = self.classify_completeness(confirmed_text)
+            # Hard safety net: never exceed max_silence_ms regardless of signal.
+            if silence_elapsed_ms >= cfg.max_silence_ms:
+                decision = EndpointDecision(
+                    should_finalize=True,
+                    reason="max_silence_ceiling",
+                    completeness=completeness,
+                    effective_wait_ms=cfg.max_silence_ms,
+                )
+            elif completeness == Completeness.CONFIDENT_COMPLETE:
+                should_finalize = silence_elapsed_ms >= cfg.min_silence_ms
+                decision = EndpointDecision(
+                    should_finalize=should_finalize,
+                    reason="confident_complete_fast_fire",
+                    completeness=completeness,
+                    effective_wait_ms=cfg.min_silence_ms,
+                )
+            elif completeness == Completeness.TRAILING_INCOMPLETE:
+                # Don't finalize on the default timeout either -- push toward
+                # the ceiling, but the ceiling check above still protects us.
+                should_finalize = False
+                decision = EndpointDecision(
+                    should_finalize=should_finalize,
+                    reason="trailing_incomplete_extend",
+                    completeness=completeness,
+                    effective_wait_ms=cfg.max_silence_ms,
+                )
+            else:
+                # AMBIGUOUS -- behave like today's system.
+                should_finalize = silence_elapsed_ms >= cfg.default_silence_ms
+                decision = EndpointDecision(
+                    should_finalize=should_finalize,
+                    reason="ambiguous_default_timeout",
+                    completeness=completeness,
+                    effective_wait_ms=cfg.default_silence_ms,
+                )
 
-        # Hard safety net: never exceed max_silence_ms regardless of signal.
-        if silence_elapsed_ms >= cfg.max_silence_ms:
-            return EndpointDecision(
-                should_finalize=True,
-                reason="max_silence_ceiling",
-                completeness=completeness,
-                effective_wait_ms=cfg.max_silence_ms,
-            )
-
-        if completeness == Completeness.CONFIDENT_COMPLETE:
-            should_finalize = silence_elapsed_ms >= cfg.min_silence_ms
-            return EndpointDecision(
-                should_finalize=should_finalize,
-                reason="confident_complete_fast_fire",
-                completeness=completeness,
-                effective_wait_ms=cfg.min_silence_ms,
-            )
-
-        if completeness == Completeness.TRAILING_INCOMPLETE:
-            # Don't finalize on the default timeout either -- push toward
-            # the ceiling, but the ceiling check above still protects us.
-            should_finalize = False
-            return EndpointDecision(
-                should_finalize=should_finalize,
-                reason="trailing_incomplete_extend",
-                completeness=completeness,
-                effective_wait_ms=cfg.max_silence_ms,
-            )
-
-        # AMBIGUOUS -- behave like today's system.
-        should_finalize = silence_elapsed_ms >= cfg.default_silence_ms
-        return EndpointDecision(
-            should_finalize=should_finalize,
-            reason="ambiguous_default_timeout",
-            completeness=completeness,
-            effective_wait_ms=cfg.default_silence_ms,
-        )
+        from observability.metrics import endpoint_decision_total
+        endpoint_decision_total.labels(reason=decision.reason).inc()
+        return decision
