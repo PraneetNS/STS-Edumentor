@@ -147,7 +147,8 @@ async def simulate_session(
     queue: LLMRequestQueue, session_idx: int
 ) -> SessionResult:
     session_id = f"loadtest-session-{session_idx}"
-    result = SessionResult(session_id=session_id, enqueue_time=time.monotonic())
+    enqueue_time = time.monotonic()
+    result = SessionResult(session_id=session_id, enqueue_time=enqueue_time)
 
     try:
         result.request_id = await queue.enqueue(
@@ -160,9 +161,17 @@ async def simulate_session(
 
     async for chunk in queue.stream_response(result.request_id):
         if chunk["type"] == "token" and result.first_token_time is None:
-            result.first_token_time = time.monotonic()
+            now = time.monotonic()
+            result.first_token_time = now
+            ttft = now - enqueue_time
+            from observability.metrics import llm_ttft_seconds
+            llm_ttft_seconds.observe(ttft)
         elif chunk["type"] == "done":
-            result.done_time = time.monotonic()
+            now = time.monotonic()
+            result.done_time = now
+            latency = now - enqueue_time
+            from observability.metrics import llm_total_latency_seconds
+            llm_total_latency_seconds.observe(latency)
         elif chunk["type"] == "error":
             result.error = chunk.get("error")
             result.done_time = time.monotonic()
