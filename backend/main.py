@@ -279,6 +279,31 @@ async def health_check():
     }
 
 
+@app.get("/metrics", tags=["System"])
+def metrics_endpoint():
+    """
+    Expose collected Prometheus metrics for scraping.
+
+    NOTE: If this backend is ever exposed publicly, /metrics should be restricted
+    (e.g., via IP allowlist, reverse proxy rules, or hosting on a separate
+    internal-only port) because operational metrics can leak system details.
+    """
+    import prometheus_client
+    try:
+        data = prometheus_client.generate_latest()
+        return Response(
+            content=data,
+            media_type=prometheus_client.CONTENT_TYPE_LATEST
+        )
+    except Exception as e:
+        logger.error("Failed to generate Prometheus metrics: %s", e, exc_info=True)
+        return Response(
+            content="Internal Server Error: Failed to generate metrics",
+            status_code=500,
+            media_type="text/plain"
+        )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # User Authentication HTTP Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
@@ -456,8 +481,17 @@ async def google_auth_callback(code: str, response: Response):
         }
         async with httpx.AsyncClient() as client:
             try:
-                token_res = await client.post(token_url, data=data)
-                token_res.raise_for_status()
+                # Explicitly send form-encoded data (Google expects x-www-form-urlencoded)
+                headers = {"Content-Type": "application/x-www-form-urlencoded"}
+                token_res = await client.post(token_url, data=data, headers=headers)
+                # If the token endpoint returns an error (400/401/etc), capture body for debugging
+                if token_res.status_code != 200:
+                    logger.error(
+                        "Google token endpoint error: status=%s body=%s",
+                        token_res.status_code,
+                        token_res.text[:1000]
+                    )
+                    token_res.raise_for_status()
                 token_data = token_res.json()
                 
                 access_token = token_data.get("access_token")
@@ -470,8 +504,14 @@ async def google_auth_callback(code: str, response: Response):
                 email = user_info.get("email")
                 display_name = user_info.get("name")
                 avatar_url = user_info.get("picture")
+            except httpx.HTTPStatusError as hs_err:
+                # Log full response text (truncated) for diagnosis without leaking secrets
+                resp = getattr(hs_err, 'response', None)
+                body = resp.text[:2000] if resp is not None else str(hs_err)
+                logger.error("Google OAuth token exchange failed: %s", body)
+                raise HTTPException(status_code=400, detail="Google authentication failed (token exchange error)")
             except Exception as e:
-                logger.error("Failed to perform Google OAuth exchange: %s", e)
+                logger.exception("Failed to perform Google OAuth exchange: %s", e)
                 raise HTTPException(status_code=400, detail="Google authentication failed")
                 
     if not email:
