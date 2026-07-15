@@ -131,7 +131,11 @@ class MemoryRetriever:
             )
 
         scored.sort(key=lambda m: -m.relevance_score)
-        return scored[: self.config.top_k]
+        result = scored[: self.config.top_k]
+        from observability.metrics import memory_recall_total
+        memory_recall_total.labels(outcome="hit" if result else "miss").inc()
+        return result
+
 
 
 def format_recall_context(memories: List[RecalledMemory]) -> str:
