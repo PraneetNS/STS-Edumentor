@@ -89,4 +89,8 @@ class CelebrationComposer:
 
         self.last_celebration_time[session_id] = now
 
+        from observability.metrics import celebration_triggered_total
+        celebration_triggered_total.labels(emotion=signal.emotion.value).inc()
+
         return CelebrationResult(phrase=chosen_phrase, speed_multiplier=speed_multiplier)
+
