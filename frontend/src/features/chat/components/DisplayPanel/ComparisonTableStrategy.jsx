@@ -33,10 +33,31 @@ export default function ComparisonTableStrategy({ block }) {
       cells.length > 0 && cells.every(cell => /^[\s:-]+$/.test(cell))
     );
 
+    // If the content contains an HTML table, try parsing that as a more reliable fallback.
+    let parsedFromHtml = null;
+    if (rawContent.includes('<table')) {
+      try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(rawContent, 'text/html');
+        const table = doc.querySelector('table');
+        if (table) {
+          const ths = Array.from(table.querySelectorAll('thead th')).map(t => t.textContent.trim());
+          const trs = Array.from(table.querySelectorAll('tbody tr'));
+          const rowsFromHtml = trs.map(tr => Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim()));
+          parsedFromHtml = { headers: ths.length ? ths : (rowsFromHtml[0] ? rowsFromHtml[0].map((_,i) => `Column ${i+1}`) : []), rows: rowsFromHtml };
+        }
+      } catch (e) {
+        // ignore HTML parse errors and fall through to markdown parsing
+      }
+    }
+
     let parsedHeaders = [];
     let parsedRows = [];
 
-    if (separatorIdx > 0) {
+    if (parsedFromHtml) {
+      parsedHeaders = parsedFromHtml.headers;
+      parsedRows = parsedFromHtml.rows;
+    } else if (separatorIdx > 0) {
       // Header is the line right before the separator
       parsedHeaders = lineCells[separatorIdx - 1];
       // Rows are all lines after the separator
@@ -48,11 +69,22 @@ export default function ComparisonTableStrategy({ block }) {
       if (firstLine.length > 1) {
         parsedHeaders = firstLine;
         parsedRows = lineCells.slice(1);
+      } else if (lineCells.length > 1 && lineCells.every(l => l.length > 0)) {
+        // If there are multiple data rows but no clear header, generate generic headers
+        const cols = Math.max(...lineCells.map(r => r.length));
+        parsedHeaders = Array.from({ length: cols }).map((_, i) => `Column ${i + 1}`);
+        parsedRows = lineCells;
       }
     }
 
     setHeaders(parsedHeaders);
     setRows(parsedRows);
+
+    // Debug: when parsing yields no headers, log a short trace to help diagnose incoming content
+    if (parsedHeaders.length === 0) {
+      // eslint-disable-next-line no-console
+      console.debug('ComparisonTableStrategy: failed to parse table headers', { title: block.title, rawPreview: rawContent.slice(0, 1024) });
+    }
   }, [block.content]);
 
   // Highlights specific content cells (e.g., Pros/Cons/Yes/No)
