@@ -767,6 +767,11 @@ class AgentController:
         last_usage = getattr(self._llm, "last_usage", None)
         if last_usage:
             prompt_tokens = last_usage.get("prompt_tokens", 0)
+            # llama.cpp only counts non-cached tokens in prompt_tokens when the KV
+            # cache is hit. Add back the cached portion so the DB always records the
+            # true total input token count (including the system prompt prefix).
+            cached = (last_usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
+            prompt_tokens += cached
             completion_tokens = last_usage.get("completion_tokens", 0)
         else:
             # Fallback estimation
