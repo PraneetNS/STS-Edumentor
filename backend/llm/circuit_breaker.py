@@ -1,5 +1,6 @@
 import time
 import asyncio
+import httpx
 from config import Config
 
 class CircuitOpenError(Exception):
@@ -42,6 +43,13 @@ class CircuitBreaker:
                 self.state = "closed"
                 self.failure_count = 0
             return result
+
+        except (httpx.ConnectError, httpx.RemoteProtocolError, ConnectionRefusedError, OSError) as e:
+            # Connection-refused / not-yet-up errors: the LLM server isn't started yet.
+            # Don't count these toward the failure threshold; just re-raise so the
+            # caller can show a transient error without tripping the breaker.
+            self.last_failure_time = time.time()
+            raise
 
         except (asyncio.TimeoutError, Exception) as e:
             self.failure_count += 1
