@@ -1,0 +1,21 @@
+global:
+  # Increase scrape and evaluation intervals to reduce load during development.
+  # Set to 5 minutes as requested (5m).
+  scrape_interval: 5m
+  evaluation_interval: 5m
+
+rule_files:
+  - "alert_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - "alertmanager:9093"
+
+scrape_configs:
+  - job_name: "edumentor-backend"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets:
+          - "host.docker.internal:8000"
