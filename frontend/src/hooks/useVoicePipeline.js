@@ -294,11 +294,18 @@ export function useVoicePipeline({
     setStatus('connecting');
     isManualDisconnectRef.current = false;
 
-    // Only call silentRefresh if we don't already have a valid access token in the store.
+    // Only call silentRefresh if we don't already have a VALID (non-expired) access token.
     // After Google OAuth, the token is set from the URL redirect before connectWS fires,
     // so we skip the refresh and use the existing in-memory token directly.
     const existingToken = authStore.getState().token;
-    if (!existingToken) {
+    const isTokenExpired = (tok) => {
+      try {
+        const { exp } = JSON.parse(atob(tok.split('.')[1]));
+        return !exp || exp < Date.now() / 1000;
+      } catch { return true; }
+    };
+    const needsRefresh = !existingToken || isTokenExpired(existingToken);
+    if (needsRefresh) {
       let refreshOk = false;
       try {
         refreshOk = await authStore.getState().silentRefresh();
@@ -307,8 +314,8 @@ export function useVoicePipeline({
       }
 
       if (!refreshOk) {
-        // No token in store and refresh failed — both tokens are dead. Force logout.
-        console.warn('[Auth] No token and refresh failed. Logging out...');
+        // No valid token and refresh failed — both tokens are dead. Force logout.
+        console.warn('[Auth] Token expired/missing and refresh failed. Logging out...');
         authStore.getState().logout();
         setConnectionState('disconnected');
         setStatus('disconnected');
