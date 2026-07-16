@@ -18,7 +18,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
-MODEL_ID   = os.getenv("CLOUD_MODEL_ID", "Qwen/Qwen2.5-1.5B-Instruct")
+MODEL_ID   = os.getenv("CLOUD_MODEL_ID", "PraneetNS/Edumentor-Qwen3-Q6_k.gguf")
 _MAX_TOKENS = int(os.getenv("CLOUD_MAX_TOKENS", "250"))
 
 
