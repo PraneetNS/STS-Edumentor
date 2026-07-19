@@ -82,6 +82,10 @@ class CloudLLMEngine:
         self,
         user_text: str,
     ) -> AsyncIterator[str]:
+        """
+        Main entry point for streaming tokens back to the user.
+        Wraps inputs into a standard chat history structure.
+        """
 
         messages = [
             {
