@@ -393,3 +393,7 @@ This project is licensed under the MIT License — 100% private, local, and open
 ### Model Downloads & Configuration
 
 All local GGUF models are stored under `backend/models/`. You can customize the models by editing the `.env` settings or using command line parameters. Refer to the wiki for model benchmarking notes.
+
+### Additional Troubleshooting
+
+For high latency or audio processing delays on Windows machines, verify your system's output device sample rate matches standard rates (44.1kHz or 48kHz) to bypass automatic resampler overheads.
