@@ -70,6 +70,7 @@ export function MentorCharacter({ state = 'idle', analyserNode, onSnapshot }) {
           /* Fixed / still state */
         }
         
+        /* Pulse blue glow micro-animation */
         @keyframes mascot-glow-pulse {
           0% { filter: drop-shadow(0 8px 20px rgba(84, 87, 229, 0.16)) drop-shadow(0 0 4px rgba(59, 130, 246, 0.2)); }
           100% { filter: drop-shadow(0 8px 20px rgba(84, 87, 229, 0.16)) drop-shadow(0 0 16px rgba(59, 130, 246, 0.6)); }
