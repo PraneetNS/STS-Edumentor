@@ -13,7 +13,7 @@
  * @returns {string}
  */
 export function formatSeconds(totalSeconds) {
-  const secs = Number(totalSeconds);
+  const secs = Number(totalSeconds) || 0; // Ensure fallback to 0 if NaN or empty
   if (Number.isNaN(secs) || !Number.isFinite(secs) || secs <= 0) {
     return '0s';
   }
