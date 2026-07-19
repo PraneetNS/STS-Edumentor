@@ -56,7 +56,7 @@ export function useKeyboardShortcuts(shortcuts, enabled = true) {
   useEffect(() => {
     if (!enabled) return;
 
-    // Pre-normalize all keys once
+    // Pre-normalize all keys once with fallback checks
     const normalizedMap = {};
     for (const [combo, handler] of Object.entries(shortcuts)) {
       normalizedMap[normalizeCombo(combo)] = handler;
