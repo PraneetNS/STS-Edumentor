@@ -387,3 +387,9 @@ If `n_past` keeps resetting, check:
 ## 📄 License
 
 This project is licensed under the MIT License — 100% private, local, and open-source.
+
+---
+
+### Model Downloads & Configuration
+
+All local GGUF models are stored under `backend/models/`. You can customize the models by editing the `.env` settings or using command line parameters. Refer to the wiki for model benchmarking notes.
