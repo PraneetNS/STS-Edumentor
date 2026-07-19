@@ -45,7 +45,7 @@ export function MentorCharacter({ state = 'idle', analyserNode, onSnapshot }) {
           object-fit: contain;
           mix-blend-mode: multiply;
           filter: drop-shadow(0 8px 20px rgba(84, 87, 229, 0.16)); /* Contour drop shadow */
-          transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+          transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
         
         /* Interactive States & Micro-animations */
