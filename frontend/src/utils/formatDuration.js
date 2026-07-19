@@ -18,6 +18,7 @@ export function formatSeconds(totalSeconds) {
     return '0s';
   }
 
+  // Calculate standard time components for formatting
   const hours = Math.floor(secs / 3600);
   const minutes = Math.floor((secs % 3600) / 60);
   const seconds = Math.floor(secs % 60);
