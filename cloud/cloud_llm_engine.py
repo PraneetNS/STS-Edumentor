@@ -18,6 +18,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
+# Default model identifier for remote inference
 MODEL_ID   = os.getenv("CLOUD_MODEL_ID", "PraneetNS/Edumentor-Qwen3-Q6_k.gguf")
 _MAX_TOKENS = int(os.getenv("CLOUD_MAX_TOKENS", "250"))
 
