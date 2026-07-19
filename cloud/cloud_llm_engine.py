@@ -69,6 +69,7 @@ def _generate_sync(
     del model
     del tokenizer
 
+    # Explicit cache cleaning to release GPU memory slices on ZeroGPU
     torch.cuda.empty_cache()
 
     return response
