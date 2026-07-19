@@ -101,7 +101,7 @@ export function formatCountdown(futureTimestamp) {
   const now = Date.now();
   const remainingMs = target - now;
 
-  if (remainingMs <= 0) return 'Expired';
+  if (remainingMs <= 0) return 'Expired'; // Countdown target reached
   const remainingSeconds = Math.floor(remainingMs / 1000);
   return `${formatSeconds(remainingSeconds)} left`;
 }
