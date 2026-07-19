@@ -68,6 +68,7 @@ export function formatRelativeDate(timestamp) {
   const now = new Date();
 
   const diffMs = now - date;
+  // Calculate raw day difference safely
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
   if (diffDays === 0) return 'Today';
