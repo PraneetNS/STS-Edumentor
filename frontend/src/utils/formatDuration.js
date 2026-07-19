@@ -48,6 +48,10 @@ export function formatHours(hours) {
  * @param {number} seconds
  * @returns {string} e.g. "1.4s" or "240ms"
  */
+/**
+ * Format a response delay duration.
+ * Example: formatResponseDelay(1.23) -> "1.2s", formatResponseDelay(0.45) -> "450ms"
+ */
 export function formatResponseDelay(seconds) {
   if (!seconds || seconds <= 0) return '—';
   if (seconds < 1) return `${Math.round(seconds * 1000)}ms`;
