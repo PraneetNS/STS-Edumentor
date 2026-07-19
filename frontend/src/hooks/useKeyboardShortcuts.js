@@ -11,7 +11,8 @@
  *     '/':        () => focusInput(),
  *   });
  *
- * Supported modifiers: ctrl, shift, alt, meta
+ * Supported modifiers: ctrl, shift, alt, meta.
+ * Modifiers must be specified in the correct sequence separated by +.
  */
 import { useEffect } from 'react';
 
