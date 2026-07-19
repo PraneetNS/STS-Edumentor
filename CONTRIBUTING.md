@@ -44,6 +44,12 @@ cp .env.example .env
 
 ---
 
+## Contributing Avatar Assets & Animations
+
+If you are proposing new animations, assets, or keyframes for EDI (the bird avatar), place new assets directly under `frontend/public/` and reference them cleanly inside the `MentorCharacter.jsx` component.
+
+---
+
 ## Branch Strategy
 
 | Branch | Purpose |
