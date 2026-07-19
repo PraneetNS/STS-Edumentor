@@ -24,7 +24,7 @@ _MAX_TOKENS = int(os.getenv("CLOUD_MAX_TOKENS", "250"))
 
 @spaces.GPU(duration=120)
 def _generate_sync(
-    messages: list,
+    messages: list[dict],
     max_tokens: int,
 ) -> str:
 
