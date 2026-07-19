@@ -38,8 +38,9 @@ export function formatSeconds(totalSeconds) {
  * @returns {string}
  */
 export function formatHours(hours) {
-  if (!hours || hours <= 0) return '0m';
-  return formatSeconds(Math.round(hours * 3600));
+  const hr = Number(hours);
+  if (Number.isNaN(hr) || hr <= 0) return '0m';
+  return formatSeconds(Math.round(hr * 3600));
 }
 
 /**
