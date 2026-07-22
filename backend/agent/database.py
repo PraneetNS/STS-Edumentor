@@ -187,6 +187,24 @@ class DatabaseManager:
             UNIQUE(user_id, session_date)
         );
         """
+        query_mastery_table = """
+        CREATE TABLE IF NOT EXISTS concept_mastery (
+            id              SERIAL PRIMARY KEY,
+            user_id         UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+            concept_slug    VARCHAR(128) NOT NULL,
+            state           SMALLINT NOT NULL DEFAULT 1,   -- fsrs.State: Learning=1 Review=2 Relearning=3
+            step            SMALLINT,
+            stability       DOUBLE PRECISION,
+            difficulty      DOUBLE PRECISION,
+            due             TIMESTAMPTZ NOT NULL DEFAULT now(),
+            last_review     TIMESTAMPTZ,
+            reps            INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(user_id, concept_slug)
+        );
+        """
+        query_index_mastery_due = """
+        CREATE INDEX IF NOT EXISTS idx_mastery_due ON concept_mastery (user_id, due);
+        """
 
         try:
             async with self.pool.acquire() as conn:
@@ -204,9 +222,87 @@ class DatabaseManager:
                 await conn.execute(query_sec_table)
                 await conn.execute(query_index_sec)
                 await conn.execute(query_low_conf_table)
+                await conn.execute(query_mastery_table)
+                await conn.execute(query_index_mastery_due)
                 logger.info("[OK] PostgreSQL database schema and indexes verified.")
         except Exception as e:
             logger.error("Failed to verify database schema: %s", e)
+
+    async def get_due_concepts(self, user_id: uuid.UUID, limit: int = 3) -> List[Dict[str, Any]]:
+        """Concepts due for review right now, oldest-due first."""
+        if not self.enabled or not self.pool:
+            return []
+        query = """
+        SELECT id, concept_slug, state, step, stability, difficulty, due, last_review
+        FROM concept_mastery
+        WHERE user_id = $1 AND due <= now()
+        ORDER BY due ASC
+        LIMIT $2;
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, user_id, limit)
+                return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error("Failed to fetch due concepts for user_id=%s: %s", user_id, e)
+            return []
+
+    async def get_or_create_card_row(self, user_id: uuid.UUID, concept_slug: str) -> Dict[str, Any]:
+        """Fetch existing mastery row for (user, concept) or insert a fresh one."""
+        if not self.enabled or not self.pool:
+            return {}
+        select_q = "SELECT * FROM concept_mastery WHERE user_id = $1 AND concept_slug = $2;"
+        insert_q = """
+        INSERT INTO concept_mastery (user_id, concept_slug)
+        VALUES ($1, $2)
+        ON CONFLICT (user_id, concept_slug) DO UPDATE SET concept_slug = EXCLUDED.concept_slug
+        RETURNING *;
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                ensure_user_query = """
+                INSERT INTO users (user_id, email, display_name, provider)
+                VALUES ($1, $2, $3, 'guest')
+                ON CONFLICT (user_id) DO NOTHING;
+                """
+                await conn.execute(
+                    ensure_user_query,
+                    user_id,
+                    f"guest_{user_id}@edumentor.local",
+                    f"Guest_{str(user_id)[:8]}"
+                )
+                row = await conn.fetchrow(select_q, user_id, concept_slug)
+                if row:
+                    return dict(row)
+                row = await conn.fetchrow(insert_q, user_id, concept_slug)
+                return dict(row) if row else {}
+        except Exception as e:
+            logger.error("Failed to get_or_create card row for user_id=%s concept=%s: %s", user_id, concept_slug, e)
+            return {}
+
+    async def save_card_review(
+        self,
+        row_id: int,
+        state: int,
+        step: Optional[int],
+        stability: Optional[float],
+        difficulty: Optional[float],
+        due,
+        last_review,
+    ) -> None:
+        if not self.enabled or not self.pool:
+            return
+        query = """
+        UPDATE concept_mastery
+        SET state = $2, step = $3, stability = $4, difficulty = $5,
+            due = $6, last_review = $7, reps = reps + 1
+        WHERE id = $1;
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, row_id, state, step, stability, difficulty, due, last_review)
+        except Exception as e:
+            logger.error("Failed to save card review for row_id=%s: %s", row_id, e)
 
 
     async def close(self) -> None:
@@ -552,6 +648,17 @@ class DatabaseManager:
         
         try:
             async with self.pool.acquire() as conn:
+                ensure_user_query = """
+                INSERT INTO users (user_id, email, display_name, provider)
+                VALUES ($1, $2, $3, 'guest')
+                ON CONFLICT (user_id) DO NOTHING;
+                """
+                await conn.execute(
+                    ensure_user_query,
+                    user_id,
+                    f"guest_{user_id}@edumentor.local",
+                    f"Guest_{str(user_id)[:8]}"
+                )
                 row = await conn.fetchrow(select_query, user_id)
                 if row:
                     total_turns = row["total_turns"] + 1
