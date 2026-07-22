@@ -1442,11 +1442,17 @@ async def _run_pipeline(
             normalized_transcript, session_id, user_id=user_id, audio_array=audio_array, ip_address=client_ip,
             voice_style=voice_style
         )
-        await _stream_llm_and_tts(websocket, token_stream, loop, set_state, speed, voice, latency_metrics, start_time, student_id=user_id)
+        await _stream_llm_and_tts(
+            websocket, token_stream, loop, set_state, speed, voice, latency_metrics, start_time,
+            student_id=user_id, emotion_state=emotion_state
+        )
     else:
         # ── Legacy path: direct LLM call (AGENT_ENABLED=false) ───────────────
         token_stream = llm_engine.stream_tokens(normalized_transcript)
-        await _stream_llm_and_tts(websocket, token_stream, loop, set_state, speed, voice, latency_metrics, start_time, student_id=user_id)
+        await _stream_llm_and_tts(
+            websocket, token_stream, loop, set_state, speed, voice, latency_metrics, start_time,
+            student_id=user_id, emotion_state=emotion_state
+        )
 
     # ── 4. Signal turn complete ───────────────────────────────────────────────
     await set_state(ConversationState.IDLE)
@@ -1468,6 +1474,7 @@ async def _stream_llm_and_tts(
     latency_metrics: dict,
     start_time: float,
     student_id: Optional[str] = None,
+    emotion_state: Optional[Emotion] = None,
 ) -> None:
     """
     Simultaneously stream LLM tokens to the frontend AND generate TTS audio
@@ -1477,6 +1484,8 @@ async def _stream_llm_and_tts(
     tts_queue: asyncio.Queue[str | None] = asyncio.Queue(maxsize=3)
     audio_queue: asyncio.Queue[dict | None] = asyncio.Queue(maxsize=3)
     sentence_buffer = ""
+    tts_and_llm_start = time.time()
+    real_content_started = {"flag": False}   # set True the instant tts_worker dequeues its first real sentence
 
     # ── LLM Token Reader & Sentence Chunker ────────────────────────────────
     async def llm_token_reader():
@@ -1612,6 +1621,7 @@ async def _stream_llm_and_tts(
                     tts_queue.task_done()
                     break
                 
+                real_content_started["flag"] = True
                 from agent.output_sanitiser import sanitise
                 sanitized_sentence = sanitise(sentence)
                 logger.debug("TTS worker synthesizing: %r", sanitized_sentence[:60])
@@ -1693,19 +1703,61 @@ async def _stream_llm_and_tts(
         except Exception as exc:
             logger.exception("Audio sender error: %s", exc)
 
+    _FILLER_DELAY_SECONDS = 0.35  # tune against your observed p50 first_llm_token latency
+
+    _FILLER_PHRASES = {
+        "default": ["Okay, let's see.", "Alright, one moment.", "Hmm, let's think about this."],
+        "frustrated_or_confused": ["No worries, let's take a look.", "Okay, let's break this down."],
+        "confident": ["Nice, let's see.", "Good, let's dig in."],
+    }
+
+    def _pick_filler_text(emotion_state) -> str:
+        import random
+        from agent.models import Emotion
+        if emotion_state in (Emotion.FRUSTRATED, Emotion.CONFUSED):
+            pool = _FILLER_PHRASES["frustrated_or_confused"]
+        elif emotion_state == Emotion.CONFIDENT:
+            pool = _FILLER_PHRASES["confident"]
+        else:
+            pool = _FILLER_PHRASES["default"]
+        return random.choice(pool)
+
+    async def filler_watchdog():
+        if emotion_state is None:
+            return  # only run for the real agent path, not fallback/offline streams
+        try:
+            await asyncio.sleep(_FILLER_DELAY_SECONDS)
+            if real_content_started["flag"]:
+                return  # real content already started queuing — don't add a filler
+            filler_text = _pick_filler_text(emotion_state)
+            wav_bytes = await loop.run_in_executor(
+                None, lambda: kokoro_engine.synthesize(filler_text, speed, voice, student_id)
+            )
+            if real_content_started["flag"]:
+                return  # real content started while we were synthesizing — drop the filler, don't play it late
+            if wav_bytes:
+                await audio_queue.put({"wav": wav_bytes, "timestamps": [], "text": filler_text})
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Filler watchdog failed (non-fatal): %s", exc)
+
     # Spawn tasks
     reader_task = asyncio.create_task(llm_token_reader())
     worker_task = asyncio.create_task(tts_worker())
     sender_task = asyncio.create_task(audio_sender())
+    filler_task = asyncio.create_task(filler_watchdog())
 
     try:
         # Wait until all subtasks complete
         await asyncio.gather(reader_task, worker_task, sender_task)
+        filler_task.cancel()
     except asyncio.CancelledError:
         logger.info("LLM/TTS streaming gathering cancelled. Cancelling subtasks.")
         reader_task.cancel()
         worker_task.cancel()
         sender_task.cancel()
-        await asyncio.gather(reader_task, worker_task, sender_task, return_exceptions=True)
+        filler_task.cancel()
+        await asyncio.gather(reader_task, worker_task, sender_task, filler_task, return_exceptions=True)
         raise
 
