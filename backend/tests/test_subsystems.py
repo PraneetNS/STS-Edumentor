@@ -85,6 +85,24 @@ class InMemoryDBMock:
         user_logs.sort(key=lambda x: x["created_at"], reverse=True)
         return user_logs[:limit]
 
+    async def get_due_concepts(self, user_id: uuid.UUID, limit: int = 3) -> list[dict]:
+        return []
+
+    async def get_or_create_card_row(self, user_id: uuid.UUID, concept_slug: str) -> dict:
+        return {}
+
+    async def save_card_review(
+        self,
+        row_id: int,
+        state: int,
+        step: Optional[int],
+        stability: Optional[float],
+        difficulty: Optional[float],
+        due,
+        last_review,
+    ) -> None:
+        pass
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LLM Engine Mock
