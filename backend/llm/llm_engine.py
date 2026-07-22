@@ -166,6 +166,7 @@ class LLMEngine:
             messages = [{"role": "system", "content": Config.LLM_SYSTEM_PROMPT}] + list(messages)
 
         merged_messages = self._merge_consecutive_messages(messages)
+        print("DEBUG LLM PAYLOAD:", json.dumps(merged_messages, indent=2))
         payload = {
             "model":          Config.LLM_MODEL_NAME,
             "messages":       merged_messages,
