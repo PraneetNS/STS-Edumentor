@@ -37,6 +37,7 @@ from typing import AsyncIterator, Dict, List, Optional
 import numpy as np
 
 from agent.database import DatabaseManager
+from config import Config
 
 from agent.dialogue_manager import DialogueManager
 from agent.emotion_detector import detect as detect_emotion
@@ -125,6 +126,11 @@ class AgentController:
         self._prompt_builder    = PromptBuilder()
         self._response_planner  = ResponsePlanner()
         self._knowledge_router  = KnowledgeRouter()
+
+        from agent.mastery_scheduler import MasteryScheduler, RecallGrader
+        from config import Config
+        self._mastery = MasteryScheduler(self._db_manager) if Config.MASTERY_SCHEDULER_ENABLED else None
+        self._recall_grader = RecallGrader(llm_engine) if Config.MASTERY_SCHEDULER_ENABLED else None
 
         # Per-session turn tracking (for interrupt state and logging)
         # session_id → {"last_topic": str, "partial_response": str, "start_time": float}
@@ -433,67 +439,7 @@ class AgentController:
         # Reset response planner for new turn
         self._response_planner.reset()
 
-        # Check if the user is setting a new name
-        name_candidate = self._check_name_change(user_text)
-        if name_candidate:
-            if self._is_harsh_word(name_candidate):
-                refusal_message = "I cannot use that name. Please choose a different name."
-                async for token in self._stream_refusal(refusal_message, session_id):
-                    yield token
-                return
-            else:
-                self._session_names[session_id] = name_candidate
-                confirmation_msg = f"yaa thats a nice name from now my name {name_candidate}"
-                followup_msg = "What topic in engineering would you like to discuss today?"
-                async for token in self._stream_confirmation(confirmation_msg, followup_msg, session_id):
-                    yield token
-                if self._db_manager and self._db_manager.enabled:
-                    latency_ms = int((time.perf_counter() - start_time) * 1000)
-                    asyncio.create_task(
-                        self._db_manager.write_log(
-                            user_id=user_uuid,
-                            session_id=session_uuid,
-                            query_text=user_text,
-                            response_text=f"{confirmation_msg} <followup>{followup_msg}</followup>",
-                            intent_category="GREETING",
-                            input_flagged=False,
-                            output_flagged=False,
-                            flag_reason=None,
-                            latency_ms=latency_ms,
-                            tokens_in=self._count_tokens(user_text),
-                            tokens_out=self._count_tokens(f"{confirmation_msg} <followup>{followup_msg}</followup>"),
-                        )
-                    )
-                return
 
-        # Check if the user is asking about the name they set
-        if self._check_name_query(user_text):
-            custom_name = self._session_names.get(session_id, "Edi")
-            if custom_name != "Edi":
-                response_text = f"My name is {custom_name}. You chose the name {custom_name} for me."
-            else:
-                response_text = "My name is Edi. You haven't set a custom name for me yet."
-            followup_text = "What engineering topic would you like to discuss today?"
-            async for token in self._stream_confirmation(response_text, followup_text, session_id):
-                yield token
-            if self._db_manager and self._db_manager.enabled:
-                latency_ms = int((time.perf_counter() - start_time) * 1000)
-                asyncio.create_task(
-                    self._db_manager.write_log(
-                        user_id=user_uuid,
-                        session_id=session_uuid,
-                        query_text=user_text,
-                        response_text=f"{response_text} <followup>{followup_text}</followup>",
-                        intent_category="GREETING",
-                        input_flagged=False,
-                        output_flagged=False,
-                        flag_reason=None,
-                        latency_ms=latency_ms,
-                        tokens_in=self._count_tokens(user_text),
-                        tokens_out=self._count_tokens(f"{response_text} <followup>{followup_text}</followup>"),
-                    )
-                )
-            return
 
         log_written = False
         input_flagged = False
@@ -649,6 +595,15 @@ class AgentController:
             except Exception as exc:
                 logger.warning("Failed to detect audio emotion: %s", exc)
 
+        from agent.emotion_detector import detect as detect_emotion_quick
+        is_bored = detect_emotion_quick(processed_text).emotion == Emotion.BORED
+
+        due_concept = None
+        if self._mastery and (not self._memory.get_session(session_id) or is_bored):
+            due_rows = await self._mastery.get_due_concepts(user_uuid, limit=Config.MASTERY_DUE_CHECK_LIMIT)
+            if due_rows:
+                due_concept = due_rows[0]
+
         context_obj = self._dialogue_manager.build_context(
             session_id      = session_id,
             user_text       = processed_text,
@@ -661,6 +616,11 @@ class AgentController:
             audio_emotion   = audio_emotion,
             voice_style     = voice_style,
         )
+
+        if due_concept:
+            context_obj.safety_flags["due_recall_prompt"] = due_concept["concept_slug"]
+            self._turn_state[session_id]["awaiting_recall_concept"] = due_concept["concept_slug"]
+
         context_obj.history_messages = history_messages
         context_obj.custom_name = self._session_names.get(session_id, "Edi")
         messages = self._prompt_builder.build_messages(context_obj)
@@ -875,6 +835,20 @@ class AgentController:
                 emotion         = emotion_result.emotion,
             )
 
+            if self._mastery:
+                # TODO(mastery): _detect_topics is used directly (not profile_manager.get_active_topic)
+                # because StudentProfileManager is a single process-wide singleton — see spec section 0.
+                from agent.student_profile import _detect_topics
+                current_topics = _detect_topics(f"{processed_text} {post_processed_response}")
+                concept_topic = current_topics[0] if current_topics else None
+
+                awaiting = self._turn_state.get(session_id, {}).get("awaiting_recall_concept")
+                if awaiting:
+                    asyncio.create_task(self._grade_and_record(user_uuid, awaiting, processed_text, post_processed_response))
+                    self._turn_state[session_id]["awaiting_recall_concept"] = None
+                elif concept_topic:
+                    asyncio.create_task(self._mastery.touch_concept(user_uuid, concept_topic))
+
         # Log turns to database — skip entirely for blocked/jailbreak inputs to
         # prevent history poisoning (injected text never enters conversation_logs).
         if not log_written and not _skip_db_log:
@@ -986,3 +960,7 @@ class AgentController:
             yield {"raw": token, "planned": token}
             # Small delay to simulate natural streaming (not required but looks better)
             await asyncio.sleep(0.005)
+
+    async def _grade_and_record(self, user_uuid, concept_slug, question_ctx, response_text) -> None:
+        rating = await self._recall_grader.grade(question_ctx, response_text)
+        await self._mastery.record_review(user_uuid, concept_slug, rating)
