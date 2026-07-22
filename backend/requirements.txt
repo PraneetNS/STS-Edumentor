@@ -80,5 +80,8 @@ fakeredis==2.21.0
 # ── Observability ──────────────────────────────────────────────────
 prometheus-client==0.20.0
 
+# ── Spaced Repetition Scheduler ────────────────────────────────────
+fsrs==6.3.1
+
 
 
