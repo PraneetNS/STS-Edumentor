@@ -290,4 +290,10 @@ class Config:
     SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
     SMTP_FROM: str = os.getenv("SMTP_FROM", "noreply@edumentor.edu")
 
+    # ─────────────────────────────────────────────
+    # Mastery Scheduler (FSRS spaced repetition)
+    # ─────────────────────────────────────────────
+    MASTERY_SCHEDULER_ENABLED: bool = os.getenv("MASTERY_SCHEDULER_ENABLED", "true").lower() == "true"
+    MASTERY_DUE_CHECK_LIMIT: int = int(os.getenv("MASTERY_DUE_CHECK_LIMIT", "1"))
+
 
