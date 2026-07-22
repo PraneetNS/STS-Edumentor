@@ -107,6 +107,12 @@ EduMentor-Voice/
 │   ├── logs/                    # Local file logs
 │   └── tests/                   # 15+ comprehensive unit test suites
 │
+├── cloud/                       # ZeroGPU-backed Gradio UI deployment
+│   ├── app.py                   # Gradio web interface entry point
+│   ├── cloud_llm_engine.py      # Transformers LLM execution utilizing @spaces.GPU
+│   ├── cloud_whisper.py         # Whisper model wrapper for cloud STT
+│   └── requirements.txt         # Dependencies for HF Spaces / ZeroGPU
+│
 ├── frontend/
 │   ├── public/
 │   │   ├── audio-processor.js   # Web Audio API AudioWorklet (mic stream capture)
@@ -381,6 +387,63 @@ If `n_past` keeps resetting, check:
 1. **Slot affinity** — the same `session_id` must always route to the same slot (see `get_slot_for_session()` in `llm_engine.py`).
 2. **Prefix stability** — any dynamic content (timestamps, random values) in the first system message will break the cached prefix on every call.
 3. **Server flags** — confirm `--cache-reuse 256` and `-np 4` are present in the server launch command.
+
+---
+
+## ☁️ Cloud Deployment (Hugging Face Spaces)
+
+EduMentor Voice provides an alternative, zero-install deployment path designed for **Hugging Face Spaces (ZeroGPU)**. This environment runs a Gradio-based interface that leverages the shared, dynamic ZeroGPU backend for low-latency transformer inference.
+
+### Running Cloud App Locally
+To test the cloud deployment stack locally:
+1. Navigate to the root directory and install dependencies:
+   ```bash
+   pip install -r cloud/requirements.txt
+   ```
+2. Start the Gradio server:
+   ```bash
+   python cloud/app.py
+   ```
+3. Open the browser to the local Gradio interface URL logged in the terminal (typically `http://127.0.0.1:7860`).
+
+### Configuration
+The cloud execution pipeline reads configurations directly from environment variables:
+*   `CLOUD_MODEL_ID`: The Hugging Face model repository to load (defaults to `PraneetNS/Edumentor-Qwen3-Q6_k.gguf`).
+*   `CLOUD_MAX_TOKENS`: Default max output tokens for responses (defaults to `250`).
+
+---
+
+## 📊 Observability, Metrics & Health Checks
+
+EduMentor contains built-in observability modules to monitor performance metrics, errors, and system health in production.
+
+### In-Process Metrics
+A lightweight, zero-dependency metrics collector is implemented in `backend/utils/metrics.py`. It accumulates counters, gauges, and histograms in memory to prevent performance overhead.
+*   **Convenience Metric Helpers**:
+    *   `ws_sessions`: Gauge of currently active WebSocket client connections.
+    *   `llm_requests` / `llm_errors`: Counters for tracking total LLM inference queries and exceptions.
+    *   `tts_requests` / `stt_requests`: Counters for speech synthesis and recognition calls.
+    *   `llm_latency_ms` / `stt_latency_ms` / `tts_latency_ms`: Histograms capturing percentiles (p50, p95, p99) of pipeline segment latency.
+*   **Accessing Metrics**:
+    A snapshot of all gathered metrics can be fetched by calling `utils.metrics.snapshot()`, which serializes the current counters, gauges, and histogram latency summaries to JSON.
+
+### Health Checking Utility
+`backend/utils/health.py` provides system liveness probes for monitoring and container health checks.
+*   **WebSocket Port Probe**: `check_ws_port` checks if the WebSocket server is bound to its TCP port and accepting connections.
+*   **LLM Connection Probe**: `check_llm_reachable` verifies if the LLM backend server HTTP endpoint is responsive.
+*   **GPU Memory Monitor**: `check_gpu_memory` checks current CUDA VRAM statistics (total, allocated, reserved, and free MB) via PyTorch.
+*   **Aggregate Report**: `get_health_report(llm_base_url)` builds a complete health report JSON containing the current status (`healthy`, `degraded`, or `unhealthy`), `version` (configured via `APP_VERSION` environment variable), timestamp, and results of all sub-probes.
+
+---
+
+## 🎙️ TTS Text Normalization & Sanitization
+
+To ensure synthesized speech is natural and clear, LLM text outputs are cleaned before entering the TTS pipeline.
+The function `sanitise_for_tts()` in `backend/utils/text_cleaner.py` removes:
+*   Markdown formatting symbols (asterisks, hashtags, underscores).
+*   Inline backtick expressions and full multi-line code fences (as blocks of code should be visualized in the frontend, not read out loud by the TTS).
+*   Hyperlinks (HTTP/HTTPS URLs).
+*   Excessive or double ellipses (standardizing them to a single natural speech pause marker `…`).
 
 ---
 
