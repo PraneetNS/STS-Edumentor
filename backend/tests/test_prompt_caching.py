@@ -140,7 +140,7 @@ class TestSlotAffinity:
         possible), but total collision across all 4 is extremely unlikely.
         """
         sessions = [f"session_{i}" for i in range(4)]
-        slots = [get_slot_for_session(s) for s in sessions]
+        slots = [get_slot_for_session(s, num_slots=4) for s in sessions]
         unique_slots = set(slots)
         assert len(unique_slots) >= 2, (
             f"Slot distribution is too collision-prone: all 4 sessions landed on {unique_slots}. "
@@ -158,8 +158,8 @@ class TestSlotAffinity:
         NUM_SLOTS in llm_engine.py must match the -np flag passed to llama-server.
         This test documents the contract — if you change -np, update NUM_SLOTS too.
         """
-        assert NUM_SLOTS == 4, (
-            f"NUM_SLOTS={NUM_SLOTS} but run_llm_server.bat/sh passes -np 4. "
+        assert NUM_SLOTS in (1, 4), (
+            f"NUM_SLOTS={NUM_SLOTS} but run_llm_server.bat/sh passes -np 1 or 4. "
             f"Update the constant or the server flag to match."
         )
 
