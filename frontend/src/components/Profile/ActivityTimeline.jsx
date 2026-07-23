@@ -1,52 +1,139 @@
 import React from 'react';
 import { TimelineCard } from '../Cards/TimelineCard';
-import { CheckCircle, BookOpen, FileText, Code2, ShieldAlert } from 'lucide-react';
+import { MessageSquare, BookOpen, Zap, Clock } from 'lucide-react';
 
-export function ActivityTimeline() {
-  // Mock timeline activities grouped by time sections
-  const timelineGroups = [
-    {
-      group: 'Today',
-      items: [
-        { time: '11:15 AM', title: 'Solved Binary Trees balancing nodes', desc: 'Covered AVL rotations, insert/delete properties with EDI.', icon: Code2, color: 'bg-[var(--yellow)]' },
-        { time: '09:30 AM', title: 'Asked about OOP polymorphism', desc: 'Explored static vs dynamic dispatch compile resolution mechanisms.', icon: BookOpen, color: 'bg-[var(--lavender)]' }
-      ]
-    },
-    {
-      group: 'Yesterday',
-      items: [
-        { time: '04:10 PM', title: 'Generated placements mock resume', desc: 'Synthesised active coding project logs into single-page PDF.', icon: FileText, color: 'bg-[var(--mint)]' },
-        { time: '11:00 AM', title: 'Solved 12 DSA practice problems', desc: 'Graph traversals, topological sorting, DFS and BFS recursion.', icon: CheckCircle, color: 'bg-[var(--yellow)]' }
-      ]
-    },
-    {
-      group: 'This Week',
-      items: [
-        { time: '2 Days Ago', title: 'Mock placement voice interview', desc: 'Completed round 1 technical interview covering networking basics.', icon: CheckCircle, color: 'bg-[var(--lavender)]' },
-        { time: '4 Days Ago', title: 'Roadmap roadmap_4 updated', desc: 'Transitioned study plan status to candidate level.', icon: BookOpen, color: 'bg-[var(--mint)]' }
-      ]
-    }
-  ];
+/**
+ * Groups conversations into Today / Yesterday / This Week / Earlier buckets.
+ * Each conversation is displayed as a timeline entry.
+ */
+function groupConversationsByDate(conversations) {
+  if (!conversations || conversations.length === 0) return [];
+
+  const now = new Date();
+  const todayStr = now.toDateString();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toDateString();
+
+  const groups = {
+    Today: [],
+    Yesterday: [],
+    'This Week': [],
+    Earlier: [],
+  };
+
+  // Sort newest first
+  const sorted = [...conversations].sort((a, b) => {
+    const ta = a.createdAt || a.updatedAt || 0;
+    const tb = b.createdAt || b.updatedAt || 0;
+    return new Date(tb) - new Date(ta);
+  });
+
+  sorted.forEach(conv => {
+    const ts = conv.createdAt || conv.updatedAt;
+    if (!ts) return;
+    const d = new Date(ts);
+    const dStr = d.toDateString();
+    const diffDays = Math.floor((now - d) / (1000 * 60 * 60 * 24));
+
+    let bucket;
+    if (dStr === todayStr) bucket = 'Today';
+    else if (dStr === yesterdayStr) bucket = 'Yesterday';
+    else if (diffDays <= 7) bucket = 'This Week';
+    else bucket = 'Earlier';
+
+    groups[bucket].push({
+      conv,
+      time: dStr === todayStr || dStr === yesterdayStr
+        ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : `${diffDays} Days Ago`,
+    });
+  });
+
+  // Build output array — only include groups that have items
+  return ['Today', 'Yesterday', 'This Week', 'Earlier']
+    .filter(g => groups[g].length > 0)
+    .map(g => ({ group: g, items: groups[g] }));
+}
+
+/**
+ * Pick an icon based on conversation title content.
+ */
+function pickIcon(title = '') {
+  const t = title.toLowerCase();
+  if (t.includes('code') || t.includes('dsa') || t.includes('algorithm') || t.includes('tree') || t.includes('graph')) return Zap;
+  if (t.includes('interview') || t.includes('quiz') || t.includes('test')) return Clock;
+  if (t.includes('design') || t.includes('system') || t.includes('architect')) return BookOpen;
+  return MessageSquare;
+}
+
+const COLORS = ['bg-[var(--lavender)]', 'bg-[var(--yellow)]', 'bg-[var(--mint)]', 'bg-[var(--yellow)]'];
+
+export function ActivityTimeline({ conversations = [], sessionHistory = [] }) {
+  // Normalize DB session history items to standard timeline object structure
+  const normalizedDbSessions = sessionHistory.map(s => ({
+    id: s.session_id,
+    title: s.title || 'Voice Session',
+    createdAt: s.created_at,
+    turns: s.turns,
+    intents: s.intents,
+    isFromDb: true,
+  }));
+
+  // Prevent duplication if local conversation shares an ID with DB session
+  const dbIds = new Set(normalizedDbSessions.map(s => s.id));
+  const uniqueLocal = (conversations || []).filter(c => !dbIds.has(c.id));
+
+  const allSessions = [...normalizedDbSessions, ...uniqueLocal];
+  const grouped = groupConversationsByDate(allSessions);
+
+  if (grouped.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8 gap-2 text-[var(--text-muted)]">
+        <MessageSquare size={28} className="opacity-30" />
+        <p className="font-sans text-xs text-center opacity-60">
+          No sessions yet. Start a voice conversation to see your activity here.
+        </p>
+      </div>
+    );
+  }
+
+  let colorIdx = 0;
 
   return (
     <div className="flex flex-col gap-6 select-none font-mono">
-      {timelineGroups.map((groupObj, idx) => (
+      {grouped.map((groupObj, idx) => (
         <div key={idx} className="flex flex-col gap-3">
           <h4 className="font-sans font-extrabold text-[10px] uppercase text-black/45 tracking-wider mb-2">
             {groupObj.group}
           </h4>
-          
+
           <div className="flex flex-col">
             {groupObj.items.map((item, itemIdx) => {
-              const isLast = idx === timelineGroups.length - 1 && itemIdx === groupObj.items.length - 1;
+              const isLast =
+                idx === grouped.length - 1 &&
+                itemIdx === groupObj.items.length - 1;
+              const Icon = pickIcon(item.conv.title);
+              const colorClass = COLORS[colorIdx % COLORS.length];
+              colorIdx++;
+
+              // Build description from turns / message count / intents
+              const turnsCount = item.conv.turns || item.conv.messages?.length || 0;
+              const intentTag = item.conv.intents?.length
+                ? ` • ${item.conv.intents.slice(0, 2).join(', ')}`
+                : '';
+              const desc = turnsCount > 0
+                ? `${turnsCount} turn${turnsCount !== 1 ? 's' : ''}${intentTag}`
+                : item.conv.title || 'Voice session';
+
               return (
                 <TimelineCard
-                  key={itemIdx}
+                  key={item.conv.id || itemIdx}
                   time={item.time}
-                  title={item.title}
-                  desc={item.desc}
-                  icon={item.icon}
-                  colorClass={item.color}
+                  title={item.conv.title || 'Voice Session'}
+                  desc={desc}
+                  icon={Icon}
+                  colorClass={colorClass}
                   isLast={isLast}
                 />
               );
