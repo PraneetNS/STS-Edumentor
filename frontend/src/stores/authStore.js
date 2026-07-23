@@ -21,6 +21,8 @@ export const authStore = createStore((set, get) => ({
   isAuthenticated: initialIsAuthenticated,
   isLoading: true,
   profileStats: null,
+  sessionHistory: null,   // list of past sessions from /api/sessions
+  heatmapData: null,      // daily activity counts from /api/sessions/heatmap
   _refreshPromise: null,
 
   setUser: (user) => set({ user, isAuthenticated: !!user }),
@@ -82,7 +84,9 @@ export const authStore = createStore((set, get) => ({
       user: null,
       token: null,
       isAuthenticated: false,
-      profileStats: null
+      profileStats: null,
+      sessionHistory: null,
+      heatmapData: null,
     });
   },
 
@@ -145,6 +149,42 @@ export const authStore = createStore((set, get) => ({
     } catch (e) {
       console.error('Failed to fetch profile stats:', e);
     }
+  },
+
+  fetchSessions: async () => {
+    const token = get().token;
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/sessions?limit=50`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        set({ sessionHistory: data });
+        return data;
+      }
+    } catch (e) {
+      console.error('Failed to fetch session history:', e);
+    }
+    return [];
+  },
+
+  fetchHeatmap: async () => {
+    const token = get().token;
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/sessions/heatmap?days=90`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        set({ heatmapData: data });
+        return data;
+      }
+    } catch (e) {
+      console.error('Failed to fetch heatmap data:', e);
+    }
+    return [];
   },
 
   checkAuth: async () => {
