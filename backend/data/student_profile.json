@@ -8,13 +8,20 @@
     "Python",
     "JavaScript",
     "Web Development",
-    "Computer Science"
+    "Computer Science",
+    "Mechanical Engineering"
   ],
-  "weak_topics": [],
+  "weak_topics": [
+    "Machine Learning",
+    "Mechanical Engineering",
+    "Civil Engineering"
+  ],
   "preferred_style": "examples",
-  "session_count": 14,
-  "discipline": "civil",
+  "session_count": 15,
+  "discipline": "cse",
   "active_topics": [
+    "Machine Learning",
+    "Mechanical Engineering",
     "Civil Engineering"
   ]
 }
