@@ -547,6 +547,107 @@ async def profile_stats(user: dict = Depends(get_current_user)):
     return stats
 
 
+@app.get("/api/sessions", tags=["Profile"])
+async def get_session_history(
+    limit: int = 50,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Return a list of past sessions for the authenticated user.
+    Each session is the first message exchange in a session_id group from conversation_logs.
+    Returns: list of { session_id, title (first query truncated), created_at, turns, intent_category, disciplines }
+    """
+    user_id_str = user.get("user_id")
+    import uuid as _uuid
+    user_id = _uuid.UUID(user_id_str)
+
+    if not db_manager or not db_manager.pool:
+        return []
+
+    query = """
+    SELECT
+        session_id,
+        MIN(created_at)   AS session_start,
+        MAX(created_at)   AS session_end,
+        COUNT(*)          AS turns,
+        MIN(query_text)   AS first_query,
+        array_agg(DISTINCT intent_category ORDER BY intent_category) FILTER (WHERE intent_category IS NOT NULL) AS intents,
+        SUM(tokens_in)    AS total_tokens_in,
+        SUM(tokens_out)   AS total_tokens_out,
+        SUM(latency_ms)   AS total_latency_ms
+    FROM conversation_logs
+    WHERE user_id = $1
+    GROUP BY session_id
+    ORDER BY MIN(created_at) DESC
+    LIMIT $2;
+    """
+    try:
+        async with db_manager.pool.acquire() as conn:
+            rows = await conn.fetch(query, user_id, limit)
+            sessions = []
+            for r in rows:
+                first_q = r["first_query"] or ""
+                title = (first_q[:60] + "…") if len(first_q) > 60 else first_q
+                sessions.append({
+                    "session_id": str(r["session_id"]),
+                    "title": title or "Voice Session",
+                    "created_at": r["session_start"].isoformat() if r["session_start"] else None,
+                    "ended_at": r["session_end"].isoformat() if r["session_end"] else None,
+                    "turns": r["turns"],
+                    "intents": list(r["intents"]) if r["intents"] else [],
+                    "tokens_in": r["total_tokens_in"] or 0,
+                    "tokens_out": r["total_tokens_out"] or 0,
+                    "avg_latency_ms": round(r["total_latency_ms"] / r["turns"]) if r["turns"] and r["total_latency_ms"] else 0,
+                })
+            return sessions
+    except Exception as e:
+        logger.error("Failed to fetch session history for user_id=%s: %s", user_id, e)
+        return []
+
+
+@app.get("/api/sessions/heatmap", tags=["Profile"])
+async def get_session_heatmap(
+    days: int = 90,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Return daily session counts for the last N days for the consistency heatmap.
+    Returns: list of { date: YYYY-MM-DD, count: int }
+    """
+    user_id_str = user.get("user_id")
+    import uuid as _uuid
+    user_id = _uuid.UUID(user_id_str)
+
+    if not db_manager or not db_manager.pool:
+        return []
+
+    query = """
+    SELECT
+        DATE(created_at AT TIME ZONE 'UTC') AS activity_date,
+        COUNT(DISTINCT session_id)          AS sessions,
+        COUNT(*)                            AS turns
+    FROM conversation_logs
+    WHERE user_id = $1
+      AND created_at >= CURRENT_DATE - $2
+    GROUP BY activity_date
+    ORDER BY activity_date ASC;
+    """
+    try:
+        async with db_manager.pool.acquire() as conn:
+            rows = await conn.fetch(query, user_id, days)
+            return [
+                {
+                    "date": str(r["activity_date"]),
+                    "count": r["turns"],
+                    "sessions": r["sessions"],
+                }
+                for r in rows
+            ]
+    except Exception as e:
+        logger.error("Failed to fetch heatmap for user_id=%s: %s", user_id, e)
+        return []
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 
