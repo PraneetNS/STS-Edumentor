@@ -276,6 +276,10 @@ export default function App() {
         finishStreamingMessage(activeMsgIdRef.current);
         activeMsgIdRef.current = null;
       }
+      // Silently refresh profile stats after each completed voice turn
+      // so the dashboard reflects the new session data automatically
+      authStore.setState({ profileStats: null });
+      authStore.getState().fetchStats().catch(() => {});
     },
     onInterrupt: () => {
       if (activeMsgIdRef.current) {
@@ -727,7 +731,7 @@ export default function App() {
             {/* MAIN WORKSPACE CONTENT */}
             {view === 'profile' ? (
               <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 relative z-10 select-none bg-[var(--bg-secondary)]">
-                <Profile onBack={() => setView('chat')} setView={setView} />
+                <Profile onBack={() => setView('chat')} setView={setView} conversations={conversations} />
               </div>
             ) : view === 'dashboard' ? (
               <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 relative z-10 select-none bg-[var(--bg-secondary)]">
