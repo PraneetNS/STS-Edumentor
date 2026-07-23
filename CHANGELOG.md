@@ -10,6 +10,10 @@ Versioning adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [Unreleased]
 
 ### Added
+- `GET /api/sessions` and `GET /api/sessions/heatmap` FastAPI endpoints for historical voice session retrieval and activity heatmap counts.
+- `useProfileStats` React custom hook for centralized profile data fetching, caching, and state management.
+- `HeatmapCalendar` component for 90-day GitHub-style continuous contribution tracking.
+- `SessionSummaryCard` component for detailed voice interaction turn, latency, and token metrics.
 - `sanitise_for_tts()` helper in `utils/text_cleaner.py` to strip markdown, code fences, and URLs before TTS synthesis.
 - Named metric shortcut instances (`ws_sessions`, `llm_requests`, `llm_errors`, `tts_requests`, `stt_requests`, and latency histograms) in `utils/metrics.py`.
 - `max_delay` cap and optional `on_retry` async callback to `async_retry` decorator in `utils/retry.py`.
