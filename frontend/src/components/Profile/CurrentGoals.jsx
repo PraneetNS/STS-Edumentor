@@ -2,12 +2,23 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { CheckSquare, Square, Play, Clock, Sparkles } from 'lucide-react';
 
-export function CurrentGoals({ today = {}, onContinue }) {
+export function CurrentGoals({ today = {}, onContinue, onGoalToggle }) {
   const { greeting, goals = [], estimated_time_mins } = today;
   const [localGoals, setLocalGoals] = useState(goals);
 
+  // Re-sync if goals prop changes (e.g. after stats load)
+  React.useEffect(() => {
+    setLocalGoals(goals);
+  }, [JSON.stringify(goals)]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const toggleGoal = (id) => {
-    setLocalGoals(prev => prev.map(g => g.id === id ? { ...g, completed: !g.completed } : g));
+    setLocalGoals(prev => {
+      const updated = prev.map(g => g.id === id ? { ...g, completed: !g.completed } : g);
+      const toggled = updated.find(g => g.id === id);
+      // Persist to localStorage via callback
+      onGoalToggle?.(id, toggled?.completed ?? false);
+      return updated;
+    });
   };
 
   const hours = Math.floor(estimated_time_mins / 60);
@@ -30,8 +41,8 @@ export function CurrentGoals({ today = {}, onContinue }) {
         {/* Goals Checklist */}
         <div className="mt-3 flex flex-col gap-2.5 font-sans text-xs text-[var(--text-secondary)]">
           {localGoals.map(goal => (
-            <div 
-              key={goal.id} 
+            <div
+              key={goal.id}
               onClick={() => toggleGoal(goal.id)}
               className="flex items-center gap-2 cursor-pointer group w-fit hover:opacity-85"
             >
@@ -45,6 +56,9 @@ export function CurrentGoals({ today = {}, onContinue }) {
               </span>
             </div>
           ))}
+          {localGoals.length === 0 && (
+            <p className="text-[var(--text-muted)] opacity-60">Start a session to unlock your daily goals.</p>
+          )}
         </div>
       </div>
 
@@ -55,7 +69,7 @@ export function CurrentGoals({ today = {}, onContinue }) {
           <span>Estimated study: {timeString}</span>
         </div>
         
-        <button 
+        <button
           onClick={onContinue}
           className="bg-[var(--accent-indigo)] hover:bg-[var(--accent-indigo-light)] text-white font-sans font-semibold px-6 py-3 rounded-none transition-all cursor-pointer flex items-center justify-center gap-2 text-xs shadow-sm"
         >
