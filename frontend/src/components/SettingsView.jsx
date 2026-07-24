@@ -36,13 +36,13 @@ export function SettingsView({ onBack }) {
   };
 
   return (
-    <div className="w-full relative z-10 text-[var(--text-primary)]">
+    <div className="w-full max-w-4xl mx-auto relative z-10 text-[var(--text-primary)]">
         
         {/* HEADER CONTROLS */}
         <div className="flex items-center justify-between mb-8">
           <button 
             onClick={onBack} 
-            className="flex items-center gap-2 font-sans font-semibold text-xs text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border-default)] px-4 py-2.5 rounded-none hover:bg-[var(--bg-tertiary)] transition-all cursor-pointer shadow-sm"
+            className="flex items-center gap-2 font-sans font-semibold text-xs text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border-default)]/60 px-4 py-2.5 rounded-xl hover:bg-[var(--bg-tertiary)] transition-all cursor-pointer shadow-sm hover:translate-x-[-2px]"
           >
             <ChevronLeft size={16} /> Back to Mentor
           </button>
