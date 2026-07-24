@@ -28,7 +28,7 @@ export const SpeakingText = memo(function SpeakingText({
     return (
       <span
         className="speaking-text-container leading-relaxed"
-        style={{ display: 'inline', color: '#18181B', overflowWrap: 'break-word', wordBreak: 'normal' }}
+        style={{ display: 'inline', color: 'var(--text-primary)', overflowWrap: 'break-word', wordBreak: 'normal' }}
       >
         {words.map((word, idx) => {
           // Determine word highlighting state:
@@ -43,10 +43,10 @@ export const SpeakingText = memo(function SpeakingText({
               key={idx}
               className={`transition-all duration-150 ${
                 isActive
-                  ? 'text-indigo-600 font-semibold bg-indigo-50/80 px-0.5 rounded shadow-sm'
+                  ? 'text-[var(--accent-indigo)] font-bold bg-[var(--accent-indigo-glow)] px-1.5 py-0.5 rounded shadow-xs'
                   : isSpoken
-                  ? 'text-zinc-900 font-medium'
-                  : 'text-zinc-400'
+                  ? 'text-[var(--text-primary)] font-medium'
+                  : 'text-[var(--text-muted)]'
               }`}
               style={{ display: 'inline' }}
             >
@@ -61,7 +61,7 @@ export const SpeakingText = memo(function SpeakingText({
 
   // Otherwise, render full text normally
   return (
-    <span className="leading-relaxed" style={{ color: '#18181B', overflowWrap: 'break-word', wordBreak: 'normal' }}>
+    <span className="leading-relaxed" style={{ color: 'var(--text-primary)', overflowWrap: 'break-word', wordBreak: 'normal' }}>
       {cleanedText}
       {isStreaming && !cleanedText && <ThinkingIndicator />}
     </span>

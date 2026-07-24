@@ -46,7 +46,7 @@ const Message = memo(function Message({
       transition={{ duration: 0.25 }}
     >
       {/* Avatar Container */}
-      <div className={`avatar-wrapper shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${isUser ? 'bg-blue-500 text-white' : 'bg-white border border-neutral-200 p-0.5 shadow-sm'}`}>
+      <div className={`avatar-wrapper shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${isUser ? 'bg-[var(--accent-indigo)] text-[var(--bg-primary)]' : 'bg-[var(--bg-primary)] border border-[var(--border-default)]/60 p-0.5 shadow-sm'}`}>
         {isUser ? (
           <User size={16} strokeWidth={2.5} />
         ) : (
@@ -60,7 +60,7 @@ const Message = memo(function Message({
       {/* Message Balloon */}
       <div className={`flex flex-col gap-1 max-w-[75%] ${isUser ? 'items-end' : 'items-start'}`}>
         {/* Label */}
-        <span className="font-sans font-semibold text-[10px] text-neutral-500 tracking-wider px-1">
+        <span className="font-sans font-semibold text-[10px] text-[var(--text-muted)] tracking-wider px-1">
           {labelText}
         </span>
 
@@ -79,7 +79,7 @@ const Message = memo(function Message({
                 return (
                   <div 
                     key={block.id} 
-                    className="w-full max-w-full overflow-hidden border border-neutral-800 rounded-none shadow-sm bg-[#0f172a]"
+                    className="w-full max-w-full overflow-hidden border border-[var(--border-default)]/60 rounded-2xl shadow-sm bg-[var(--bg-tertiary)]/30"
                   >
                     <StrategyComponent block={block} />
                   </div>
@@ -92,12 +92,12 @@ const Message = memo(function Message({
         {/* Followup suggestions */}
         {!isUser && msg.followup && (
           <div className="mt-2.5 flex flex-col items-start gap-1 select-none">
-            <span className="font-sans font-semibold text-[9px] text-neutral-400 pl-0.5">
+            <span className="font-sans font-semibold text-[9px] text-[var(--text-muted)] pl-0.5">
               Suggested Followup
             </span>
             <button
               onClick={() => onSendFollowup?.(msg.followup)}
-              className="flex items-center gap-1.5 font-sans font-semibold text-[11px] text-blue-700 bg-blue-50 border border-blue-100 hover:bg-blue-100 hover:border-blue-200 px-3.5 py-1.5 rounded-full shadow-sm transition-all cursor-pointer text-left"
+              className="flex items-center gap-1.5 font-sans font-semibold text-[11.5px] text-[var(--accent-indigo)] bg-[var(--bg-tertiary)] border border-[var(--border-default)]/60 hover:bg-[var(--bg-secondary)] px-3.5 py-1.5 rounded-full shadow-sm transition-all cursor-pointer text-left hover:translate-y-[-1px]"
             >
               <span>💡</span>
               <span>{msg.followup}</span>
@@ -115,11 +115,11 @@ function MessageListSkeleton() {
       {[1, 2, 3].map((i) => (
         <div
           key={i}
-          className="border border-neutral-200 bg-white p-4 rounded-xl shadow-sm animate-pulse max-w-md"
+          className="border border-[var(--border-default)]/60 bg-[var(--bg-primary)]/80 p-4 rounded-xl shadow-sm animate-pulse max-w-md"
           style={{ height: '70px', opacity: 0.5 }}
         >
-          <div className="h-3.5 bg-gray-300 w-1/3 mb-2 rounded" />
-          <div className="h-3 bg-gray-200 w-full rounded" />
+          <div className="h-3.5 bg-[var(--bg-tertiary)] w-1/3 mb-2 rounded" />
+          <div className="h-3 bg-[var(--bg-tertiary)]/60 w-full rounded" />
         </div>
       ))}
     </div>
@@ -135,9 +135,9 @@ function MessageListEmpty() {
       <div className="w-32 h-32 mb-6">
         <MascotOwl state="listening" size="100%" />
       </div>
-      <div className="bg-white border border-neutral-200 p-6 rounded-2xl max-w-sm shadow-sm">
-        <h3 className="font-sans font-bold text-sm text-neutral-850 mb-1">EDI is ready to talk!</h3>
-        <p className="font-sans text-xs text-neutral-500 leading-relaxed">
+      <div className="bg-[var(--bg-primary)] border border-[var(--border-default)]/60 p-6 rounded-2xl max-w-sm shadow-[0_8px_30px_rgb(0,0,0,0.02)]">
+        <h3 className="font-sans font-bold text-sm text-[var(--text-primary)] mb-1">EDI is ready to talk!</h3>
+        <p className="font-sans text-xs text-[var(--text-muted)] leading-relaxed">
           Ask me anything about engineering concepts, coding architectures, structural mechanics, or roadmap sequences.
         </p>
       </div>

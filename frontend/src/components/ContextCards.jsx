@@ -15,7 +15,7 @@ export function ContextCards({ messages = [] }) {
           <div
             key={i}
             className="context-card"
-            style={{ opacity: 0.4, minWidth: '80px', height: '28px', background: 'rgba(0,0,0,0.06)', borderRadius: '8px' }}
+            style={{ opacity: 0.4, minWidth: '80px', height: '28px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-full)' }}
             aria-hidden="true"
           />
         ))}

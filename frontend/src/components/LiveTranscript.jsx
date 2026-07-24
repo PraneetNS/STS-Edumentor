@@ -76,8 +76,8 @@ export const LiveTranscript = memo(function LiveTranscript({
                       initial={isConfirmed ? { opacity: 1, scale: 1 } : { opacity: 0.4, scale: 0.95 }}
                       animate={
                         isConfirmed
-                          ? { opacity: 1, scale: 1, color: 'rgba(255, 255, 255, 0.95)' }
-                          : { opacity: 0.55, scale: 1, color: 'rgba(255, 255, 255, 0.4)', fontStyle: 'italic' }
+                          ? { opacity: 1, scale: 1, color: 'var(--text-primary)' }
+                          : { opacity: 0.55, scale: 1, color: 'var(--text-muted)', fontStyle: 'italic' }
                       }
                       transition={{ duration: 0.24, ease: 'easeOut' }}
                       style={{ display: 'inline-block' }}
