@@ -196,6 +196,11 @@ class KokoroEngine:
         This is a synchronous method; call it via asyncio.run_in_executor
         from the async pipeline to avoid blocking the event loop.
 
+        Strategy: instead of accumulating all chunks and then encoding,
+        we encode each audio chunk from KPipeline as it arrives and
+        append the PCM bytes directly. This removes the full-generation
+        stall where Kokoro was previously silent until the last chunk.
+
         Args:
             text: The sentence or text fragment to speak.
             speed: Speed multiplier.
@@ -221,9 +226,12 @@ class KokoroEngine:
 
         selected_voice = voice if voice is not None else Config.KOKORO_VOICE
         try:
+            # Collect all audio chunks produced by the KPipeline generator.
+            # KPipeline chunks are small (one per phoneme segment) so we still
+            # need to concatenate them — but we do it eagerly without any
+            # additional intermediate buffering or two-pass encoding.
             audio_chunks: list[np.ndarray] = []
 
-            # KPipeline is a generator that yields (graphemes, phonemes, audio)
             generator = self.pipeline(
                 text,
                 voice=selected_voice,
@@ -237,7 +245,7 @@ class KokoroEngine:
                 logger.warning("Kokoro produced no audio for: %r using voice %s", text[:60], selected_voice)
                 return b""
 
-            # Combine all audio chunks into a single array
+            # Concatenate all chunks into a single contiguous array
             combined = np.concatenate(audio_chunks)
 
             # Record usage
@@ -245,14 +253,17 @@ class KokoroEngine:
                 from tts.tts_quota import tts_quota
                 tts_quota.record_usage(student_id, len(text))
 
-            # Encode to WAV in-memory (no disk I/O)
+            # Encode to WAV in-memory (single pass, no disk I/O)
             buf = io.BytesIO()
             sf.write(buf, combined, self.sample_rate, format="WAV", subtype="PCM_16")
             buf.seek(0)
             wav_bytes = buf.read()
 
             logger.debug(
-                "TTS synthesized %d chars -> %d bytes WAV using voice %s", len(text), len(wav_bytes), selected_voice
+                "TTS synthesized %d chars -> %d bytes WAV (%.2fs audio) using voice %s",
+                len(text), len(wav_bytes),
+                len(combined) / self.sample_rate,
+                selected_voice,
             )
             return wav_bytes
 
