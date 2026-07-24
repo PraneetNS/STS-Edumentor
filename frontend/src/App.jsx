@@ -730,15 +730,15 @@ export default function App() {
 
             {/* MAIN WORKSPACE CONTENT */}
             {view === 'profile' ? (
-              <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 relative z-10 select-none bg-[var(--bg-secondary)]">
+              <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 relative z-10 select-none bg-[var(--bg-secondary)] flex flex-col items-center w-full">
                 <Profile onBack={() => setView('chat')} setView={setView} conversations={conversations} />
               </div>
             ) : view === 'dashboard' ? (
-              <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 relative z-10 select-none bg-[var(--bg-secondary)]">
+              <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 relative z-10 select-none bg-[var(--bg-secondary)] flex flex-col items-center w-full">
                 <AnalyticsOverview onBack={() => setView('chat')} />
               </div>
             ) : view === 'settings' ? (
-              <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 relative z-10 select-none bg-[var(--bg-secondary)]">
+              <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 relative z-10 select-none bg-[var(--bg-secondary)] flex flex-col items-center w-full">
                 <SettingsView onBack={() => setView('chat')} />
               </div>
             ) : (

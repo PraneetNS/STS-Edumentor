@@ -135,8 +135,8 @@ export const StatusBar = memo(function StatusBar({
           className={`status-dot ${info.dotClass}`}
           aria-hidden="true"
           style={info.dotClass === 'connected' ? {
-            backgroundColor: '#22c55e',
-            boxShadow: '0 0 0 2px rgba(34,197,94,0.25)',
+            backgroundColor: 'var(--accent-mint)',
+            boxShadow: '0 0 0 2px var(--accent-mint-glow)',
           } : undefined}
         />
       )}
@@ -167,10 +167,10 @@ export const StatusBar = memo(function StatusBar({
             padding: '3px 10px',
             fontSize: '11px',
             fontWeight: '600',
-            color: '#fff',
-            background: 'var(--blue-500)',
+            color: 'var(--bg-secondary)',
+            background: 'var(--accent-indigo)',
             border: 'none',
-            borderRadius: '999px',
+            borderRadius: 'var(--radius-full)',
             cursor: 'pointer',
             flexShrink: 0,
           }}

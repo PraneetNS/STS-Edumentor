@@ -65,10 +65,10 @@ export const Sidebar = memo(function Sidebar({
         <div className="sidebar-header">
           <div className="sidebar-brand">
             <div className="sidebar-brand-icon" style={{
-              background: 'white',
+              background: 'var(--bg-primary)',
               borderRadius: '50%',
-              border: '1.5px solid rgba(84,87,229,0.2)',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+              border: '1.5px solid var(--border-hover)',
+              boxShadow: '0 2px 8px rgba(59, 130, 246, 0.08)',
               padding: '2px',
               overflow: 'hidden',
               width: '34px',
