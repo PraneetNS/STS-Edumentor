@@ -19,17 +19,17 @@ export function TimelineCard({ time, title, desc, icon: Icon, colorClass = 'bg-w
   return (
     <div className={containerClasses}>
       <div className="flex flex-col items-center flex-shrink-0">
-        <div className={`w-8 h-8 rounded-none border border-[var(--border-default)] flex items-center justify-center shadow-sm relative z-10 ${colorClass}`}>
-          {Icon ? <Icon size={14} className="text-[var(--text-primary)]" /> : '📍'}
+        <div className={`w-8 h-8 rounded-full border border-[var(--border-default)]/60 flex items-center justify-center shadow-sm relative z-10 ${colorClass}`}>
+          {Icon ? <Icon size={14} className="text-indigo-400" /> : '📍'}
         </div>
-        {!isLast && <div className="w-[1.5px] bg-[var(--border-default)] flex-1 my-1" />}
+        {!isLast && <div className="w-[2px] bg-[var(--border-default)]/50 flex-1 my-1" />}
       </div>
       
       <div className="flex-1 pb-6">
-        <div className="font-mono text-[9px] uppercase font-bold text-[var(--text-muted)] mb-1">{time}</div>
-        <div className="border border-[var(--border-default)] bg-[var(--bg-primary)] p-3.5 rounded-none shadow-sm hover:border-[var(--accent-indigo)] transition-all">
-          <h4 className="font-sans font-extrabold text-xs text-[var(--text-primary)] uppercase leading-tight">{title}</h4>
-          {desc && <p className="font-mono text-[10px] text-[var(--text-secondary)] mt-1.5 leading-relaxed">{desc}</p>}
+        <div className="font-sans text-[10.5px] font-semibold text-[var(--text-muted)] mb-1.5">{time}</div>
+        <div className="border border-[var(--border-default)]/60 bg-[var(--bg-primary)]/80 backdrop-blur-sm p-4 rounded-xl shadow-[0_4px_15px_rgb(0,0,0,0.01)] hover:border-indigo-400/50 hover:shadow-[0_6px_20px_rgb(0,0,0,0.02)] transition-all">
+          <h4 className="font-sans font-bold text-xs text-[var(--text-primary)] leading-tight">{title}</h4>
+          {desc && <p className="font-sans text-[11px] font-medium text-[var(--text-secondary)] mt-1.5 leading-relaxed">{desc}</p>}
         </div>
       </div>
     </div>

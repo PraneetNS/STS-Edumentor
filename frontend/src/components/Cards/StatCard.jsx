@@ -43,25 +43,25 @@ export function StatCard({ label, value, desc, icon: Icon, colorClass = 'bg-whit
     return () => clearInterval(timer);
   }, [value, animate]);
 
-  const containerClasses = `border border-[var(--border-default)] p-5 rounded-none shadow-sm text-[var(--text-primary)] flex flex-col justify-between relative overflow-hidden cursor-default bg-[var(--bg-primary)] ${colorClass} ${className}`.trim();
+  const containerClasses = `border border-[var(--border-default)]/60 p-6 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.03)] text-[var(--text-primary)] flex flex-col justify-between relative overflow-hidden cursor-default bg-[var(--bg-primary)]/80 backdrop-blur-md ${colorClass} ${className}`.trim();
 
   return (
     <motion.div
       className={containerClasses}
-      whileHover={{ y: -1, boxShadow: 'var(--shadow-md)' }}
-      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+      whileHover={{ y: -3, scale: 1.01, boxShadow: '0 12px 40px rgb(0 0 0 / 0.05)' }}
+      transition={{ type: 'spring', stiffness: 350, damping: 15 }}
       style={{ minWidth: 0 }}
     >
       <div className="flex justify-between items-start gap-4">
-        <span className="font-mono text-[9px] uppercase font-bold text-[var(--text-muted)] tracking-wider truncate">{label}</span>
-        {Icon && <Icon size={16} className="text-[var(--text-secondary)] flex-shrink-0" />}
+        <span className="font-sans text-[10.5px] uppercase font-bold text-[var(--text-muted)] tracking-wider truncate">{label}</span>
+        {Icon && <Icon size={16} className="text-indigo-400 flex-shrink-0" />}
       </div>
       
       <div className="mt-4">
         <h3 className="font-sans font-extrabold text-3xl leading-tight truncate text-[var(--text-primary)]">
           {typeof value === 'number' ? displayValue.toLocaleString() : value}
         </h3>
-        {desc && <p className="font-mono text-[10px] text-[var(--text-muted)] mt-1 leading-snug break-words">{desc}</p>}
+        {desc && <p className="font-sans text-[11px] font-medium text-[var(--text-muted)] mt-1.5 leading-snug break-words">{desc}</p>}
       </div>
     </motion.div>
   );
