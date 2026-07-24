@@ -45,6 +45,11 @@ llama-server \
   -m "${MODEL_PATH}" \
   -c 16384 \
   -ngl 20 \
+  --cache-type-k q8_0 \
+  --cache-type-v q8_0 \
+  --flash-attn on \
+  -cb \
+  --mlock \
   --host 0.0.0.0 \
   --port 8080 \
   --temp 0.6 \
@@ -52,5 +57,6 @@ llama-server \
   --repeat-penalty 1.08 \
   --cache-reuse 256 \
   --slots \
+  --metrics \
   -np 4 \
   --log-disable

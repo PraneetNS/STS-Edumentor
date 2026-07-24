@@ -35,14 +35,20 @@ echo.
 
 "C:\Users\savan\.docker\bin\inference\llama-server.exe" ^
   -m %MODEL% ^
-  -c 4096 ^
-  -ngl 20 ^
+  -c 16384 ^
+  -ngl 18 ^
+  --cache-type-k q8_0 ^
+  --cache-type-v q8_0 ^
+  --flash-attn on ^
+  -cb ^
+  --mlock ^
   --host 0.0.0.0 ^
   --port 8080 ^
   --temp 0.6 ^
   --top-p 0.9 ^
   --repeat-penalty 1.08 ^
   --slots ^
-  -np 1
+  --metrics ^
+  -np 4
 
 pause
