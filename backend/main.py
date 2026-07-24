@@ -1640,11 +1640,11 @@ async def _stream_llm_and_tts(
                         # Flush on any sentence ending punctuation if minimum length (3 chars) is met (handles quotes/brackets)
                         if len(stripped) >= 3 and re.search(r"(?<=\S{2})[.!?]+['\"`’”\]\)]*(?:\s|$)", stripped):
                             should_flush = True
-                        # Flush on comma/clause ending punctuation only if minimum context length (10 chars) is met
-                        elif len(stripped) >= 10 and re.search(r"(?<=\S{2})[,;:—\n\r]+['\"`’”\]\)]*(?:\s|$)", stripped):
+                        # Flush on comma/clause ending punctuation only if minimum context length (8 chars) is met
+                        elif len(stripped) >= 8 and re.search(r"(?<=\S{2})[,;:—\n\r]+['\"`’”\]\)]*(?:\s|$)", stripped):
                             should_flush = True
-                        # Flush on space/word boundary if we've accumulated at least 15 characters (fast phrase split)
-                        elif len(stripped) >= 15 and (raw_token and (raw_token.isspace() or any(char in raw_token for char in ".,!?;:-—"))):
+                        # Flush on word boundary at 10+ chars (was 15) - faster Time-to-First-Audio
+                        elif len(stripped) >= 10 and (raw_token and (raw_token.isspace() or any(char in raw_token for char in ".,!?;:-—"))):
                             should_flush = True
                     else:
                         # Standard chunking logic for subsequent sentences
@@ -1804,7 +1804,7 @@ async def _stream_llm_and_tts(
         except Exception as exc:
             logger.exception("Audio sender error: %s", exc)
 
-    _FILLER_DELAY_SECONDS = 0.35  # tune against your observed p50 first_llm_token latency
+    _FILLER_DELAY_SECONDS = 0.6  # fires if LLM hasn't started streaming within 600ms; keeps UX alive during TTFT
 
     _FILLER_PHRASES = {
         "default": ["Okay, let's see.", "Alright, one moment.", "Hmm, let's think about this."],
