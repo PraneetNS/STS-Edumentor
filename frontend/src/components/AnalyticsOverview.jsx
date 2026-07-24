@@ -98,13 +98,13 @@ export function AnalyticsOverview({ onBack }) {
       {/* Background shape animation */}
       <FloatingShapes page="profile" />
 
-      <div className="w-full relative z-10 text-[var(--text-primary)]">
+      <div className="w-full max-w-4xl mx-auto relative z-10 text-[var(--text-primary)]">
 
         {/* HEADER CONTROLS */}
         <div className="flex items-center justify-between mb-8">
           <button
             onClick={onBack}
-            className="flex items-center gap-2 font-sans font-semibold text-xs text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border-default)] px-4 py-2.5 rounded-none hover:bg-[var(--bg-tertiary)] transition-all cursor-pointer shadow-sm"
+            className="flex items-center gap-2 font-sans font-semibold text-xs text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border-default)]/60 px-4 py-2.5 rounded-xl hover:bg-[var(--bg-tertiary)] transition-all cursor-pointer shadow-sm hover:translate-x-[-2px]"
           >
             <ChevronLeft size={16} /> Back to Mentor
           </button>
@@ -118,7 +118,7 @@ export function AnalyticsOverview({ onBack }) {
             )}
             <button
               onClick={refresh}
-              className="flex items-center gap-1.5 font-sans text-[10px] font-semibold text-indigo-400 border border-indigo-900/40 bg-indigo-950/20 px-2.5 py-1.5 rounded-none hover:bg-indigo-950/40 transition-all cursor-pointer"
+              className="flex items-center gap-1.5 font-sans text-[10px] font-semibold text-indigo-400 border border-indigo-500/20 bg-indigo-500/10 px-3 py-1.5 rounded-xl hover:bg-indigo-500/20 transition-all cursor-pointer"
               title="Refresh analytics data"
             >
               <RefreshCw size={11} />
@@ -138,11 +138,11 @@ export function AnalyticsOverview({ onBack }) {
           <h2 className="section-title">GitHub Insights & Performance</h2>
         </div>
 
-        {/* 12-COLUMN DASHBOARD GRID */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
+        {/* SINGLE COLUMN DASHBOARD VERTICAL STACK */}
+        <div className="flex flex-col gap-8 w-full">
 
-          {/* LEFT 4 COLS: GENERAL READINESS PROFILE SUMMARY */}
-          <div className="md:col-span-12 lg:col-span-4 flex flex-col gap-6">
+          {/* GENERAL READINESS PROFILE SUMMARY */}
+          <div className="w-full flex flex-col gap-6">
 
             <SectionCard title="Overall Readiness" subtitle="Weighted placement probability indexes" headerBg="bg-neutral-50/50">
               <div className="flex flex-col items-center gap-6 py-4">
@@ -197,14 +197,14 @@ export function AnalyticsOverview({ onBack }) {
 
             <SectionCard title="Priority Focus Areas" subtitle="Analysis of study weaknesses" headerBg="bg-neutral-50/50">
               <div className="font-sans text-xs flex flex-col gap-3">
-                <div className="border border-[var(--border-default)] p-3.5 rounded-none bg-[var(--bg-tertiary)] flex flex-col">
-                  <span className="text-[9px] font-semibold text-[var(--text-muted)] uppercase">Weakest Concept</span>
+                <div className="border border-[var(--border-default)]/60 p-4 rounded-xl bg-[var(--bg-tertiary)]/30 flex flex-col shadow-[0_4px_15px_rgb(0,0,0,0.01)] hover:translate-y-[-1px] transition-all">
+                  <span className="text-[9.5px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Weakest Concept</span>
                   <span className="font-sans font-bold text-sm text-red-400 mt-1">
                     {weaknesses.weakest_topic || 'No sessions yet'}
                   </span>
                 </div>
-                <div className="border border-[var(--border-default)] p-3.5 rounded-none bg-[var(--bg-tertiary)] flex flex-col">
-                  <span className="text-[9px] font-semibold text-[var(--text-muted)] uppercase">Most Practiced Track</span>
+                <div className="border border-[var(--border-default)]/60 p-4 rounded-xl bg-[var(--bg-tertiary)]/30 flex flex-col shadow-[0_4px_15px_rgb(0,0,0,0.01)] hover:translate-y-[-1px] transition-all">
+                  <span className="text-[9.5px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Most Practiced Track</span>
                   <span className="font-sans font-bold text-sm text-[var(--text-primary)] mt-1">
                     {weaknesses.most_practiced_subject || 'Start a session!'}
                   </span>
@@ -214,8 +214,8 @@ export function AnalyticsOverview({ onBack }) {
 
           </div>
 
-          {/* RIGHT 8 COLS: HEATMAP, VELOCITY CURVES, PROGRESS LIST */}
-          <div className="md:col-span-12 lg:col-span-8 flex flex-col gap-6">
+          {/* HEATMAP, VELOCITY CURVES, PROGRESS LIST */}
+          <div className="w-full flex flex-col gap-6">
 
             {/* Session Consistency Heatmap */}
             <SectionCard title="Consistency Calendar" subtitle="Commitment frequency of voice tutoring sessions" headerBg="bg-neutral-50/50">
@@ -236,16 +236,16 @@ export function AnalyticsOverview({ onBack }) {
               <SectionCard title="Interaction Depth" subtitle="Question complexity breakdown" headerBg="bg-neutral-50/50">
                 <div className="flex flex-col justify-between h-full font-sans text-xs">
                   <div className="flex flex-col gap-2 py-4">
-                    <div className="h-4 border border-[var(--border-default)] rounded-none overflow-hidden flex shadow-sm">
-                      <div className="h-full bg-[var(--accent-teal)] border-r border-white/20" style={{ width: `${pctEasy}%` }} title="Basic" />
-                      <div className="h-full bg-[var(--accent-amber)] border-r border-white/20" style={{ width: `${pctMedium}%` }} title="Intermediate" />
-                      <div className="h-full bg-[var(--accent-coral)]" style={{ width: `${pctHard}%` }} title="Advanced" />
+                    <div className="h-4.5 rounded-full overflow-hidden flex shadow-[inset_0_1px_3px_rgba(0,0,0,0.05)] bg-[var(--bg-tertiary)]">
+                      <div className="h-full bg-[var(--accent-teal)] transition-all duration-500 border-r border-white/20" style={{ width: `${pctEasy}%` }} title="Basic" />
+                      <div className="h-full bg-[var(--accent-amber)] transition-all duration-500 border-r border-white/20" style={{ width: `${pctMedium}%` }} title="Intermediate" />
+                      <div className="h-full bg-[var(--accent-coral)] transition-all duration-500" style={{ width: `${pctHard}%` }} title="Advanced" />
                     </div>
 
-                    <div className="flex justify-between items-center text-[10.5px] mt-1.5 font-medium text-[var(--text-secondary)]">
-                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-none bg-[var(--accent-teal)]" /> Basic ({approxEasy})</span>
-                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-none bg-[var(--accent-amber)]" /> Mid ({approxMedium})</span>
-                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-none bg-[var(--accent-coral)]" /> Deep ({approxHard})</span>
+                    <div className="flex justify-between items-center text-[10.5px] mt-2.5 font-medium text-[var(--text-secondary)]">
+                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[var(--accent-teal)]" /> Basic ({approxEasy})</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[var(--accent-amber)]" /> Mid ({approxMedium})</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[var(--accent-coral)]" /> Deep ({approxHard})</span>
                     </div>
                   </div>
 
