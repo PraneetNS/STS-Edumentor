@@ -327,6 +327,82 @@
           "calcs": ["lastNotNull"]
         }
       }
+    },
+    {
+      "id": 9,
+      "title": "llama.cpp KV cache usage ratio",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "llamacpp:kv_cache_usage_ratio",
+          "legendFormat": "KV Cache Usage Ratio",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line"
+          },
+          "unit": "percentunit"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "llama.cpp Tokens/sec (Generation)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 22,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "rate(llamacpp:tokens_predicted_total[1m])",
+          "legendFormat": "Tokens/sec",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth"
+          },
+          "unit": "pps"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "GPU Monitoring Guide (DCGM Exporter)",
+      "type": "text",
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 24,
+        "h": 6
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### GPU Monitoring Integration via DCGM Exporter\n\nTo wire up live GPU memory and utilization metrics directly into Prometheus & Grafana instead of manually logging to a CSV file with `gpu_monitor.py`:\n\n1. **Install NVIDIA DCGM Exporter**:\n   Run the DCGM Exporter container in Docker:\n   ```bash\n   docker run -d --gpus all --net=host -p 9400:9400 nvcr.io/nvidia/k8s/dcgm-exporter:3.2.5-3.1.7-ubuntu20.04\n   ```\n2. **Configure Prometheus Scrape Job**:\n   Add the following scrape target to `prometheus.yml`:\n   ```yaml\n   - job_name: 'dcgm-exporter'\n     static_configs:\n       - targets: ['localhost:9400']\n   ```\n3. **Available Metrics**:\n   - GPU Memory Used: `DCGM_FI_DEV_FB_USED` (in MiB)\n   - GPU Memory Total: `DCGM_FI_DEV_FB_FREE + DCGM_FI_DEV_FB_USED`\n   - GPU Utilization: `DCGM_FI_DEV_GPU_UTIL` (in %)\n"
+      }
     }
   ],
   "refresh": "5s",
