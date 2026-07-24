@@ -95,25 +95,26 @@ def make_mock_generate_fn(profile: MockGenerationProfile):
 
 def real_llama_generate_fn(llm_base_url: str):
     """
-    STUB -- fill this in with your actual llm_engine.py streaming client
-    when you're ready to test against real hardware. Same signature as the
-    mock above: async def generate(prompt: str) -> AsyncIterator[str].
-
-    async def generate(prompt: str):
-        async with httpx.AsyncClient() as client:
-            async with client.stream(
-                "POST", f"{llm_base_url}/completion",
-                json={"prompt": prompt, "stream": True, "cache_prompt": True},
-            ) as resp:
-                async for line in resp.aiter_lines():
-                    token = parse_sse_token(line)  # your existing SSE parsing
-                    if token is not None:
-                        yield token
+    Streams tokens from the real llama-server instance using LLMEngine.
     """
-    raise NotImplementedError(
-        "Wire this up to llm_engine.py's real streaming client before "
-        "running with --use-real-llm."
-    )
+    from llm.llm_engine import LLMEngine
+    from config import Config
+    import httpx
+
+    engine = LLMEngine()
+    if llm_base_url:
+        engine.base_url = llm_base_url
+        engine.client = httpx.AsyncClient(
+            base_url=llm_base_url,
+            timeout=httpx.Timeout(connect=10.0, read=Config.LLM_TIMEOUT, write=10.0, pool=10.0),
+            headers={"Content-Type": "application/json"},
+        )
+
+    async def generate(prompt: str) -> AsyncIterator[str]:
+        async for token in engine.stream_tokens(prompt):
+            yield token
+
+    return generate
 
 
 # ---------------------------------------------------------------------------
@@ -284,16 +285,19 @@ async def run_load_test(args: argparse.Namespace) -> List[SessionResult]:
     await redis_client.delete(f"{queue_config.stream_key}:acked_count")
     await queue.ensure_group()
 
-    profile = MockGenerationProfile(
-        ttft_mean_s=args.ttft_mean,
-        ttft_std_s=args.ttft_std,
-        token_interval_mean_s=args.token_interval_mean,
-        token_interval_std_s=args.token_interval_std,
-        min_tokens=args.min_tokens,
-        max_tokens=args.max_tokens,
-        failure_rate=args.failure_rate,
-    )
-    generate_fn = make_mock_generate_fn(profile)
+    if args.use_real_llm:
+        generate_fn = real_llama_generate_fn(args.llm_base_url)
+    else:
+        profile = MockGenerationProfile(
+            ttft_mean_s=args.ttft_mean,
+            ttft_std_s=args.ttft_std,
+            token_interval_mean_s=args.token_interval_mean,
+            token_interval_std_s=args.token_interval_std,
+            min_tokens=args.min_tokens,
+            max_tokens=args.max_tokens,
+            failure_rate=args.failure_rate,
+        )
+        generate_fn = make_mock_generate_fn(profile)
 
     workers = [
         LLMWorker(redis_client, generate_fn, f"loadtest-worker-{i}", queue_config)
@@ -364,6 +368,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--simulate-crash-after", type=float, default=None,
                     help="seconds into the test to kill one worker (chaos test)")
     p.add_argument("--csv-out", default=None, help="optional path to write per-session results")
+    p.add_argument("--use-real-llm", action="store_true", help="use real llama-server instead of mock")
+    p.add_argument("--llm-base-url", default=None, help="base url of llama-server")
 
     return p.parse_args()
 
