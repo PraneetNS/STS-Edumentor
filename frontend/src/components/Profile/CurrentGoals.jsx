@@ -26,7 +26,7 @@ export function CurrentGoals({ today = {}, onContinue, onGoalToggle }) {
   const timeString = `${hours > 0 ? `${hours} hr ` : ''}${mins} mins`;
 
   return (
-    <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] p-6 rounded-none shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6 select-none relative overflow-hidden text-[var(--text-primary)]">
+    <div className="bg-[var(--bg-primary)]/85 backdrop-blur-md p-6 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6 select-none relative overflow-hidden text-[var(--text-primary)]">
       
       {/* Background visual detail */}
       <div className="absolute right-[-10px] top-[-10px] opacity-5 pointer-events-none text-[var(--text-tertiary)]">
@@ -71,7 +71,7 @@ export function CurrentGoals({ today = {}, onContinue, onGoalToggle }) {
         
         <button
           onClick={onContinue}
-          className="bg-[var(--accent-indigo)] hover:bg-[var(--accent-indigo-light)] text-white font-sans font-semibold px-6 py-3 rounded-none transition-all cursor-pointer flex items-center justify-center gap-2 text-xs shadow-sm"
+          className="bg-[var(--accent-indigo)] hover:bg-[var(--accent-indigo-light)] text-white font-sans font-semibold px-6 py-3 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 text-xs shadow-sm hover:shadow-md hover:translate-y-[-1px]"
         >
           <Play size={10} fill="currentColor" /> Continue Learning
         </button>

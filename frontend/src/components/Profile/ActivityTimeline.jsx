@@ -101,10 +101,10 @@ export function ActivityTimeline({ conversations = [], sessionHistory = [] }) {
   let colorIdx = 0;
 
   return (
-    <div className="flex flex-col gap-6 select-none font-mono">
+    <div className="flex flex-col gap-6 select-none font-sans">
       {grouped.map((groupObj, idx) => (
         <div key={idx} className="flex flex-col gap-3">
-          <h4 className="font-sans font-extrabold text-[10px] uppercase text-black/45 tracking-wider mb-2">
+          <h4 className="font-sans font-bold text-[10.5px] uppercase text-[var(--text-muted)] tracking-wider mb-2">
             {groupObj.group}
           </h4>
 

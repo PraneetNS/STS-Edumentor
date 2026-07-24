@@ -17,11 +17,10 @@
     "Civil Engineering"
   ],
   "preferred_style": "examples",
-  "session_count": 15,
+  "session_count": 17,
   "discipline": "cse",
   "active_topics": [
     "Machine Learning",
-    "Mechanical Engineering",
-    "Civil Engineering"
+    "Computer Science"
   ]
 }

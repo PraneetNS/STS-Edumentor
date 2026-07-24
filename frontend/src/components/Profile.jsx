@@ -55,11 +55,11 @@ export function Profile({ onBack, conversations = [], setView }) {
   // ── Loading State ────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="w-full relative z-10 text-[var(--text-primary)]">
+      <div className="w-full max-w-4xl mx-auto relative z-10 text-[var(--text-primary)]">
         <div className="flex items-center justify-between mb-8">
           <button
             onClick={onBack}
-            className="flex items-center gap-2 font-sans font-semibold text-xs text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border-default)] px-4 py-2.5 rounded-none hover:bg-[var(--bg-tertiary)] transition-all cursor-pointer shadow-sm"
+            className="flex items-center gap-2 font-sans font-semibold text-xs text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border-default)]/60 px-4 py-2.5 rounded-xl hover:bg-[var(--bg-tertiary)] transition-all cursor-pointer shadow-sm"
           >
             <ChevronLeft size={16} /> Back to Mentor
           </button>
@@ -79,11 +79,11 @@ export function Profile({ onBack, conversations = [], setView }) {
   // ── Error State ──────────────────────────────────────────────────────────
   if (error) {
     return (
-      <div className="w-full relative z-10 text-[var(--text-primary)]">
+      <div className="w-full max-w-4xl mx-auto relative z-10 text-[var(--text-primary)]">
         <div className="flex items-center justify-between mb-8">
           <button
             onClick={onBack}
-            className="flex items-center gap-2 font-sans font-semibold text-xs text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border-default)] px-4 py-2.5 rounded-none hover:bg-[var(--bg-tertiary)] transition-all cursor-pointer shadow-sm"
+            className="flex items-center gap-2 font-sans font-semibold text-xs text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border-default)]/60 px-4 py-2.5 rounded-xl hover:bg-[var(--bg-tertiary)] transition-all cursor-pointer shadow-sm"
           >
             <ChevronLeft size={16} /> Back to Mentor
           </button>
@@ -99,12 +99,12 @@ export function Profile({ onBack, conversations = [], setView }) {
 
   // ── Full Profile ─────────────────────────────────────────────────────────
   return (
-    <div className="w-full relative z-10 text-[var(--text-primary)]">
+    <div className="w-full max-w-4xl mx-auto relative z-10 text-[var(--text-primary)]">
       {/* HEADER CONTROLS */}
       <div className="flex items-center justify-between mb-8">
         <button
           onClick={onBack}
-          className="flex items-center gap-2 font-sans font-semibold text-xs text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border-default)] px-4 py-2.5 rounded-none hover:bg-[var(--bg-tertiary)] transition-all cursor-pointer shadow-sm"
+          className="flex items-center gap-2 font-sans font-semibold text-xs text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border-default)]/60 px-4 py-2.5 rounded-xl hover:bg-[var(--bg-tertiary)] transition-all cursor-pointer shadow-sm"
         >
           <ChevronLeft size={16} /> Back to Mentor
         </button>
@@ -118,7 +118,7 @@ export function Profile({ onBack, conversations = [], setView }) {
           )}
           <button
             onClick={refresh}
-            className="flex items-center gap-1.5 font-sans text-[10px] font-semibold text-indigo-400 border border-indigo-900/40 bg-indigo-950/20 px-2.5 py-1.5 rounded-none hover:bg-indigo-950/40 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 font-sans text-[10px] font-semibold text-indigo-400 border border-indigo-500/20 bg-indigo-500/10 px-3 py-1.5 rounded-xl hover:bg-indigo-500/20 transition-all cursor-pointer"
             title="Refresh analytics data"
           >
             <RefreshCw size={11} />
@@ -135,7 +135,7 @@ export function Profile({ onBack, conversations = [], setView }) {
 
       {/* TOP ROW: TODAY'S ACTIVE TASK PANEL */}
       <div className="mb-8">
-        <div className="border border-[var(--border-default)] rounded-none overflow-hidden shadow-sm">
+        <div className="rounded-2xl overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.03)] border border-[var(--border-default)]/40">
           <CurrentGoals
             today={today}
             onContinue={handleContinue}
@@ -144,15 +144,15 @@ export function Profile({ onBack, conversations = [], setView }) {
         </div>
       </div>
 
-      {/* 12-COLUMN DASHBOARD GRID LAYOUT */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* SIDEBAR: STUDENT IDENTITY & QUICK METRICS (COL-SPAN-4) */}
-        <div className="lg:col-span-4 flex flex-col gap-6 lg:sticky lg:top-8">
+      {/* SINGLE COLUMN DASHBOARD VERTICAL STACK */}
+      <div className="flex flex-col gap-8 w-full">
+        {/* STUDENT IDENTITY & QUICK METRICS */}
+        <div className="w-full flex flex-col gap-6">
           <HeroCard profile={heroProfile} onEdit={handleEdit} />
         </div>
 
-        {/* MAIN COLUMN: STATISTICS, PROGRESS, TIMELINE, ACHIEVEMENTS (COL-SPAN-8) */}
-        <div className="lg:col-span-8 flex flex-col gap-8">
+        {/* STATISTICS, PROGRESS, TIMELINE, ACHIEVEMENTS */}
+        <div className="w-full flex flex-col gap-8">
           {/* Learning Snapshot metrics */}
           <SectionCard title="Learning Snapshot" subtitle="Overall study metrics and response indexes" headerBg="bg-neutral-50/50">
             <LearningSnapshot score={readiness.placement_score} stats={snapStats} weaknesses={weaknesses} />
@@ -162,17 +162,17 @@ export function Profile({ onBack, conversations = [], setView }) {
           <SectionCard title="Active Learning Roadmaps" subtitle="Placement preparation milestones" headerBg="bg-neutral-50/50">
             <div className="flex flex-col gap-4">
               {roadmaps.map((roadmap, idx) => (
-                <div key={idx} className="flex flex-col gap-1.5 border border-[var(--border-default)] p-4 rounded-none bg-[var(--bg-primary)] shadow-sm font-sans text-xs text-[var(--text-primary)]">
+                <div key={idx} className="flex flex-col gap-1.5 border border-[var(--border-default)]/60 p-4 rounded-xl bg-[var(--bg-primary)] shadow-[0_4px_20px_rgb(0,0,0,0.01)] font-sans text-xs text-[var(--text-primary)]">
                   <div className="flex justify-between items-start">
                     <div className="flex flex-col min-w-0">
-                      <span className="font-sans font-extrabold text-xs text-[var(--text-primary)] uppercase leading-tight truncate">{roadmap.title}</span>
+                      <span className="font-sans font-bold text-xs text-[var(--text-primary)] uppercase leading-tight truncate">{roadmap.title}</span>
                       <span className="text-[var(--text-muted)] text-[9px] mt-0.5 leading-tight truncate">{roadmap.subtitle}</span>
                     </div>
-                    <span className="font-semibold text-indigo-400 bg-indigo-950/20 border border-indigo-900/35 px-2.5 py-0.5 rounded-none text-[10px]">{roadmap.progress}%</span>
+                    <span className="font-semibold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded-full text-[10px]">{roadmap.progress}%</span>
                   </div>
-                  <div className="h-2 bg-[var(--bg-tertiary)] border border-[var(--border-default)] rounded-none overflow-hidden relative mt-2">
+                  <div className="h-2.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden relative mt-2">
                     <div
-                      className="h-full bg-[var(--accent-indigo)] transition-all duration-800 ease-out"
+                      className="h-full bg-[var(--accent-indigo)] rounded-full transition-all duration-800 ease-out"
                       style={{ width: animateProgress ? `${roadmap.progress}%` : '0%' }}
                     />
                   </div>
@@ -184,7 +184,7 @@ export function Profile({ onBack, conversations = [], setView }) {
           {/* Subject Mastery Progress Lists & Radar Chart */}
           <SectionCard title="Knowledge Radar & Rankings" subtitle="Technical depth comparisons across engineering concepts" headerBg="bg-neutral-50/50">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-              <div className="flex justify-center bg-[var(--bg-primary)] p-2 border border-[var(--border-default)] rounded-none shadow-sm">
+              <div className="flex justify-center bg-[var(--bg-primary)] p-4 border border-[var(--border-default)]/60 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.02)]">
                 <RadarChart data={radarData} />
               </div>
 
@@ -223,14 +223,14 @@ export function Profile({ onBack, conversations = [], setView }) {
           <SectionCard title="Recommended Next Actions" subtitle="Dynamic targets derived from performance logs" headerBg="bg-neutral-50/50">
             <div className="flex flex-col gap-3 font-sans text-xs">
               {recommendations.map((rec, idx) => (
-                <div key={idx} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-[var(--border-default)] p-4 rounded-none bg-[var(--bg-primary)] shadow-sm">
+                <div key={idx} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-[var(--border-default)]/60 p-4 rounded-xl bg-[var(--bg-primary)] shadow-[0_4px_20px_rgb(0,0,0,0.01)]">
                   <div className="flex items-start gap-2 flex-1">
-                    <span className="w-1.5 h-1.5 rounded-none bg-[var(--accent-indigo)] mt-1.5 flex-shrink-0" />
+                    <span className="w-2 h-2 rounded-full bg-[var(--accent-indigo)] mt-1.5 flex-shrink-0" />
                     <span className="leading-relaxed text-[var(--text-secondary)]">{rec.text}</span>
                   </div>
                   <button
                     onClick={handleContinue}
-                    className="bg-[var(--bg-primary)] text-[var(--text-primary)] border border-[var(--border-default)] font-sans font-semibold text-xs px-3.5 py-2 rounded-none hover:bg-[var(--bg-tertiary)] transition-all cursor-pointer text-center sm:w-auto w-full flex-shrink-0 shadow-sm"
+                    className="bg-[var(--bg-primary)] text-[var(--text-primary)] border border-[var(--border-default)]/60 font-sans font-semibold text-xs px-4 py-2 rounded-xl hover:bg-[var(--bg-tertiary)] transition-all cursor-pointer text-center sm:w-auto w-full flex-shrink-0 shadow-sm"
                   >
                     {rec.action}
                   </button>
