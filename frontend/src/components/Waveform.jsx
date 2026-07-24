@@ -70,65 +70,80 @@ export const Waveform = memo(function Waveform({
         volume = 0.08;
       }
 
-      // Update wave phase offset
-      const speed = isRecording ? 0.15 : isPlaying ? 0.08 : 0.02;
+      // Update wave phase offset (respecting prefers-reduced-motion)
+      const hasReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const speed = hasReducedMotion ? 0.003 : (isRecording ? 0.14 : isPlaying ? 0.075 : 0.022);
       phaseRef.current += speed;
       const phase = phaseRef.current;
 
-      // Draw 3 overlapping waves with different characteristics for a layered look
-      const waves = [
-        {
-          color: isRecording ? 'rgba(239, 68, 68, 0.25)' : isPlaying ? 'rgba(99, 102, 241, 0.25)' : 'rgba(255, 255, 255, 0.1)',
-          frequency: 3,
-          amplitudeMultiplier: 0.8,
-          phaseOffset: 0
-        },
-        {
-          color: isRecording ? 'rgba(244, 63, 94, 0.4)' : isPlaying ? 'rgba(129, 140, 248, 0.4)' : 'rgba(255, 255, 255, 0.15)',
-          frequency: 2,
-          amplitudeMultiplier: 1.1,
-          phaseOffset: Math.PI / 2
-        },
-        {
-          color: isRecording ? 'rgba(251, 113, 133, 0.7)' : isPlaying ? 'rgba(165, 180, 252, 0.7)' : 'rgba(255, 255, 255, 0.25)',
-          frequency: 4,
-          amplitudeMultiplier: 0.6,
-          phaseOffset: Math.PI
-        }
-      ];
+      // 1. Draw oscilloscope telemetry gridlines
+      ctx.strokeStyle = 'rgba(46, 49, 61, 0.15)';
+      ctx.lineWidth = 1;
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
 
-      waves.forEach(wave => {
+      // Vertical gridlines
+      for (let gridX = 20; gridX < w; gridX += 20) {
         ctx.beginPath();
-        ctx.strokeStyle = wave.color;
-        ctx.lineWidth = wave.amplitudeMultiplier === 0.6 ? 2.5 : 1.5;
-
-        // Add subtle shadow glow to the primary/topmost wave
-        if (wave.amplitudeMultiplier === 0.6) {
-          ctx.shadowBlur = 10;
-          ctx.shadowColor = isRecording ? 'rgba(244, 63, 94, 0.5)' : isPlaying ? 'rgba(129, 140, 248, 0.5)' : 'rgba(255, 255, 255, 0.15)';
-        } else {
-          ctx.shadowBlur = 0;
-        }
-
-        for (let x = 0; x < w; x++) {
-          // Normalise x position across canvas width
-          const normalizedX = x / w;
-          
-          // Apply a fade envelope at boundaries so waves taper off nicely on the edges
-          const envelope = Math.sin(normalizedX * Math.PI);
-          
-          // Generate sine wave combining frequency, phase, and volume amplitude
-          const angle = (normalizedX * Math.PI * wave.frequency) + phase + wave.phaseOffset;
-          const y = (h / 2) + Math.sin(angle) * (h / 2.2) * volume * wave.amplitudeMultiplier * envelope;
-
-          if (x === 0) {
-            ctx.moveTo(x, y);
-          } else {
-            ctx.lineTo(x, y);
-          }
-        }
+        ctx.moveTo(gridX, 0);
+        ctx.lineTo(gridX, h);
         ctx.stroke();
-      });
+      }
+
+      // Horizontal gridlines
+      for (let gridY = 15; gridY < h; gridY += 15) {
+        ctx.beginPath();
+        ctx.moveTo(0, gridY);
+        ctx.lineTo(w, gridY);
+        ctx.stroke();
+      }
+
+      // 2. Configure glowing traces
+      const glowColor = isRecording ? 'rgba(14, 165, 233, 0.85)' : isPlaying ? 'rgba(59, 130, 246, 0.85)' : 'rgba(148, 163, 184, 0.35)';
+      const coreColor = isRecording ? '#ffffff' : isPlaying ? '#e0f2fe' : '#94a3b8';
+      const shadowGlow = isRecording ? 'rgba(14, 165, 233, 0.9)' : isPlaying ? 'rgba(59, 130, 246, 0.9)' : 'transparent';
+
+      // Draw Thicker Phosphor Glow Trace
+      ctx.beginPath();
+      ctx.strokeStyle = glowColor;
+      ctx.lineWidth = 4.2;
+      ctx.shadowBlur = 14;
+      ctx.shadowColor = shadowGlow;
+
+      for (let x = 0; x < w; x++) {
+        const normalizedX = x / w;
+        const envelope = Math.sin(normalizedX * Math.PI);
+        const angle = (normalizedX * Math.PI * 4.5) + phase;
+        const y = (h / 2) + Math.sin(angle) * (h / 2.3) * volume * envelope;
+        
+        if (x === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+
+      // Draw Fine Cathode Filament Core Trace
+      ctx.beginPath();
+      ctx.strokeStyle = coreColor;
+      ctx.lineWidth = 1.6;
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
+
+      for (let x = 0; x < w; x++) {
+        const normalizedX = x / w;
+        const envelope = Math.sin(normalizedX * Math.PI);
+        const angle = (normalizedX * Math.PI * 4.5) + phase;
+        const y = (h / 2) + Math.sin(angle) * (h / 2.3) * volume * envelope;
+        
+        if (x === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
 
       // Request next frame
       animationRef.current = requestAnimationFrame(draw);
