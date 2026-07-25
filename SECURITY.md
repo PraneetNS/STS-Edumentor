@@ -2,7 +2,7 @@
 
 This document records the OWASP LLM Top 10 threat model for EduMentor Voice,
 the mitigations in place, and the pre-launch security gate that must pass before
-any production deployment.
+any production deployment. Security is a primary priority of the architecture.
 
 ---
 
