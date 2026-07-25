@@ -1,5 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 
+/**
+ * CustomCursor component that replaces the system pointer with a custom dot and ring.
+ * Automatically handles interactive elements (anchors, buttons) to trigger hover states
+ * and responds to CSS pointer queries to disable custom rendering on touchscreen devices.
+ */
 export function CustomCursor() {
   const dotRef = useRef(null);
   const ringRef = useRef(null);
