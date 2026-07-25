@@ -278,6 +278,7 @@ export class EduMentorVoiceSDK {
 
   _startPingInterval() {
     this._stopPingInterval();
+    // Periodically send ping messages to keep the WebSocket connection alive and prevent timeout
     this.pingInterval = setInterval(() => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({ type: 'ping' }));
