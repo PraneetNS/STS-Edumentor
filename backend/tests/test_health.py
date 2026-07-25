@@ -14,6 +14,7 @@ from utils.health import check_llm_reachable, check_gpu_memory, get_health_repor
 
 @pytest.mark.asyncio
 async def test_check_llm_reachable_success():
+    """Test that a healthy HTTP 200 response from the LLM returns OK status."""
     mock_resp = mock.Mock()
     mock_resp.status_code = 200
     
