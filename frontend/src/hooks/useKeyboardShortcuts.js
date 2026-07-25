@@ -29,6 +29,7 @@ function normalizeCombo(combo) {
 
 /**
  * Build a canonical key combo string from a KeyboardEvent.
+ * Standardizes modifier ordering: ctrl, alt, shift, meta.
  * @param {KeyboardEvent} e
  * @returns {string}
  */
