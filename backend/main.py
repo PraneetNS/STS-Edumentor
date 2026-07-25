@@ -68,7 +68,7 @@ utterance_count = 0
 # ─────────────────────────────────────────────────────────────────────────────
 # Logging — main console logger + agent file logger
 # ─────────────────────────────────────────────────────────────────────────────
-
+# Configure standard logging to direct logs to stdout
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
