@@ -7,6 +7,10 @@
  */
 import React, { useEffect } from 'react';
 
+/**
+ * MentorCharacter component displays the interactive mascot representation.
+ * Animates in sync with pipeline states like 'listening', 'thinking', and 'speaking'.
+ */
 export function MentorCharacter({ state = 'idle', analyserNode, onSnapshot }) {
   const onSnapshotCalledRef = React.useRef(false);
   useEffect(() => {
