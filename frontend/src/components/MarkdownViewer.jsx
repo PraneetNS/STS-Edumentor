@@ -4,7 +4,13 @@ import { sanitizeAssistantText } from '../utils/sanitizeAssistantText';
 import { wrapTextByWordCount } from '../utils/formatMessageText';
 import { stripVisualBlocks } from '../utils/visualBlockExtractor';
 
-// Simple custom markdown renderer for rendering markdown content nicely
+/**
+ * Simple custom markdown parser for rendering inline markdown text safely.
+ * Detects bold tags, inline code blocks, and markdown links.
+ * 
+ * @param {string} text - The raw inline text to parse.
+ * @returns {React.ReactNode[]} Array of parsed React elements or text chunks.
+ */
 export function parseInlineMarkdown(text) {
   if (!text) return '';
   const parts = [];
