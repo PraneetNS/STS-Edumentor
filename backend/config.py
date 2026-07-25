@@ -283,7 +283,7 @@ class Config:
     GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")  # 'production' enables secure cookies
     
-    # SMTP settings for email verification
+    # SMTP settings for email verification and dispatching student performance reports
     SMTP_HOST: str = os.getenv("SMTP_HOST", "localhost")
     SMTP_PORT: int = int(os.getenv("SMTP_PORT", "1025")) # Default to local / maildev testing port
     SMTP_USER: str = os.getenv("SMTP_USER", "")
