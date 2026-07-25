@@ -1,6 +1,6 @@
 # Contributing to EduMentor Voice
 
-Thank you for your interest in contributing! This document explains the workflow, standards, and conventions used in this project.
+Thank you for your interest in contributing! This document explains the workflow, standards, and conventions used in this project. All contributors must follow these instructions to maintain codebase health.
 
 ---
 
