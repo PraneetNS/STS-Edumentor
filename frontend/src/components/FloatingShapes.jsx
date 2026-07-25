@@ -1,5 +1,12 @@
 import React from 'react';
 
+/**
+ * Renders decorative background blobs/shapes with smooth floating keyframe animations.
+ * Visual properties (blur, colors, delay) are custom tailored based on the active page context.
+ * 
+ * @param {Object} props
+ * @param {string} props.page - Current page view key ('landing' | 'login' | 'chat' | 'profile')
+ */
 export function FloatingShapes({ page }) {
   // Soft, modern color palette matching design tokens
   const blobs = {
