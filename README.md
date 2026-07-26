@@ -316,6 +316,8 @@ This launches the React dashboard client.
 | `MEMORY_MAX_TURNS` | `10` | Size of the active history window. |
 | `MEMORY_BACKEND` | `memory` | Storage backend for conversation history (`memory`, `sqlite`, `redis`). |
 | `POSTGRES_ENABLED` | `true` | Connects to PostgreSQL database for logging. |
+| `VOICE_RATE_LIMIT_PER_MINUTE` | `12` | Voice request rate limit per minute. |
+
 
 
 ### Frontend Settings (`frontend/.env`)
