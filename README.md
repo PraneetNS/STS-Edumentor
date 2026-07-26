@@ -317,6 +317,8 @@ This launches the React dashboard client.
 | `MEMORY_BACKEND` | `memory` | Storage backend for conversation history (`memory`, `sqlite`, `redis`). |
 | `POSTGRES_ENABLED` | `true` | Connects to PostgreSQL database for logging. |
 | `VOICE_RATE_LIMIT_PER_MINUTE` | `12` | Voice request rate limit per minute. |
+| `MAX_CONNECTIONS_PER_IP` | `3` | Maximum parallel WebSocket connections per IP. |
+
 
 
 
