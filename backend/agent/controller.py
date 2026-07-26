@@ -939,6 +939,12 @@ class AgentController:
         """Clear per-turn state on disconnect or reset."""
         self._turn_state.pop(session_id, None)
 
+    def remove_session(self, session_id: str) -> None:
+        """Remove session data to prevent memory leak."""
+        self._turn_state.pop(session_id, None)
+        self._session_names.pop(session_id, None)
+
+
     # ─────────────────────────────────────────────────────────────────────────
     # Internal: safety refusal stream
     # ─────────────────────────────────────────────────────────────────────────
