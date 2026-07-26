@@ -1181,10 +1181,17 @@ async def voice_endpoint(websocket: WebSocket):
             except Exception as e:
                 logger.warning("Failed to save disconnect interrupt state: %s", e)
 
+        # Clean up session states to prevent memory leaks (Finding #2)
+        if agent_controller:
+            agent_controller.remove_session(session_id)
+        if memory_manager:
+            memory_manager.clear_session(session_id)
+
         if pipeline_task and not pipeline_task.done():
             pipeline_task.cancel()
         if live_transcribe_task and not live_transcribe_task.done():
             live_transcribe_task.cancel()
+
 
 
 async def _run_pipeline(
