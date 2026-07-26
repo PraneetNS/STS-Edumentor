@@ -1860,6 +1860,10 @@ async def _stream_llm_and_tts(
         # Wait until all subtasks complete
         await asyncio.gather(reader_task, worker_task, sender_task)
         filler_task.cancel()
+        try:
+            await filler_task
+        except asyncio.CancelledError:
+            pass
     except asyncio.CancelledError:
         logger.info("LLM/TTS streaming gathering cancelled. Cancelling subtasks.")
         reader_task.cancel()
