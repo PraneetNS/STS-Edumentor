@@ -94,7 +94,8 @@ EduMentor Team"""
     logger.info("Connecting to SMTP server at %s:%d...", host, port)
     
     # Send verification link directly to console for easy development/testing bypass
-    print(f"\n[DEVELOPER BYPASS] Verification link for {email}:\n{verify_link}\n")
+    logger.info("[DEVELOPER BYPASS] Verification link for %s: %s", email, verify_link)
+
 
     # Only send actual email if SMTP_HOST is not 'localhost' or we have custom configuration
     if not (host == "localhost" and port == 1025 and not user):
