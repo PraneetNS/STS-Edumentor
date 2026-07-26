@@ -923,8 +923,10 @@ class DatabaseManager:
             async with self.pool.acquire() as conn:
                 life_row = await conn.fetchrow(query_lifetime, user_id)
                 lifetime_sessions = life_row[0] if life_row else 0
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to fetch lifetime sessions from database (using fallback 0): %s", exc)
             lifetime_sessions = 0
+
 
         return {
             "readiness": {
