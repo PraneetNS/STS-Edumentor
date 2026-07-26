@@ -1189,8 +1189,17 @@ async def voice_endpoint(websocket: WebSocket):
 
         if pipeline_task and not pipeline_task.done():
             pipeline_task.cancel()
+            try:
+                await pipeline_task
+            except asyncio.CancelledError:
+                pass
         if live_transcribe_task and not live_transcribe_task.done():
             live_transcribe_task.cancel()
+            try:
+                await live_transcribe_task
+            except asyncio.CancelledError:
+                pass
+
 
 
 
