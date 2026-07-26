@@ -318,6 +318,8 @@ This launches the React dashboard client.
 | `POSTGRES_ENABLED` | `true` | Connects to PostgreSQL database for logging. |
 | `VOICE_RATE_LIMIT_PER_MINUTE` | `12` | Voice request rate limit per minute. |
 | `MAX_CONNECTIONS_PER_IP` | `3` | Maximum parallel WebSocket connections per IP. |
+| `RATE_LIMIT_BYPASS_TOKEN` | `""` | Bypass token for developer local testing. |
+
 
 
 
