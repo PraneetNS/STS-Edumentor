@@ -94,3 +94,9 @@ class CelebrationComposer:
 
         return CelebrationResult(phrase=chosen_phrase, speed_multiplier=speed_multiplier)
 
+    def remove_session(self, session_id: str) -> None:
+        """Remove session data to prevent memory leak."""
+        self.last_celebration_time.pop(session_id, None)
+        self.recent_phrases.pop(session_id, None)
+
+
