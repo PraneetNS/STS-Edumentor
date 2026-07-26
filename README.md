@@ -314,7 +314,9 @@ This launches the React dashboard client.
 | `AGENT_INTENT_CLASSIFY` | `true` | Classifies query intent. Turn off to save ~1s. |
 | `AGENT_SAFETY_ENABLED` | `true` | Evaluates inputs and outputs for PII, cheat codes, and policy breaches. |
 | `MEMORY_MAX_TURNS` | `10` | Size of the active history window. |
+| `MEMORY_BACKEND` | `memory` | Storage backend for conversation history (`memory`, `sqlite`, `redis`). |
 | `POSTGRES_ENABLED` | `true` | Connects to PostgreSQL database for logging. |
+
 
 ### Frontend Settings (`frontend/.env`)
 
