@@ -86,19 +86,27 @@ export function AnalyticsOverview({ onBack }) {
   // ── Loading / Error states ────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="relative min-h-screen w-full px-4 md:px-8 py-6 bg-[var(--bg-primary)] select-none flex flex-col items-center justify-center gap-4 text-[var(--text-muted)]">
-        <RefreshCw size={24} className="animate-spin text-indigo-400" />
-        <p className="font-sans text-xs uppercase tracking-widest">Loading analytics data...</p>
+      <div className="w-full max-w-4xl mx-auto relative z-10 text-[var(--text-primary)]">
+        <div className="flex items-center justify-between mb-8">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 font-sans font-semibold text-xs text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border-default)]/60 px-4 py-2.5 rounded-xl hover:bg-[var(--bg-tertiary)] transition-all cursor-pointer shadow-sm"
+          >
+            <ChevronLeft size={16} /> Back to Mentor
+          </button>
+        </div>
+        <div className="flex flex-col items-center justify-center py-20 gap-4 text-[var(--text-muted)]">
+          <RefreshCw size={24} className="animate-spin text-indigo-400" />
+          <p className="font-sans text-xs uppercase tracking-widest">Loading analytics data...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="relative min-h-screen w-full px-4 md:px-8 py-6 bg-[var(--bg-primary)] select-none">
+    <div className="w-full max-w-4xl mx-auto relative z-10 text-[var(--text-primary)]">
       {/* Background shape animation */}
       <FloatingShapes page="profile" />
-
-      <div className="w-full max-w-4xl mx-auto relative z-10 text-[var(--text-primary)]">
 
         {/* HEADER CONTROLS */}
         <div className="flex items-center justify-between mb-8">
@@ -301,7 +309,6 @@ export function AnalyticsOverview({ onBack }) {
         </div>
 
       </div>
-    </div>
   );
 }
 
