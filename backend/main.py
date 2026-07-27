@@ -633,7 +633,7 @@ async def get_session_heatmap(
         COUNT(*)                            AS turns
     FROM conversation_logs
     WHERE user_id = $1
-      AND created_at >= CURRENT_DATE - $2
+      AND created_at >= CURRENT_DATE - ($2 * INTERVAL '1 day')
     GROUP BY activity_date
     ORDER BY activity_date ASC;
     """
