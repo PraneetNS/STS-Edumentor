@@ -19,6 +19,10 @@ import json
 import logging
 import logging.handlers
 import os
+os.environ["BLIS_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
 import sys
 from contextlib import asynccontextmanager
 from typing import Optional
