@@ -988,6 +988,16 @@ class DatabaseManager:
             logger.error("Failed to query profile stats rows: %s", e)
             rows = []
 
+        if not rows:
+            await self.backfill_session_stats_from_logs(user_id)
+            try:
+                async with self.pool.acquire() as conn:
+                    db_rows = await conn.fetch(query_all, user_id)
+                    rows = [dict(r) for r in db_rows]
+            except Exception as e:
+                logger.error("Failed to query profile stats rows after backfill: %s", e)
+                rows = []
+
         today = datetime.date.today()
 
         # Split rows into intervals
