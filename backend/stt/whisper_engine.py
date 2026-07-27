@@ -205,6 +205,19 @@ class WhisperEngine:
         if not t:
             return True
 
+        # Check for repetition of single words (e.g. "Hello, Hello, Hello...") or short phrase loops
+        words = re.findall(r"\b\w+\b", t.lower())
+        if len(words) >= 5:
+            unique_words = set(words)
+            # If there are very few unique words in a longer sequence, it's a repetition loop
+            if len(unique_words) <= 2:
+                return True
+            # Check unique ratio for longer sequences (e.g., phrase repetitions)
+            if len(words) >= 8:
+                unique_ratio = len(unique_words) / len(words)
+                if unique_ratio < 0.35:
+                    return True
+
         # Pure punctuation / whitespace only (dots, dashes, underscores, spaces)
         if re.fullmatch(r"[\s.·•\-_—–~*#]+", t):
             return True
