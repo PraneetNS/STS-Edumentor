@@ -736,6 +736,84 @@ class DatabaseManager:
         except Exception as e:
             logger.error("Failed to update session stats for user_id=%s: %s", user_id, e)
 
+    async def backfill_session_stats_from_logs(self, user_id: uuid.UUID) -> None:
+        """Scan conversation_logs, compute daily session stats, and insert them into session_stats."""
+        if not self.pool:
+            return
+
+        import json
+        import datetime
+
+        query_logs = """
+        SELECT created_at, query_text, response_text, intent_category, tokens_in, tokens_out, input_flagged, output_flagged
+        FROM conversation_logs
+        WHERE user_id = $1
+        ORDER BY created_at ASC;
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                db_rows = await conn.fetch(query_logs, user_id)
+                if not db_rows:
+                    return
+
+                # Ensure user exists in users table to prevent FK constraint violations
+                ensure_user_query = """
+                INSERT INTO users (user_id, email, display_name, provider)
+                VALUES ($1, $2, $3, 'guest')
+                ON CONFLICT (user_id) DO NOTHING;
+                """
+                await conn.execute(
+                    ensure_user_query,
+                    user_id,
+                    f"guest_{user_id}@edumentor.local",
+                    f"Guest_{str(user_id)[:8]}"
+                )
+
+                # Group rows by date (YYYY-MM-DD)
+                daily_groups = {}
+                for row in db_rows:
+                    dt = row["created_at"]
+                    day = dt.date() if isinstance(dt, (datetime.datetime, datetime.date)) else datetime.date.today()
+                    if day not in daily_groups:
+                        daily_groups[day] = []
+                    daily_groups[day].append(row)
+
+                for day, turns in daily_groups.items():
+                    total_turns = len(turns)
+                    total_tokens_in = sum((t["tokens_in"] or 0) for t in turns)
+                    total_tokens_out = sum((t["tokens_out"] or 0) for t in turns)
+                    
+                    intent_dist = {}
+                    disciplines_hit = set()
+                    self_initiated_questions = 0
+
+                    for turn in turns:
+                        query_text = turn["query_text"] or ""
+                        intent = turn["intent_category"]
+                        input_flagged = turn["input_flagged"] or False
+                        output_flagged = turn["output_flagged"] or False
+                        
+                        words_count = len(query_text.split())
+                        is_self_initiated = True
+                        if words_count < 8 and "?" not in query_text:
+                            is_self_initiated = False
+
+                        if is_self_initiated:
+                            self_initiated_questions += 1
+
+                        if intent:
+                            intent_dist[intent] = intent_dist.get(intent, 0) + 1
+
+                        if words_count > 8:
+                            intent_dist["long_questions"] = intent_dist.get("long_questions", 0) + 1
+
+                        if not (input_flagged or output_flagged):
+                            intent_dist["useful_turns"] = intent_dist.get("useful_turns", 0) + 1
+
+        except Exception as e:
+            logger.error("Failed to backfill session stats for user_id=%s: %s", user_id, e)
+
     async def get_profile_stats(self, user_id: uuid.UUID) -> dict:
         """Compute the six required profile metrics for a given user."""
         if not self.pool:
