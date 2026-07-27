@@ -43,14 +43,14 @@ export function StatCard({ label, value, desc, icon: Icon, colorClass = 'bg-whit
     return () => clearInterval(timer);
   }, [value, animate]);
 
-  const containerClasses = `border border-[var(--border-default)]/60 p-6 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.03)] text-[var(--text-primary)] flex flex-col justify-between relative overflow-hidden cursor-default bg-[var(--bg-primary)]/80 backdrop-blur-md ${colorClass} ${className}`.trim();
+  const containerClasses = `border border-[var(--border-default)]/60 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.03)] text-[var(--text-primary)] flex flex-col justify-between relative overflow-hidden cursor-default bg-[var(--bg-primary)]/80 backdrop-blur-md ${colorClass} ${className}`.trim();
 
   return (
     <motion.div
       className={containerClasses}
       whileHover={{ y: -3, scale: 1.01, boxShadow: '0 12px 40px rgb(0 0 0 / 0.05)' }}
       transition={{ type: 'spring', stiffness: 350, damping: 15 }}
-      style={{ minWidth: 0 }}
+      style={{ minWidth: 0, padding: '24px' }}
     >
       <div className="flex justify-between items-start gap-4">
         <span className="font-sans text-[10.5px] uppercase font-bold text-[var(--text-muted)] tracking-wider truncate">{label}</span>
