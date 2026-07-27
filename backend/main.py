@@ -115,13 +115,14 @@ interrupt_manager: Optional[InterruptManager]     = None
 db_manager:        Optional[DatabaseManager]      = None
 profile_manager:   Optional[StudentProfileManager] = None
 domain_corrector:  Optional[DomainCorrector]      = None
+memory_manager:    Optional[MemoryManager]         = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load all ML models and agent components once at startup; release on shutdown."""
     global whisper_engine, llm_engine, kokoro_engine, silero_vad_model
-    global agent_controller, interrupt_manager, db_manager, profile_manager, domain_corrector
+    global agent_controller, interrupt_manager, db_manager, profile_manager, domain_corrector, memory_manager
 
     logger.info("=" * 60)
     logger.info("  EduMentor Voice -- Starting up")
