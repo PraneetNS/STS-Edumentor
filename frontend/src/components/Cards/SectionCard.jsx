@@ -5,7 +5,10 @@ export function SectionCard({ title, subtitle, headerAction, headerBg = 'bg-[var
   return (
     <div className={`border border-[var(--border-default)]/60 bg-[var(--bg-primary)]/80 backdrop-blur-md rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.03)] overflow-hidden flex flex-col transition-all duration-300 hover:shadow-[0_12px_40px_rgb(0,0,0,0.05)] ${className}`}>
       {(title || subtitle || headerAction) && (
-        <div className={`px-6 py-4.5 border-b border-[var(--border-default)]/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 ${headerBg}`}>
+        <div 
+          className={`border-b border-[var(--border-default)]/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 ${headerBg}`}
+          style={{ padding: '18px 24px' }}
+        >
           <div>
             {title && (
               <h3 className="font-sans font-bold text-sm text-[var(--text-primary)] tracking-wide leading-tight">
@@ -21,7 +24,7 @@ export function SectionCard({ title, subtitle, headerAction, headerBg = 'bg-[var
           {headerAction && <div className="flex-shrink-0">{headerAction}</div>}
         </div>
       )}
-      <div className="p-6 flex-1 flex flex-col text-[var(--text-primary)]">
+      <div className="flex-1 flex flex-col text-[var(--text-primary)]" style={{ padding: '24px' }}>
         {children}
       </div>
     </div>
