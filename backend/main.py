@@ -1828,7 +1828,7 @@ async def _stream_llm_and_tts(
     _FILLER_DELAY_SECONDS = 0.6  # fires if LLM hasn't started streaming within 600ms; keeps UX alive during TTFT
 
     _FILLER_PHRASES = {
-        "default": ["Okay, let's see.", "Alright, one moment.", "Hmm, let's think about this."],
+        "default": ["Okay, let's see.", "Alright, one moment."],
         "frustrated_or_confused": ["No worries, let's take a look.", "Okay, let's break this down."],
         "confident": ["Nice, let's see.", "Good, let's dig in."],
     }
