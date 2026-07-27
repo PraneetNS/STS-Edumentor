@@ -29,24 +29,7 @@ export function MentorCharacter({ state = 'idle', analyserNode, onSnapshot }) {
           display: flex;
           align-items: center;
           justify-content: center;
-          background: var(--bg-secondary);
-          border: 1px solid var(--border-default);
-          border-radius: var(--radius-2xl);
-          overflow: hidden;
           position: relative;
-          box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.4);
-        }
-        
-        .mascot-container::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background-image: 
-            linear-gradient(to right, rgba(46, 49, 61, 0.15) 1px, transparent 1px),
-            linear-gradient(to bottom, rgba(46, 49, 61, 0.15) 1px, transparent 1px);
-          background-size: 20px 20px;
-          pointer-events: none;
-          z-index: 1;
         }
         
         .mascot-image-wrapper {
