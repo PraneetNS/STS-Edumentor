@@ -1119,7 +1119,7 @@ class DatabaseManager:
         efficiency_last = float(useful_turns_last) / total_tokens_last if total_tokens_last > 0 else 0.0
 
         # Fetch lifetime count
-        query_lifetime = "SELECT COUNT(*), SUM(total_turns) FROM session_stats WHERE user_id = $1;"
+        query_lifetime = "SELECT COUNT(DISTINCT session_id) FROM conversation_logs WHERE user_id = $1;"
         try:
             async with self.pool.acquire() as conn:
                 life_row = await conn.fetchrow(query_lifetime, user_id)
