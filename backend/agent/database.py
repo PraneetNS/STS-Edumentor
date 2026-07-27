@@ -900,6 +900,13 @@ class DatabaseManager:
         import json
         import datetime
 
+        is_guest = False
+        try:
+            async with self.pool.acquire() as conn:
+                is_guest = await conn.fetchval("SELECT EXISTS(SELECT 1 FROM users WHERE user_id = $1 AND provider = 'guest');", user_id)
+        except Exception as e:
+            logger.error("Failed to check if user is guest: %s", e)
+
         # Helper function to compute readiness score components
         def calculate_readiness(rows_list):
             if not rows_list:
