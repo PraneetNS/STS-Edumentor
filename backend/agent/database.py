@@ -907,6 +907,34 @@ class DatabaseManager:
         except Exception as e:
             logger.error("Failed to check if user is guest: %s", e)
 
+        if not is_guest:
+            try:
+                async with self.pool.acquire() as conn:
+                    # Find all guest users who have logs
+                    query_guests = """
+                    SELECT DISTINCT u.user_id 
+                    FROM users u 
+                    JOIN conversation_logs c ON u.user_id = c.user_id 
+                    WHERE u.provider = 'guest' AND u.user_id != $1;
+                    """
+                    guest_rows = await conn.fetch(query_guests, user_id)
+                    guest_uids = [r["user_id"] for r in guest_rows]
+                    
+                    if guest_uids:
+                        logger.info("Migrating logs from guest users %s to registered user %s", guest_uids, user_id)
+                        for guest_uid in guest_uids:
+                            # Migrate logs & speech corrections
+                            await conn.execute("UPDATE conversation_logs SET user_id = $1 WHERE user_id = $2;", user_id, guest_uid)
+                            await conn.execute("UPDATE speech_corrections SET user_id = $1 WHERE user_id = $2;", user_id, guest_uid)
+                            # Delete guest session stats & guest user records
+                            await conn.execute("DELETE FROM session_stats WHERE user_id = $1;", guest_uid)
+                            await conn.execute("DELETE FROM users WHERE user_id = $1;", guest_uid)
+                            
+                        # Force a rebuild of the registered user's daily statistics since they got new logs
+                        await conn.execute("DELETE FROM session_stats WHERE user_id = $1;", user_id)
+            except Exception as e:
+                logger.error("Failed to migrate guest logs to user %s: %s", user_id, e)
+
         # Helper function to compute readiness score components
         def calculate_readiness(rows_list):
             if not rows_list:
