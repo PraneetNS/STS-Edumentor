@@ -743,6 +743,7 @@ class DatabaseManager:
 
         import json
         import datetime
+        from agent.student_profile import _detect_topics, TOPIC_TO_DISCIPLINE
 
         query_logs = """
         SELECT created_at, query_text, response_text, intent_category, tokens_in, tokens_out, input_flagged, output_flagged
@@ -810,6 +811,83 @@ class DatabaseManager:
 
                         if not (input_flagged or output_flagged):
                             intent_dist["useful_turns"] = intent_dist.get("useful_turns", 0) + 1
+
+                        # Topic detection
+                        detected = _detect_topics(query_text)
+                        for topic in detected:
+                            disp = TOPIC_TO_DISCIPLINE.get(topic, "cse")
+                            if disp == "ece":
+                                disp = "eee"
+                            disciplines_hit.add(disp)
+
+                        # Concept tracking
+                        active_topic = detected[0] if detected else "Computer Science"
+                        prev_concept = intent_dist.get("current_concept")
+                        if prev_concept == active_topic:
+                            intent_dist["current_concept_turns"] = intent_dist.get("current_concept_turns", 0) + 1
+                        else:
+                            if prev_concept:
+                                intent_dist["resolved_concepts_count"] = intent_dist.get("resolved_concepts_count", 0) + 1
+                                intent_dist["resolved_concepts_total_turns"] = intent_dist.get("resolved_concepts_total_turns", 0) + intent_dist.get("current_concept_turns", 1)
+                                
+                                prev_disp = TOPIC_TO_DISCIPLINE.get(prev_concept, "cse")
+                                if prev_disp == "ece":
+                                    prev_disp = "eee"
+                                intent_dist[f"{prev_disp}_resolved_count"] = intent_dist.get(f"{prev_disp}_resolved_count", 0) + 1
+                                intent_dist[f"{prev_disp}_resolved_turns"] = intent_dist.get(f"{prev_disp}_resolved_turns", 0) + intent_dist.get("current_concept_turns", 1)
+                            
+                            intent_dist["current_concept"] = active_topic
+                            intent_dist["current_concept_turns"] = 1
+
+                    resolved_count = intent_dist.get("resolved_concepts_count", 0)
+                    resolved_turns = intent_dist.get("resolved_concepts_total_turns", 0)
+                    if resolved_count > 0:
+                        avg_turns = float(resolved_turns) / resolved_count
+                    else:
+                        avg_turns = float(intent_dist.get("current_concept_turns", 1))
+
+                    followup_rate = float(total_turns - self_initiated_questions) / total_turns if total_turns > 0 else 0.0
+                    
+                    # Convert disciplines_hit to a list
+                    disciplines_list = list(disciplines_hit) if disciplines_hit else ["cse"]
+
+                    upsert_query = """
+                    INSERT INTO session_stats (
+                        user_id,
+                        session_date,
+                        total_turns,
+                        total_tokens_in,
+                        total_tokens_out,
+                        disciplines_hit,
+                        intent_dist,
+                        avg_turns_per_concept,
+                        self_initiated_questions,
+                        followup_rate
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                    ON CONFLICT (user_id, session_date) DO UPDATE
+                    SET total_turns = EXCLUDED.total_turns,
+                        total_tokens_in = EXCLUDED.total_tokens_in,
+                        total_tokens_out = EXCLUDED.total_tokens_out,
+                        disciplines_hit = EXCLUDED.disciplines_hit,
+                        intent_dist = EXCLUDED.intent_dist,
+                        avg_turns_per_concept = EXCLUDED.avg_turns_per_concept,
+                        self_initiated_questions = EXCLUDED.self_initiated_questions,
+                        followup_rate = EXCLUDED.followup_rate;
+                    """
+
+                    await conn.execute(
+                        upsert_query,
+                        user_id,
+                        day,
+                        total_turns,
+                        total_tokens_in,
+                        total_tokens_out,
+                        disciplines_list,
+                        json.dumps(intent_dist),
+                        avg_turns,
+                        self_initiated_questions,
+                        followup_rate
+                    )
 
         except Exception as e:
             logger.error("Failed to backfill session stats for user_id=%s: %s", user_id, e)
