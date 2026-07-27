@@ -131,6 +131,17 @@ class AccessControl:
             )
             return False
 
+        # If the claimed student ID is exactly the same as the session ID,
+        # it is a guest user accessing their own guest session.
+        # This is safe to allow and prevents lockout if the guest's logs
+        # have been migrated to a registered account.
+        if session_id == claimed_student_id:
+            logger.debug(
+                "[ACCESS_CONTROL] Guest session matching claimed ID allowed. "
+                "session_id=%r student=%r", session_id, claimed_student_id
+            )
+            return True
+
         # ── Path A: PostgreSQL is available ───────────────────────────────────
         if db_pool is not None and hasattr(db_pool, "acquire"):
             return await AccessControl._verify_via_postgres(
