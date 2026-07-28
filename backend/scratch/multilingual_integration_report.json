@@ -1,0 +1,97 @@
+[
+  {
+    "case": "English",
+    "input_text": "What is recursion in programming?",
+    "timings": {
+      "stt": 0.762,
+      "router": 0.0,
+      "llm": 0.0,
+      "translate_out": 1.545,
+      "tts": 45.767,
+      "total": 48.074
+    },
+    "transcript": "What is Recursion in Programming?",
+    "whisper_lang": "en",
+    "route_lang": "hindi",
+    "llm_english_response": "Recursion is when a function calls itself to solve a smaller version of the same problem, with a base case to stop the recursion.",
+    "translated_from_en": "पुनरावृत्ति वह है जब एक फ़ंक्शन एक ही समस्या के छोटे संस्करण को हल करने के लिए खुद को बुलाता है, पुनरावृत्ति को रोकने के लिए एक आधार मामले के साथ।",
+    "tts_engine": "mms",
+    "tts_wav_size_bytes": 381484
+  },
+  {
+    "case": "Hindi",
+    "input_text": "रिकर्सन क्या होता है और इसका उपयोग कहाँ किया जाता है?",
+    "timings": {
+      "stt": 0.542,
+      "router": 0.0,
+      "llm": 0.0,
+      "translate_out": 1.588,
+      "tts": 3.551,
+      "total": 5.681
+    },
+    "transcript": "Rika Sen Kia Hoota Hai War Iska Wupiuk Ka Hakee Ajatahi",
+    "whisper_lang": "en",
+    "route_lang": "hindi",
+    "llm_english_response": "Recursion is when a function calls itself to solve a smaller version of the same problem, with a base case to stop the recursion.",
+    "translated_from_en": "पुनरावृत्ति वह है जब एक फ़ंक्शन एक ही समस्या के छोटे संस्करण को हल करने के लिए खुद को बुलाता है, पुनरावृत्ति को रोकने के लिए एक आधार मामले के साथ।",
+    "tts_engine": "mms",
+    "tts_wav_size_bytes": 377900
+  },
+  {
+    "case": "Kannada",
+    "input_text": "ರಿಕರ್ಷನ್ ಎಂದರೆ ಏನು? ಒಂದು ಉದಾಹರಣೆ ಕೊಡಿ.",
+    "timings": {
+      "stt": 0.399,
+      "router": 0.0,
+      "llm": 0.0,
+      "translate_out": 1.554,
+      "tts": 3.469,
+      "total": 5.422
+    },
+    "transcript": "Repulsion yendare yenu vandhu vudah hara naykodi",
+    "whisper_lang": "en",
+    "route_lang": "hindi",
+    "llm_english_response": "Recursion is when a function calls itself to solve a smaller version of the same problem, with a base case to stop the recursion.",
+    "translated_from_en": "पुनरावृत्ति वह है जब एक फ़ंक्शन एक ही समस्या के छोटे संस्करण को हल करने के लिए खुद को बुलाता है, पुनरावृत्ति को रोकने के लिए एक आधार मामले के साथ।",
+    "tts_engine": "mms",
+    "tts_wav_size_bytes": 405036
+  },
+  {
+    "case": "Marathi",
+    "input_text": "रिकर्सन म्हणजे काय आणि ते कसे काम करते?",
+    "timings": {
+      "stt": 0.494,
+      "router": 0.0,
+      "llm": 0.0,
+      "translate_out": 1.908,
+      "tts": 3.343,
+      "total": 5.745
+    },
+    "transcript": "I am not going to do this.",
+    "whisper_lang": "en",
+    "route_lang": "hindi",
+    "llm_english_response": "Recursion is when a function calls itself to solve a smaller version of the same problem, with a base case to stop the recursion.",
+    "translated_from_en": "पुनरावृत्ति वह है जब एक फ़ंक्शन एक ही समस्या के छोटे संस्करण को हल करने के लिए खुद को बुलाता है, पुनरावृत्ति को रोकने के लिए एक आधार मामले के साथ।",
+    "tts_engine": "mms",
+    "tts_wav_size_bytes": 378412
+  },
+  {
+    "case": "Hinglish (code-mixed)",
+    "input_text": "Recursion kya hai aur Python mein kaise use karte hain?",
+    "timings": {
+      "stt": 0.43,
+      "router": 0.0,
+      "llm": 0.0,
+      "translate_out": 1.498,
+      "tts": 3.174,
+      "total": 5.102
+    },
+    "transcript": "Recursion Kiahe or Python Mi Ke Se Uskar Thea",
+    "whisper_lang": "en",
+    "route_lang": "hindi",
+    "llm_english_response": "Recursion is when a function calls itself to solve a smaller version of the same problem, with a base case to stop the recursion.",
+    "translated_from_en": "पुनरावृत्ति वह है जब एक फ़ंक्शन एक ही समस्या के छोटे संस्करण को हल करने के लिए खुद को बुलाता है, पुनरावृत्ति को रोकने के लिए एक आधार मामले के साथ।",
+    "tts_engine": "mms",
+    "tts_wav_size_bytes": 372268
+  }
+]
