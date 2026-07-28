@@ -117,6 +117,9 @@ profile_manager:   Optional[StudentProfileManager] = None
 domain_corrector:  Optional[DomainCorrector]      = None
 memory_manager:    Optional[MemoryManager]         = None
 
+# Multilingual pipeline — only active when MULTILINGUAL_ENABLED=true
+multilingual_pipeline = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -218,6 +221,25 @@ async def lifespan(app: FastAPI):
         logger.info("[OK] Agent Layer ready.")
     else:
         logger.info("Agent Layer disabled (AGENT_ENABLED=false). Using direct LLM calls.")
+
+    # ── Multilingual Pipeline (optional) ─────────────────────────────────────
+    global multilingual_pipeline
+    if Config.MULTILINGUAL_ENABLED:
+        logger.info("MULTILINGUAL_ENABLED=true — initializing multilingual pipeline ...")
+        try:
+            from speech.multilingual_pipeline import get_multilingual_pipeline
+            multilingual_pipeline = get_multilingual_pipeline(
+                whisper_engine=whisper_engine,
+                agent_controller=agent_controller,
+                llm_engine=llm_engine,
+            )
+            logger.info("[OK] Multilingual pipeline ready.")
+        except Exception as ml_exc:
+            logger.error("Failed to initialize multilingual pipeline: %s", ml_exc)
+            logger.warning("Falling back to English-only mode.")
+            multilingual_pipeline = None
+    else:
+        logger.info("Multilingual pipeline disabled (MULTILINGUAL_ENABLED=false).")
 
     logger.info("=" * 60)
     logger.info("  All engines ready -- accepting connections")
@@ -1343,6 +1365,61 @@ async def _run_pipeline(
     if agent_controller:
         user_uuid = agent_controller._to_uuid(user_id)
         session_uuid = agent_controller._to_uuid(session_id)
+
+    # ── MULTILINGUAL BRANCH ───────────────────────────────────────────────────
+    # When MULTILINGUAL_ENABLED=true and the multilingual pipeline is ready,
+    # delegate the entire turn to it. The English-only path below is untouched.
+    if multilingual_pipeline is not None and not pre_transcribed_text:
+        audio_array_ml = int16_bytes_to_float32(raw_pcm)
+        ml_result = await multilingual_pipeline.run_pipeline(
+            audio_array_ml,
+            session_id=session_id,
+            user_id=user_id,
+            voice_style=voice_style,
+            ip_address=client_ip,
+        )
+
+        route_lang = ml_result.get("route_lang") or "english"
+        stt_text = ml_result.get("stt_transcript") or ""
+
+        # Send transcript event so frontend shows what was heard
+        if stt_text:
+            confirmed_words = [{"word": w, "status": "confirmed"} for w in stt_text.split()]
+            await websocket.send_json({
+                "type": "transcript",
+                "text": stt_text,
+                "words": confirmed_words,
+                "route_lang": route_lang,
+            })
+
+        tts_engine = ml_result.get("tts_engine", "kokoro")
+        if tts_engine == "mms":
+            # Send MMS-TTS WAV bytes directly
+            wav_bytes = ml_result.get("tts_wav_bytes") or b""
+            if wav_bytes:
+                await set_state(ConversationState.THINKING)
+                await websocket.send_bytes(wav_bytes)
+                latency_metrics["first_audio"] = round(time.time() - start_time, 2)
+        else:
+            # English response — stream through Kokoro
+            llm_english = ml_result.get("llm_english_response") or ""
+            if llm_english:
+                await set_state(ConversationState.THINKING)
+                async def _ml_english_stream():
+                    yield {"raw": llm_english, "planned": llm_english}
+                await _stream_llm_and_tts(
+                    websocket, _ml_english_stream(), loop, set_state,
+                    speed, voice, latency_metrics, start_time, student_id=user_id
+                )
+
+        await set_state(ConversationState.IDLE)
+        latency_metrics["complete"] = round(time.time() - start_time, 2)
+        logger.info(
+            "[MULTILINGUAL] Turn complete | route=%s | timings=%s",
+            route_lang, ml_result.get("timings", {})
+        )
+        await websocket.send_json({"type": "assistant_finished"})
+        return
 
     # ── 1. STT ───────────────────────────────────────────────────────────────
     audio_array = int16_bytes_to_float32(raw_pcm)
