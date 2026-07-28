@@ -1,0 +1,168 @@
+{
+  "Indic_to_English": {
+    "Hindi": [
+      {
+        "source": "recursion kya hota hai aur iska ek simple python example do",
+        "translation": "recursion kya hota hai aur iska ek simple python example do",
+        "latency": 0.5545353889465332
+      },
+      {
+        "source": "programming mein database kya hota hai?",
+        "translation": "What is the purpose of programming my database?",
+        "latency": 0.40930628776550293
+      },
+      {
+        "source": "binary search and linear search mein kya difference hai?",
+        "translation": "binary search and linear search.",
+        "latency": 0.34732604026794434
+      },
+      {
+        "source": "object oriented programming ke pillars kya hain?",
+        "translation": "What are the pillars of object-oriented programming?",
+        "latency": 0.5490655899047852
+      },
+      {
+        "source": "linked list array se better kyun hai?",
+        "translation": "linked list array se better kyun hai?",
+        "latency": 0.465151309967041
+      }
+    ],
+    "Kannada": [
+      {
+        "source": "ಪುನರಾವರ್ತನೆ ಎಂದರೇನು ಮತ್ತು ಒಂದು ಸರಳ ಉದಾಹರಣೆ ಕೊಡಿ",
+        "translation": "What is repetition and give a simple example?",
+        "latency": 0.4235403537750244
+      },
+      {
+        "source": "ಪ್ರೋಗ್ರಾಮಿಂಗ್‌ನಲ್ಲಿ ಡೇಟಾಬೇಸ್ ಎಂದರೇನು?",
+        "translation": "What is a database in programming?",
+        "latency": 0.3751676082611084
+      },
+      {
+        "source": "ಬೈನರಿ ಸರ್ಚ್ ಮತ್ತು ಲೀನಿಯರ್ ಸರ್ಚ್ ನಡುವೆ ಏನು ವ್ಯತ್ಯಾಸ?",
+        "translation": "What is the difference between a binary search and a linear search?",
+        "latency": 0.5693643093109131
+      },
+      {
+        "source": "ಆಬ್ಜೆಕ್ಟ್ ಓರಿಯೆಂಟೆಡ್ ಪ್ರೋಗ್ರಾಮಿಂಗ್‌ನ ಮುಖ್ಯ ಪಿಲ್ಲರ್‌ಗಳು ಯಾವುವು?",
+        "translation": "What are the main pillars of object-oriented programming?",
+        "latency": 0.5496993064880371
+      },
+      {
+        "source": "ಲಿಂಕ್ಡ್ ಲಿಸ್ಟ್ ಅರೇಗಿಂತ ಹೇಗೆ ಉತ್ತಮ?",
+        "translation": "How is a linked list better than an array?",
+        "latency": 0.4700474739074707
+      }
+    ],
+    "Marathi": [
+      {
+        "source": "रिकर्शन म्हणजे काय आणि त्याचे एक सोपे उदाहरण द्या",
+        "translation": "Give a simple example of what recursion is.",
+        "latency": 0.43167853355407715
+      },
+      {
+        "source": "प्रोग्रामिंगमध्ये डेटाबेस म्हणजे काय?",
+        "translation": "What is a database in programming?",
+        "latency": 0.3749356269836426
+      },
+      {
+        "source": "बायनरी सर्च आणि लिनियर सर्चमध्ये काय फरक आहे?",
+        "translation": "What's the difference between a binary search and a linear search?",
+        "latency": 0.6040482521057129
+      },
+      {
+        "source": "ऑब्जेक्ट ओरिएंटेड प्रोग्रामिंगचे मुख्य पिलर्स कोणते आहेत?",
+        "translation": "What are the main pillars of object oriented programming?",
+        "latency": 0.534778356552124
+      },
+      {
+        "source": "लिंक्ड लिस्ट अरेपेक्षा कशी चांगली आहे?",
+        "translation": "How is a linked list better than an array?",
+        "latency": 0.44446849822998047
+      }
+    ]
+  },
+  "English_to_Indic": {
+    "Hindi": [
+      {
+        "source": "Recursion is a method where a function calls itself to solve a smaller instance of the same problem.",
+        "translation": "पुनरावृत्ति एक ऐसी विधि है जिसमें एक फ़ंक्शन एक ही समस्या के छोटे उदाहरण को हल करने के लिए खुद को बुलाता है।",
+        "latency": 1.0902230739593506
+      },
+      {
+        "source": "A database is an organized collection of structured data stored electronically in a computer system.",
+        "translation": "डेटाबेस कंप्यूटर सिस्टम में इलेक्ट्रॉनिक रूप से संग्रहीत संरचित डेटा का एक संगठित संग्रह है।",
+        "latency": 0.8433992862701416
+      },
+      {
+        "source": "Binary search works by repeatedly dividing the search interval in half, whereas linear search checks every element sequentially.",
+        "translation": "द्विआधारी खोज बार-बार खोज अंतराल को आधे में विभाजित करके काम करती है, जबकि रैखिक खोज क्रमशः प्रत्येक तत्व की जांच करती है।",
+        "latency": 1.2820510864257812
+      },
+      {
+        "source": "The four pillars of Object-Oriented Programming are Encapsulation, Inheritance, Polymorphism, and Abstraction.",
+        "translation": "ऑब्जेक्ट-ओरिएंटेड प्रोग्रामिंग के चार स्तंभ एन्कैप्सुलेशन, हेरिटेन्स, पॉलीमोर्फिज्म और अमूर्त हैं।",
+        "latency": 1.5210716724395752
+      },
+      {
+        "source": "A linked list is dynamic and allows fast insertions or deletions, while an array has a fixed size and is fast for random access.",
+        "translation": "एक लिंक्ड सूची गतिशील है और तेजी से सम्मिलन या हटाने की अनुमति देती है, जबकि एक सरणी का आकार निश्चित है और यादृच्छिक पहुंच के लिए तेज़ है।",
+        "latency": 1.5345053672790527
+      }
+    ],
+    "Kannada": [
+      {
+        "source": "Recursion is a method where a function calls itself to solve a smaller instance of the same problem.",
+        "translation": "ಪುನರಾವರ್ತನೆಯು ಒಂದು ಕಾರ್ಯವು ಅದೇ ಸಮಸ್ಯೆಯ ಸಣ್ಣ ನಿದರ್ಶನವನ್ನು ಪರಿಹರಿಸಲು ಸ್ವತಃ ಕರೆ ಮಾಡುವ ವಿಧಾನವಾಗಿದೆ.",
+        "latency": 1.0075538158416748
+      },
+      {
+        "source": "A database is an organized collection of structured data stored electronically in a computer system.",
+        "translation": "ಒಂದು ಡೇಟಾಬೇಸ್ ಎನ್ನುವುದು ಕಂಪ್ಯೂಟರ್ ಸಿಸ್ಟಮ್ನಲ್ಲಿ ವಿದ್ಯುನ್ಮಾನವಾಗಿ ಸಂಗ್ರಹವಾಗಿರುವ ರಚನಾತ್ಮಕ ಡೇಟಾದ ಸಂಘಟಿತ ಸಂಗ್ರಹವಾಗಿದೆ.",
+        "latency": 1.0323057174682617
+      },
+      {
+        "source": "Binary search works by repeatedly dividing the search interval in half, whereas linear search checks every element sequentially.",
+        "translation": "ಬೈನರಿ ಹುಡುಕಾಟವು ಹುಡುಕಾಟ ಮಧ್ಯಂತರವನ್ನು ಪದೇ ಪದೇ ಅರ್ಧಕ್ಕೆ ವಿಭಜಿಸುವ ಮೂಲಕ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತದೆ, ಆದರೆ ರೇಖೀಯ ಹುಡುಕಾಟವು ಪ್ರತಿಯೊಂದು ಅಂಶವನ್ನು ಕ್ರಮವಾಗಿ ಪರಿಶೀಲಿಸುತ್ತದೆ.",
+        "latency": 1.543515920639038
+      },
+      {
+        "source": "The four pillars of Object-Oriented Programming are Encapsulation, Inheritance, Polymorphism, and Abstraction.",
+        "translation": "ಆಬ್ಜೆಕ್ಟ್-ಆಧಾರಿತ ಪ್ರೋಗ್ರಾಮಿಂಗ್ನ ನಾಲ್ಕು ಸ್ತಂಭಗಳು ಎನ್ಕ್ಯಾಪ್ಸುಲೇಷನ್, ಆನುವಂಶಿಕತೆ, ಪಾಲಿಮಾರ್ಫಿಸಮ್ ಮತ್ತು ಅಬ್ಸ್ಟ್ರಾಕ್ಷನ್.",
+        "latency": 1.8192832469940186
+      },
+      {
+        "source": "A linked list is dynamic and allows fast insertions or deletions, while an array has a fixed size and is fast for random access.",
+        "translation": "ಲಿಂಕ್ ಮಾಡಿದ ಪಟ್ಟಿಯು ಕ್ರಿಯಾತ್ಮಕವಾಗಿದೆ ಮತ್ತು ತ್ವರಿತ ಸೇರ್ಪಡೆಗಳು ಅಥವಾ ಅಳತೆಗಳನ್ನು ಅನುಮತಿಸುತ್ತದೆ, ಆದರೆ ರಚನೆಯು ಸ್ಥಿರ ಗಾತ್ರವನ್ನು ಹೊಂದಿದೆ ಮತ್ತು ಯಾದೃಚ್ಛಿಕ ಪ್ರವೇಶಕ್ಕಾಗಿ ವೇಗವಾಗಿರುತ್ತದೆ.",
+        "latency": 1.4863686561584473
+      }
+    ],
+    "Marathi": [
+      {
+        "source": "Recursion is a method where a function calls itself to solve a smaller instance of the same problem.",
+        "translation": "पुनरावृत्ती ही अशी पद्धत आहे जिथे एकाच समस्येच्या छोट्या उदाहरणाचे निराकरण करण्यासाठी फंक्शन स्वतः ला कॉल करते.",
+        "latency": 1.2532765865325928
+      },
+      {
+        "source": "A database is an organized collection of structured data stored electronically in a computer system.",
+        "translation": "डेटाबेस हा संगणक प्रणालीमध्ये इलेक्ट्रॉनिकरित्या संग्रहित केलेल्या संरचित डेटाचा एक संघटित संग्रह आहे.",
+        "latency": 0.9344539642333984
+      },
+      {
+        "source": "Binary search works by repeatedly dividing the search interval in half, whereas linear search checks every element sequentially.",
+        "translation": "द्विआधारी शोध शोध कालावधीला अर्ध्यामध्ये वारंवार विभागून कार्य करते, तर रेषीय शोध प्रत्येक घटकाची अनुक्रमे तपासणी करतो.",
+        "latency": 1.2773418426513672
+      },
+      {
+        "source": "The four pillars of Object-Oriented Programming are Encapsulation, Inheritance, Polymorphism, and Abstraction.",
+        "translation": "ऑब्जेक्ट-ओरिएंटेड प्रोग्रामिंगचे चार स्तंभ म्हणजे एन्कॅप्स्युलेशन, हेरिटेन्स, पॉलिमोर्फिझम आणि अमूर्तता.",
+        "latency": 1.5283269882202148
+      },
+      {
+        "source": "A linked list is dynamic and allows fast insertions or deletions, while an array has a fixed size and is fast for random access.",
+        "translation": "लिंक केलेली यादी डायनॅमिक आहे आणि ती जलद समाविष्टी किंवा हटवण्याची परवानगी देते, तर अॅरेचे आकार निश्चित आहे आणि ते यादृच्छिक प्रवेशासाठी जलद आहे.",
+        "latency": 1.6590445041656494
+      }
+    ]
+  }
+}
