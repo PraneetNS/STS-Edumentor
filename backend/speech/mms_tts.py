@@ -91,10 +91,15 @@ class MMSTTSEngine:
         logger.info("Starting background warmup for IndicParlerTTS...")
         try:
             self._load_model()
-            # Synthesize one character per supported language to cache voice weights
+            # Synthesize a short word per supported language to cache voice weights
+            warmup_words = {
+                "hin": "नमस्ते",
+                "kan": "ನಮಸ್ಕಾರ",
+                "mar": "नमस्कार"
+            }
             for lang_code in ["hin", "kan", "mar"]:
                 logger.info("Warming up IndicParlerTTS voice weights for lang '%s'...", lang_code)
-                self.synthesize("म", lang_code)
+                self.synthesize(warmup_words[lang_code], lang_code)
             logger.info("IndicParlerTTS background warmup complete.")
         except Exception as e:
             logger.warning("IndicParlerTTS background warmup failed: %s", e)
@@ -110,30 +115,19 @@ class MMSTTSEngine:
             lang: Language code — 'hin', 'kan', 'mar'.
 
         Returns:
-            WAV bytes (16-bit PCM at model sample rate), or b"" on error.
+            WAV audio bytes.
         """
-        text = text.strip()
-        if not text:
-            return b""
-
         t_start = time.time()
         try:
             self._load_model()
-
+            
+            # Retrieve description prompt and configuration
             lang_mod = _LANG_DESC_MAP.get(lang, "")
-            description = f"{_VOICE_DESCRIPTION} {lang_mod}".strip()
-
-            # Tokenize description (controls voice style)
-            desc_input = self._tokenizer(
-                description,
-                return_tensors="pt",
-            ).to(self.device)
-
-            # Tokenize text (the content to speak)
-            text_input = self._tokenizer(
-                text,
-                return_tensors="pt",
-            ).to(self.device)
+            desc_prompt = f"{_VOICE_DESCRIPTION} {lang_mod}".strip()
+            
+            # Tokenize description and text
+            desc_input = self._tokenizer(desc_prompt, return_tensors="pt").to(self.device)
+            text_input = self._tokenizer(text, return_tensors="pt").to(self.device)
 
             # Generate waveform
             with torch.inference_mode():
@@ -141,10 +135,15 @@ class MMSTTSEngine:
                     input_ids=desc_input.input_ids,
                     attention_mask=desc_input.attention_mask,
                     prompt_input_ids=text_input.input_ids,
-                    prompt_attention_mask=text_input.attention_mask,
+                    prompt_attention_mask=text_input.text_input if hasattr(text_input, "text_input") else text_input.attention_mask,
                 )
 
-            audio_arr = generation.cpu().float().numpy().squeeze()
+            audio_arr = generation.cpu().float().numpy()
+            if audio_arr.ndim > 1:
+                audio_arr = audio_arr.squeeze()
+            if audio_arr.ndim == 0:
+                audio_arr = np.array([0.0], dtype=np.float32)
+
             sampling_rate = self._model.config.sampling_rate
 
             # Encode to WAV bytes
