@@ -526,6 +526,54 @@ class AgentController:
         non_latin_ratio = get_non_latin_ratio(processed_text)
         intent_result = await self._intent_classifier.classify(processed_text)
 
+        if intent_result.intent == Intent.SETTINGS_UPDATE:
+            target_lang = "auto"
+            query = processed_text.lower()
+            if "kannada" in query:
+                target_lang = "kannada"
+            elif "marathi" in query:
+                target_lang = "marathi"
+            elif "hindi" in query:
+                target_lang = "hindi"
+            elif "english" in query:
+                target_lang = "english"
+            elif "auto" in query or "default" in query or "automatic" in query:
+                target_lang = "auto"
+
+            # Update the profile
+            profile = self._profile_manager.get_profile()
+            profile.output_language_preference = target_lang
+            self._profile_manager._save()
+
+            confirmation = f"Okay, I will reply in {target_lang} from now on."
+            if target_lang == "auto":
+                confirmation = "Okay, I will automatically match your language from now on."
+
+            # Update session memory history to prevent subsequent turns from acting like it is the first turn
+            self._memory.add_turn(session_id, processed_text, confirmation)
+
+            # Log to DB
+            latency_ms = int((time.perf_counter() - start_time) * 1000)
+            asyncio.create_task(
+                self._db_manager.write_log(
+                    user_id=user_uuid,
+                    session_id=session_uuid,
+                    query_text=original_text,
+                    response_text=confirmation,
+                    intent_category="SETTINGS_UPDATE",
+                    input_flagged=False,
+                    output_flagged=False,
+                    latency_ms=latency_ms,
+                    tokens_in=self._count_tokens(original_text),
+                    tokens_out=self._count_tokens(confirmation),
+                )
+            )
+
+            for word in confirmation.split():
+                token = " " + word
+                yield {"raw": token, "planned": token}
+            return
+
         if non_latin_ratio > 0.4 and intent_result.intent == Intent.OFF_TOPIC:
             from agent.security_logger import log_security_event
             asyncio.create_task(log_security_event(
