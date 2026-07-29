@@ -243,7 +243,7 @@ async def run_scenario_stream(
         return {
             "route_lang": route_lang,
             "response_lang": response_lang,
-            "tts_engine": "mms",
+            "tts_engine": tts_engine,
             "stt_transcript": transcript,
             "llm_input": llm_input,
             "output_text": total_output_text.strip(),
