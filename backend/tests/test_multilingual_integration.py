@@ -26,6 +26,12 @@ import time
 from typing import Any, Dict, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+    except Exception:
+        pass
+
 import numpy as np
 import pytest
 
@@ -83,7 +89,7 @@ TEST_CASES = [
         "name": "English",
         "text": "What is recursion in programming?",
         "gtts_lang": "en",
-        "expected_route": "hindi",   # Latin fallback → hindi path (English stays in Kokoro)
+        "expected_route": "english",
         "expected_tts_engine": "kokoro",
     },
     {
@@ -190,7 +196,7 @@ async def run_one_turn(
     timings["stt"] = round(time.time() - t_stt, 3)
     report["transcript"] = transcript
     report["whisper_lang"] = info.language
-    print(f"  [STT]     {timings['stt']:.2f}s | transcript={transcript!r:.80} | lang={info.language}")
+    print(f"  [STT]     {timings['stt']:.2f}s | transcript={ascii(transcript):.80} | lang={info.language}")
 
     # Stage 2: Language Router
     from speech.language_router import LanguageRouter
@@ -210,7 +216,7 @@ async def run_one_turn(
         timings["translate_in"] = round(time.time() - t_tin, 3)
         report["translated_to_en"] = en_input
         llm_input = en_input
-        print(f"  [Trans→EN] {timings['translate_in']:.2f}s | {en_input!r:.80}")
+        print(f"  [Trans→EN] {timings['translate_in']:.2f}s | {ascii(en_input):.80}")
 
     # Stage 4: LLM (stub)
     t_llm = time.time()
@@ -221,6 +227,9 @@ async def run_one_turn(
 
     # Stage 5: Back-translation
     tts_text = llm_response
+    has_devanagari = LanguageRouter.contains_devanagari_script(transcript)
+    use_mms_for_hindi = (route_lang == "hindi" and has_devanagari)
+
     if route_lang in ("kannada", "marathi"):
         NLLB_LANG_MAP = {"kannada": "kan_Knda", "marathi": "mar_Deva"}
         tgt_code = NLLB_LANG_MAP[route_lang]
@@ -229,19 +238,18 @@ async def run_one_turn(
         timings["translate_out"] = round(time.time() - t_tout, 3)
         report["translated_from_en"] = back_translated
         tts_text = back_translated
-        print(f"  [Trans←EN] {timings['translate_out']:.2f}s | {back_translated!r:.80}")
-    elif route_lang == "hindi":
-        NLLB_LANG_MAP = {"hindi": "hin_Deva"}
+        print(f"  [Trans←EN] {timings['translate_out']:.2f}s | {ascii(back_translated):.80}")
+    elif use_mms_for_hindi:
         t_tout = time.time()
         back_translated, _ = translator.translate(llm_response, "eng_Latn", "hin_Deva")
         timings["translate_out"] = round(time.time() - t_tout, 3)
         report["translated_from_en"] = back_translated
         tts_text = back_translated
-        print(f"  [Trans←EN] {timings['translate_out']:.2f}s | {back_translated!r:.80}")
+        print(f"  [Trans←EN] {timings['translate_out']:.2f}s | {ascii(back_translated):.80}")
 
     # Stage 6: TTS routing
     MMS_LANG_MAP = {"hindi": "hin", "kannada": "kan", "marathi": "mar"}
-    if route_lang in MMS_LANG_MAP:
+    if route_lang in ("kannada", "marathi") or use_mms_for_hindi:
         mms_lang = MMS_LANG_MAP[route_lang]
         t_tts = time.time()
         wav_bytes = mms_engine.synthesize(tts_text, mms_lang)
@@ -272,6 +280,9 @@ def run_integration_test() -> None:
     print("  EduMentor Multilingual Pipeline Integration Test")
     print("="*60)
 
+    from config import Config
+    Config.WHISPER_MODEL = "small"
+
     # --- Load shared model singletons ---
     print("\n[Setup] Loading WhisperEngine (small, int8 CPU)...")
     from stt.whisper_engine import WhisperEngine
@@ -284,6 +295,12 @@ def run_integration_test() -> None:
     print("[Setup] Loading MMS-TTS Engine...")
     from speech.mms_tts import MMSTTSEngine
     mms_engine = MMSTTSEngine()
+
+    print("Waiting for MMS-TTS background warmup to complete...")
+    t_start = time.time()
+    while not mms_engine.warmed_up and time.time() - t_start < 25:
+        time.sleep(0.5)
+    print(f"MMS-TTS warmed up in {time.time() - t_start:.2f}s.")
 
     print("\n[Setup] All models loaded. Starting test cases...\n")
 
@@ -337,14 +354,27 @@ def run_integration_test() -> None:
 @pytest.fixture(scope="module")
 def shared_engines():
     """Load all models once per test module to avoid redundant downloads."""
+    from config import Config
+    Config.WHISPER_MODEL = "small"
+
     from stt.whisper_engine import WhisperEngine
     from speech.nllb_translator import NLLBTranslator
     from speech.mms_tts import MMSTTSEngine
 
+    whisper = WhisperEngine()
+    translator = NLLBTranslator()
+    mms = MMSTTSEngine()
+
+    # Block until background warmup completes
+    import time
+    t_start = time.time()
+    while not mms.warmed_up and time.time() - t_start < 25:
+        time.sleep(0.5)
+
     return {
-        "whisper": WhisperEngine(),
-        "translator": NLLBTranslator(),
-        "mms": MMSTTSEngine(),
+        "whisper": whisper,
+        "translator": translator,
+        "mms": mms,
     }
 
 
@@ -362,17 +392,46 @@ def test_multilingual_turn(case, shared_engines):
 
     # Assertions: pipeline must complete and produce non-empty output
     assert report.get("transcript") is not None, "STT should produce a transcript"
-    assert report.get("route_lang") in ("hindi", "kannada", "marathi", "english"), \
-        f"Unexpected route: {report.get('route_lang')}"
-    assert report.get("tts_engine") in ("kokoro", "mms"), "TTS engine must be set"
+    assert report.get("route_lang") == case["expected_route"], \
+        f"Route mismatch for {case['name']}: expected {case['expected_route']}, got {report.get('route_lang')}"
+    assert report.get("tts_engine") == case["expected_tts_engine"], \
+        f"TTS Engine mismatch for {case['name']}: expected {case['expected_tts_engine']}, got {report.get('tts_engine')}"
     assert report["timings"].get("total", 0) < 120, "Total turn must complete under 120s"
 
     # Indic routes must produce translated output
-    if report["route_lang"] in ("kannada", "marathi", "hindi"):
+    if report["route_lang"] in ("kannada", "marathi") or (report["route_lang"] == "hindi" and report.get("tts_engine") == "mms"):
         assert report.get("translated_from_en"), \
             f"Back-translation required for {report['route_lang']} route"
 
     print(f"\n  [{case['name']}] PASS | Total latency: {report['timings'].get('total', '?')}s")
+
+
+def test_english_regression(shared_engines):
+    """Verify that plain English CS-tutoring sentences route to English/Kokoro with zero translations."""
+    from speech.language_router import LanguageRouter
+    
+    english_sentences = [
+        "what is a linked list",
+        "explain binary search to me",
+        "how does garbage collection work in java",
+        "tell me about database indexing and query optimization"
+    ]
+    
+    for sentence in english_sentences:
+        route_lang, meta = LanguageRouter.route(sentence)
+        assert route_lang == "english", f"Expected 'english' route for: {sentence!r}, got {route_lang!r}"
+        
+        # Test NLLB translation is not triggered for English in actual pipeline logic
+        needs_translation = route_lang in ("kannada", "marathi")
+        has_devanagari = LanguageRouter.contains_devanagari_script(sentence)
+        use_mms_for_hindi = (route_lang == "hindi" and has_devanagari)
+        
+        assert not needs_translation, "English route should not request translation to English"
+        assert not use_mms_for_hindi, "English route should not request translation back for MMS-TTS"
+        
+        # TTS Engine should be kokoro
+        is_mms_needed = route_lang in ("kannada", "marathi") or use_mms_for_hindi
+        assert not is_mms_needed, "English route should use Kokoro TTS, not MMS"
 
 
 if __name__ == "__main__":
