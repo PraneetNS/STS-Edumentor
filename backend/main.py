@@ -25,6 +25,18 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 import sys
+
+# Dynamically add NVIDIA cuDNN and cuBLAS bin paths to Windows DLL search directory
+if sys.platform == "win32":
+    for pkg in ["nvidia.cudnn", "nvidia.cublas"]:
+        try:
+            import importlib
+            mod = importlib.import_module(pkg)
+            bin_dir = os.path.join(os.path.dirname(mod.__file__), "bin")
+            if os.path.exists(bin_dir):
+                os.add_dll_directory(bin_dir)
+        except Exception:
+            pass
 from contextlib import asynccontextmanager
 from typing import Optional
 

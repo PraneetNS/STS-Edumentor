@@ -5,6 +5,20 @@ import sys
 import time
 from typing import Dict, Any, List
 
+os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+
+# Dynamically add NVIDIA cuDNN and cuBLAS bin paths to Windows DLL search directory
+if sys.platform == "win32":
+    for pkg in ["nvidia.cudnn", "nvidia.cublas"]:
+        try:
+            import importlib
+            mod = importlib.import_module(pkg)
+            bin_dir = os.path.join(os.path.dirname(mod.__file__), "bin")
+            if os.path.exists(bin_dir):
+                os.add_dll_directory(bin_dir)
+        except Exception:
+            pass
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Force UTF-8 stdout
