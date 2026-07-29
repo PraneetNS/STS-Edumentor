@@ -10,6 +10,7 @@ import time
 import logging
 from typing import Optional, Tuple
 
+import torch
 import ctranslate2
 import transformers
 
