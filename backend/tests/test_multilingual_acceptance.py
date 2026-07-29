@@ -253,7 +253,7 @@ async def run_scenario_stream(
         }
 
 async def run_all_acceptance_tests():
-    print("Initializing Acceptance Engines...")
+    print("Initializing Acceptance Engines...", flush=True)
     from config import Config
     Config.WHISPER_MODEL = "small"
     
@@ -265,13 +265,13 @@ async def run_all_acceptance_tests():
     while not mms_engine.warmed_up:
         await asyncio.sleep(0.5)
         
-    print("\nWarmup completed. Running acceptance scenarios...\n")
+    print("\nWarmup completed. Running acceptance scenarios...\n", flush=True)
     
     reports = []
     
     # Scenarios a - e
     for scen in TEST_SCENARIOS:
-        print(f"Running Scenario {scen['id'].upper()} ({scen['name']})...")
+        print(f"Running Scenario {scen['id'].upper()} ({scen['name']})...", flush=True)
         profile = StudentProfile(output_language_preference="auto", glossary_mode="english")
         
         rep = await run_scenario_stream(scen, whisper_engine, translator, mms_engine, profile)
@@ -286,14 +286,14 @@ async def run_all_acceptance_tests():
             # 'Recursion' should survive in English
             assert "Recursion" in rep["output_text"], f"Expected 'Recursion' to survive in English in: {rep['output_text']}"
             
-        print(f"  [STT] Transcript: {rep['stt_transcript']!r}")
-        print(f"  [LLM Input] {rep['llm_input']!r}")
-        print(f"  [Output] {rep['output_text']!r}")
-        print(f"  [Latency] first_audio={rep['first_audio_latency']}s | total={rep['total_latency']}s")
-        print("-" * 60)
+        print(f"  [STT] Transcript: {rep['stt_transcript']!r}", flush=True)
+        print(f"  [LLM Input] {rep['llm_input']!r}", flush=True)
+        print(f"  [Output] {rep['output_text']!r}", flush=True)
+        print(f"  [Latency] first_audio={rep['first_audio_latency']}s | total={rep['total_latency']}s", flush=True)
+        print("-" * 60, flush=True)
 
     # Scenario f: User preference override
-    print("Running Scenario F (User output language override to Kannada on Hindi audio)...")
+    print("Running Scenario F (User output language override to Kannada on Hindi audio)...", flush=True)
     scen_f = {
         "id": "f",
         "name": "User language preference override",
@@ -310,29 +310,29 @@ async def run_all_acceptance_tests():
     assert rep_f["response_lang"] == "kannada", "Should override response language to Kannada"
     assert rep_f["tts_engine"] == "mms", "Should route to MMS-TTS because of Kannada preference override"
     assert "Recursion" in rep_f["output_text"], f"Expected 'Recursion' to survive in: {rep_f['output_text']}"
-    print(f"  [STT] Transcript: {rep_f['stt_transcript']!r}")
-    print(f"  [Output] {rep_f['output_text']!r}")
-    print(f"  [Latency] first_audio={rep_f['first_audio_latency']}s | total={rep_f['total_latency']}s")
-    print("-" * 60)
+    print(f"  [STT] Transcript: {rep_f['stt_transcript']!r}", flush=True)
+    print(f"  [Output] {rep_f['output_text']!r}", flush=True)
+    print(f"  [Latency] first_audio={rep_f['first_audio_latency']}s | total={rep_f['total_latency']}s", flush=True)
+    print("-" * 60, flush=True)
 
     # Scenario h: Verify MULTILINGUAL_ENABLED=False reproduces the exact current English-only behavior
-    print("Running Scenario H (Checking MULTILINGUAL_ENABLED=False safety default)...")
+    print("Running Scenario H (Checking MULTILINGUAL_ENABLED=False safety default)...", flush=True)
     # Reset config flag
     Config.MULTILINGUAL_ENABLED = False
     
     # Connect directly to websocket route or check flag
     assert Config.MULTILINGUAL_ENABLED is False
-    print("  [Safety Check] Config.MULTILINGUAL_ENABLED=False verified.")
-    print("=" * 60)
-    print("ACCEPTANCE TESTS RESULTS SUMMARY:")
-    print("=" * 60)
+    print("  [Safety Check] Config.MULTILINGUAL_ENABLED=False verified.", flush=True)
+    print("=" * 60, flush=True)
+    print("ACCEPTANCE TESTS RESULTS SUMMARY:", flush=True)
+    print("=" * 60, flush=True)
     for r in reports:
-        print(f"Scenario {r['id'].upper()} ({r['scenario_name']}):")
-        print(f"  Route: {r['route_lang']} | Output Lang: {r['response_lang']} | TTS: {r['tts_engine']}")
-        print(f"  Transcript: {r['stt_transcript']}")
-        print(f"  Output: {r['output_text']}")
-        print(f"  TTFT: {r['first_audio_latency']}s | Total Turn: {r['total_latency']}s | Trans Calls: {r['translation_calls']}")
-        print()
+        print(f"Scenario {r['id'].upper()} ({r['scenario_name']}):", flush=True)
+        print(f"  Route: {r['route_lang']} | Output Lang: {r['response_lang']} | TTS: {r['tts_engine']}", flush=True)
+        print(f"  Transcript: {r['stt_transcript']}", flush=True)
+        print(f"  Output: {r['output_text']}", flush=True)
+        print(f"  TTFT: {r['first_audio_latency']}s | Total Turn: {r['total_latency']}s | Trans Calls: {r['translation_calls']}", flush=True)
+        print(flush=True)
 
 if __name__ == "__main__":
     asyncio.run(run_all_acceptance_tests())
