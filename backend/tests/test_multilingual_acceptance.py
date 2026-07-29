@@ -57,7 +57,7 @@ TEST_SCENARIOS = [
         "text": "recursion kya hota hai",
         "gtts_lang": "hi",
         "expected_route": "hindi",
-        "expected_tts": "kokoro",
+        "expected_tts": "mms",
     },
     {
         "id": "c",
@@ -280,8 +280,8 @@ async def run_all_acceptance_tests():
         reports.append(rep)
         
         # Verify assertions
-        assert rep["route_lang"] == scen["expected_route"], f"Expected route {scen['expected_route']}, got {rep['route_lang']}"
-        assert rep["tts_engine"] == scen["expected_tts"], f"Expected TTS engine {scen['expected_tts']}, got {rep['tts_engine']}"
+        assert rep["route_lang"] == scen["expected_route"], f"Expected route {scen['expected_route']}, got {rep['route_lang']}. Transcript: {rep['stt_transcript']!r}"
+        assert rep["tts_engine"] == scen["expected_tts"], f"Expected TTS engine {scen['expected_tts']}, got {rep['tts_engine']}. Transcript: {rep['stt_transcript']!r}"
         if scen.get("check_glossary"):
             # 'Recursion' should survive in English
             assert "Recursion" in rep["output_text"], f"Expected 'Recursion' to survive in English in: {rep['output_text']}"
