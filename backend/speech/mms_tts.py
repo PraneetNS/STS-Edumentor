@@ -51,7 +51,8 @@ class MMSTTSEngine:
 
     def __init__(self) -> None:
         import threading
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        import os
+        self.device = os.getenv("MMS_TTS_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
         self._model = None
         self._tokenizer = None
         self._lock = threading.Lock()

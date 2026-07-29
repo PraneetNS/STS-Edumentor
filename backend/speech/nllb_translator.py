@@ -48,7 +48,7 @@ class NLLBTranslator:
             self._ensure_model_converted()
 
         # Optimize translator load to automatically run on CUDA (GPU) if available
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        device = os.getenv("NLLB_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
         compute_type = "float16" if device == "cuda" else "int8"
         logger.info("Loading NLLB CTranslate2 translator from %s on %s (%s) ...", self.output_dir, device, compute_type)
         
