@@ -163,6 +163,8 @@ _DEFAULT_PROFILE = {
     "session_count": 0,
     "discipline": "cse",
     "active_topics": [],
+    "output_language_preference": "auto",
+    "glossary_mode": "english",
 }
 
 
