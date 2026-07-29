@@ -46,17 +46,27 @@ class NLLBTranslator:
             )
             self._ensure_model_converted()
 
+        # Optimize translator load to automatically run on CUDA (GPU) if available
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        compute_type = "float16" if device == "cuda" else "int8"
+        logger.info("Loading NLLB CTranslate2 translator from %s on %s (%s) ...", self.output_dir, device, compute_type)
         
-        logger.info("Loading NLLB CTranslate2 translator from %s ...", self.output_dir)
-        # Use 4 threads for optimal parallel CPU performance
-        self.translator = ctranslate2.Translator(
-            self.output_dir,
-            device="cpu",
-            inter_threads=4,
-            intra_threads=4
-        )
+        if device == "cuda":
+            self.translator = ctranslate2.Translator(
+                self.output_dir,
+                device=device,
+                compute_type=compute_type
+            )
+        else:
+            self.translator = ctranslate2.Translator(
+                self.output_dir,
+                device=device,
+                compute_type=compute_type,
+                inter_threads=4,
+                intra_threads=4
+            )
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
-        logger.info("[OK] NLLB Translator ready on CPU.")
+        logger.info("[OK] NLLB Translator ready on %s.", device.upper())
 
     def _ensure_model_converted(self) -> None:
         """Helper to convert HF transformers model to CTranslate2 format if missing."""
