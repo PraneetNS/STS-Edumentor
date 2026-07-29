@@ -20,6 +20,7 @@ import numpy as np
 from config import Config
 
 logger = logging.getLogger("edumentor.speech.multilingual_pipeline")
+from i18n.term_glossary import protect_terms, restore_terms
 
 # ──────────────────────────────────────────────────────────────
 # NLLB language code constants
@@ -66,21 +67,7 @@ class MultilingualPipeline:
         self.mms_tts = get_mms_tts_engine()
         self.router = LanguageRouter()
 
-        # Warm up all MMS-TTS models in a background thread to avoid cold-start on first Indic request
-        import threading
-        threading.Thread(target=self._warmup_mms_models, daemon=True).start()
-
         logger.info("[OK] MultilingualPipeline initialized.")
-
-    def _warmup_mms_models(self) -> None:
-        """Pre-load all three MMS-TTS language models to avoid 45s cold-start."""
-        for lang, mms_lang in MMS_TTS_LANG_MAP.items():
-            try:
-                logger.info("[warmup] Loading MMS-TTS model for '%s' ...", lang)
-                self.mms_tts.synthesize("test", mms_lang)  # short dummy synthesis
-                logger.info("[warmup] MMS-TTS '%s' warm.", lang)
-            except Exception as e:
-                logger.warning("[warmup] MMS-TTS '%s' warmup failed: %s", lang, e)
 
     def transcribe_multilingual(
         self,
@@ -211,31 +198,47 @@ class MultilingualPipeline:
 
         # ── Stage 2: Language Router ─────────────────────────────────────────
         t_route = time.time()
-        route_lang, route_meta = self.router.route(transcript)
+        route_lang, route_meta = self.router.route(transcript, whisper_lang)
         timings["router"] = round(time.time() - t_route, 3)
         result["route_lang"] = route_lang
         result["route_metadata"] = route_meta
         logger.info("Router decision: %s | reason: %s", route_lang, route_meta.get("reason"))
 
+        # Increment Prometheus metric
+        routing_path = route_meta.get("routing_path", "hindi-default")
+        try:
+            from observability.metrics import language_routing_total
+            language_routing_total.labels(routing_path=routing_path, route_lang=route_lang).inc()
+        except Exception as exc:
+            logger.warning("Failed to record language routing metric: %s", exc)
+
+        # Retrieve profile preferences
+        lang_pref = "auto"
+        glossary_mode = "english"
+        if self.agent_controller is not None:
+            profile = self.agent_controller._profile_manager.get_profile()
+            if profile:
+                lang_pref = getattr(profile, "output_language_preference", "auto")
+                glossary_mode = getattr(profile, "glossary_mode", "english")
+
+        # Determine target output language
+        response_lang = lang_pref if lang_pref != "auto" else route_lang
+
         # ── Stage 3: Input translation (only for kannada / marathi) ──────────
         llm_input = transcript
         needs_translation = route_lang in ("kannada", "marathi")
-        back_translate_lang = None
-
-        # Determine if we need back-translation for TTS:
-        # - kannada / marathi always go through translation bridge
-        # - hindi uses MMS-TTS ONLY if the transcript contained actual Devanagari
-        #   (i.e. the user spoke Hindi, not romanized Hinglish / English)
-        has_devanagari = self.router.contains_devanagari_script(transcript)
-        use_mms_for_hindi = (route_lang == "hindi" and has_devanagari)
 
         if needs_translation:
             t_translate_in = time.time()
-            english_input, _ = self.translate_to_english(transcript, route_lang)
+            # Protect terms
+            protected_transcript, mapping = protect_terms(transcript)
+            english_input_protected, _ = self.translate_to_english(protected_transcript, route_lang)
+            # Restore protected terms in English mode for the LLM
+            english_input = restore_terms(english_input_protected, mapping, mode="english")
+            
             timings["translate_in"] = round(time.time() - t_translate_in, 3)
             result["translated_to_en"] = english_input
             llm_input = english_input
-            back_translate_lang = route_lang
 
         # ── Stage 4: LLM (unchanged agent pipeline) ──────────────────────────
         t_llm = time.time()
@@ -263,32 +266,41 @@ class MultilingualPipeline:
 
         # ── Stage 5: Back-translation (if needed) ────────────────────────────
         tts_text = llm_response_english
+        back_translate_lang = None
+        use_mms_for_hindi = False
+
+        if response_lang in ("kannada", "marathi"):
+            back_translate_lang = response_lang
+        elif response_lang == "hindi":
+            has_devanagari = self.router.contains_devanagari_script(transcript)
+            use_mms_for_hindi = (lang_pref == "hindi") or (lang_pref == "auto" and route_lang == "hindi" and has_devanagari)
+
         if back_translate_lang:
             t_translate_out = time.time()
-            translated_response, _ = self.translate_from_english(llm_response_english, back_translate_lang)
+            protected_response, mapping = protect_terms(llm_response_english)
+            translated_protected, _ = self.translate_from_english(protected_response, back_translate_lang)
+            translated_response = restore_terms(translated_protected, mapping, mode=glossary_mode, target_language=back_translate_lang)
             timings["translate_out"] = round(time.time() - t_translate_out, 3)
             result["translated_from_en"] = translated_response
             tts_text = translated_response
         elif use_mms_for_hindi:
-            # Hindi Devanagari input: back-translate English response to Hindi
             t_translate_out = time.time()
-            translated_response, _ = self.translate_from_english(llm_response_english, "hindi")
+            protected_response, mapping = protect_terms(llm_response_english)
+            translated_protected, _ = self.translate_from_english(protected_response, "hindi")
+            translated_response = restore_terms(translated_protected, mapping, mode=glossary_mode, target_language="hindi")
             timings["translate_out"] = round(time.time() - t_translate_out, 3)
             result["translated_from_en"] = translated_response
             tts_text = translated_response
 
         # ── Stage 6: TTS Routing ──────────────────────────────────────────────
-        # Indic MMS-TTS: kannada, marathi always; hindi only if Devanagari was in the transcript
-        if route_lang in ("kannada", "marathi") or use_mms_for_hindi:
-            # Indic TTS via MMS-TTS
+        if response_lang in ("kannada", "marathi") or use_mms_for_hindi:
             t_tts = time.time()
-            wav_bytes, _ = self.synthesize_indic(tts_text, route_lang)
+            wav_bytes, _ = self.synthesize_indic(tts_text, response_lang)
             timings["tts"] = round(time.time() - t_tts, 3)
             result["tts_wav_bytes"] = wav_bytes
             result["tts_engine"] = "mms"
-            result["tts_lang"] = route_lang
+            result["tts_lang"] = response_lang
         else:
-            # English → caller uses Kokoro (wav_bytes=None signals Kokoro path)
             result["tts_wav_bytes"] = None
             result["tts_engine"] = "kokoro"
             result["tts_lang"] = "english"
