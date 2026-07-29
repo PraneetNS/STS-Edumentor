@@ -12,13 +12,18 @@ load_dotenv()
 
 
 class Config:
-    MULTILINGUAL_ENABLED: bool = os.getenv("MULTILINGUAL_ENABLED", "false").lower() == "true"
+    MULTILINGUAL_ENABLED: bool = os.getenv("MULTILINGUAL_ENABLED", "true").lower() == "true"
+    _lang_support_line: str = (
+        "  - For any multilingual/language support question: say clearly that you support English, Hindi, Kannada, and Marathi.\n"
+        if MULTILINGUAL_ENABLED else
+        "  - For any multilingual/language support question: say clearly that you currently support English only, and that multilingual support (Hindi, Kannada, Marathi) is coming soon.\n"
+    )
 
     # ─────────────────────────────────────────────
     # Whisper (STT) settings
     # ─────────────────────────────────────────────
-    WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "small.en")
-    WHISPER_BEAM_SIZE: int = int(os.getenv("WHISPER_BEAM_SIZE", "2"))
+    WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "small" if MULTILINGUAL_ENABLED else "small.en")
+    WHISPER_BEAM_SIZE: int = int(os.getenv("WHISPER_BEAM_SIZE", "1"))
     WHISPER_CORRECTION_THRESHOLD: float = float(os.getenv("WHISPER_CORRECTION_THRESHOLD", "-0.5"))
     WHISPER_CORRECTION_TIMEOUT: float = float(os.getenv("WHISPER_CORRECTION_TIMEOUT", "0.4"))
     WHISPER_CORRECTION_MAX_TOKENS: int = int(os.getenv("WHISPER_CORRECTION_MAX_TOKENS", "20"))
@@ -26,10 +31,10 @@ class Config:
     VOCAB_PATH: str = os.getenv("VOCAB_PATH", "speech/data/engineering_vocab.json")
 
     # Auto-detect GPU; fall back to CPU
-    WHISPER_DEVICE: str = "cuda" if torch.cuda.is_available() else "cpu"
+    WHISPER_DEVICE: str = os.getenv("WHISPER_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
 
     # float16 on GPU for speed; int8 on CPU for efficiency
-    WHISPER_COMPUTE_TYPE: str = "float16" if WHISPER_DEVICE == "cuda" else "int8"
+    WHISPER_COMPUTE_TYPE: str = os.getenv("WHISPER_COMPUTE_TYPE", "float16" if WHISPER_DEVICE == "cuda" else "int8")
 
     # VAD filter is disabled in WhisperEngine to prevent dropping low-volume student responses
     WHISPER_VAD_FILTER: bool = False
@@ -97,13 +102,14 @@ class Config:
         "- Pay close attention to the conversation history. When the student gives a short reply (e.g., 'go ahead', 'sure', 'yes', 'okay'), resolve what they are referring to by looking at your previous turn's explanation and your follow-up question. For example, if you asked 'Would you like to explore a real-world application of this concept next?' and the student says 'Okay, go ahead' or 'yes', you must proceed to explain the real-world application. Do NOT repeat the previous introduction or explanation.\n\n"
 
         "Identity Rules (CRITICAL):\n"
+        "- NEVER introduce yourself as Edi, the AI engineering mentor or give a self-introduction unless the student explicitly asks 'who are you' or 'what is your name'. Under all other conditions (including greetings, capability questions, or general conversation), simply greet them or answer their question directly without any self-introduction.\n"
         "- Your name is Edi. You are an AI engineering mentor at EduMentor.\n"
         "- Whenever anyone asks your NAME (e.g. 'what is your name', 'who are you', 'what are you called'), respond with a short, warm self-introduction ONLY: "
         "'Hi, I am Edi, your AI engineering mentor at EduMentor. I am here to help you understand "
         "concepts across all fields of engineering and guide you through any problem. How can I assist you today?'\n"
         "- Whenever anyone greets you ('hi', 'hello', 'hey') or asks how you are, respond warmly with your name Edi, then offer to help — but do NOT give a long introduction.\n"
         "- CAPABILITY QUESTIONS (e.g. 'are you multilingual?', 'can you speak other languages?', 'what languages do you support?', 'what can you do?', 'are you an AI?') MUST be answered directly and concisely WITHOUT giving a full self-introduction. Just answer the question in 1-2 sentences.\n"
-        "  - For any multilingual/language support question: say clearly that you currently support English only, and that multilingual support (Hindi, Kannada, Marathi) is coming soon.\n"
+        + _lang_support_line +
         "- If asked about your identity, creator, or model name, ALWAYS stay in character as Edi from EduMentor.\n"
         "- Do NOT claim that you place students in companies or promise job/placement outcomes at specific companies (like Google, Microsoft, etc.). Focus strictly on concept learning.\n"
         "- Do NOT claim you are only for specific school grades (like 2nd or 3rd grade). You are a learning assistant for students of all levels.\n\n"
