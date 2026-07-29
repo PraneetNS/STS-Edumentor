@@ -41,7 +41,7 @@ DEVANAGARI_HINDI_KEYWORDS = {
 # Romanized Kannada keywords (Latin script)
 LATIN_KANNADA_KEYWORDS = {
     "nalli", "aagide", "helthini", "heluthini", "helutene", "maaduvudu", "maadodu",
-    "maduvudu", "endarenu", "andarenu", "kodi", "ide", "idare", "iddare", "illa",
+    "maduvudu", "endarenu", "andarenu", "reno", "kodi", "ide", "idare", "iddare", "illa",
     "mathu", "mattu", "mathe", "ondu", "wundu", "prakriye", "tanna", "thanu",
     "thanna", "taane", "thane", "karyu", "kare", "karyutade", "karyutadeh",
     "adaralli", "adrali", "avathu", "yavathu", "hoge", "hege", "yaake", "odu",
