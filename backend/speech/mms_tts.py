@@ -95,10 +95,11 @@ class MMSTTSEngine:
             for lang_code in ["hin", "kan", "mar"]:
                 logger.info("Warming up IndicParlerTTS voice weights for lang '%s'...", lang_code)
                 self.synthesize("म", lang_code)
-            self.warmed_up = True
             logger.info("IndicParlerTTS background warmup complete.")
         except Exception as e:
             logger.warning("IndicParlerTTS background warmup failed: %s", e)
+        finally:
+            self.warmed_up = True
 
     def synthesize(self, text: str, lang: str) -> bytes:
         """

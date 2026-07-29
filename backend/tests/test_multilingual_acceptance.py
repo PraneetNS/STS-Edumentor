@@ -5,6 +5,9 @@ import sys
 import time
 from typing import Dict, Any, List
 
+import dotenv
+dotenv.load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
+
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 
 # Dynamically add NVIDIA cuDNN and cuBLAS bin paths to Windows DLL search directory
