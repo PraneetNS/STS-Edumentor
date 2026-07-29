@@ -64,8 +64,8 @@ class NLLBTranslator:
                     self.output_dir,
                     device=device,
                     compute_type=compute_type,
-                    inter_threads=4,
-                    intra_threads=4
+                    inter_threads=1,
+                    intra_threads=1
                 )
             logger.info("[OK] NLLB Translator ready on %s.", device.upper())
         except Exception as exc:
@@ -74,8 +74,8 @@ class NLLBTranslator:
                 self.output_dir,
                 device="cpu",
                 compute_type="int8",
-                inter_threads=4,
-                intra_threads=4
+                inter_threads=1,
+                intra_threads=1
             )
             logger.info("[OK] NLLB Translator loaded on CPU fallback.")
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
