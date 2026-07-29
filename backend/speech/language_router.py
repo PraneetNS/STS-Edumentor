@@ -50,7 +50,7 @@ LATIN_KANNADA_KEYWORDS = {
 
 # Romanized Marathi keywords (Latin script)
 LATIN_MARATHI_KEYWORDS = {
-    "ahe", "aahe", "ahet", "aahet", "mhanje", "mhanajae", "karto", "karate", "karatat",
+    "ahe", "aahe", "ahet", "aahet", "mhanje", "mahanj", "mhanajae", "karto", "karate", "karatat",
     "nahi", "naahi", "ani", "aani", "kay", "kaay", "madhye", "madhe", "pan", "tar",
     "hote", "jhale", "zale", "sope", "peksha", "changle", "changli", "swatahlah",
     "swatahla", "swata", "goshta", "karava", "karaycha", "marathi", "sangto",
