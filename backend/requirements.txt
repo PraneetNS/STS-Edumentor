@@ -68,6 +68,7 @@ pip-audit==2.7.3
 rapidfuzz==3.0.0
 librosa==0.10.0
 jellyfish==1.1.0
+sentencepiece==0.1.99
 
 # ── Authentication Layer ───────────────────────────────────────────
 pyjwt==2.8.0
