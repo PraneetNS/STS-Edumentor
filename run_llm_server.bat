@@ -28,15 +28,19 @@ REM ==================================================================
 
 set MODEL=backend\models\EduMentor-Qwen3-Q6_K.gguf
 
+REM Add Ollama lib dir + CUDA v12 DLLs to PATH so GPU support is loaded
+set OLLAMA_LIB=C:\Users\savan\AppData\Local\Programs\Ollama\lib\ollama
+set PATH=%OLLAMA_LIB%;%OLLAMA_LIB%\cuda_v12;%PATH%
+
 echo [EduMentor] Starting llama.cpp server...
 echo Model: %MODEL%
 echo Port:  8080
 echo.
 
-"C:\Users\savan\.docker\bin\inference\llama-server.exe" ^
+"%OLLAMA_LIB%\llama-server.exe" ^
   -m %MODEL% ^
-  -c 16384 ^
-  -ngl 18 ^
+  -c 4096 ^
+  -ngl 20 ^
   --cache-type-k q8_0 ^
   --cache-type-v q8_0 ^
   --flash-attn on ^
@@ -49,6 +53,6 @@ echo.
   --repeat-penalty 1.08 ^
   --slots ^
   --metrics ^
-  -np 4
+  -np 1
 
 pause
