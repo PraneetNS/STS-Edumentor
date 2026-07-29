@@ -113,6 +113,14 @@ memory_recall_total = MetricProxy(
     labelnames=["outcome"]
 )
 
+# 6. Language Routing Decisions
+language_routing_total = MetricProxy(
+    Counter,
+    "edumentor_language_routing_total",
+    "Multilingual routing decisions categorized by resolution path",
+    labelnames=["routing_path", "route_lang"]
+)
+
 
 def set_registry(registry):
     """
@@ -133,3 +141,4 @@ def set_registry(registry):
     llm_total_latency_seconds._instance = None
     celebration_triggered_total._instance = None
     memory_recall_total._instance = None
+    language_routing_total._instance = None
