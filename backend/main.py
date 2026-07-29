@@ -1371,16 +1371,24 @@ async def _run_pipeline(
     # delegate the entire turn to it. The English-only path below is untouched.
     if multilingual_pipeline is not None and not pre_transcribed_text:
         audio_array_ml = int16_bytes_to_float32(raw_pcm)
-        ml_result = await multilingual_pipeline.run_pipeline(
-            audio_array_ml,
-            session_id=session_id,
-            user_id=user_id,
-            voice_style=voice_style,
-            ip_address=client_ip,
-        )
 
-        route_lang = ml_result.get("route_lang") or "english"
-        stt_text = ml_result.get("stt_transcript") or ""
+        # 1. STT (multilingual Whisper)
+        t_stt = time.time()
+        transcript, whisper_lang, stt_latency = multilingual_pipeline.transcribe_multilingual(
+            audio_array_ml
+        )
+        stt_text = transcript
+
+        # 2. Language Router
+        route_lang, route_meta = multilingual_pipeline.router.route(transcript, whisper_lang)
+
+        # Increment Prometheus metric
+        routing_path = route_meta.get("routing_path", "hindi-default")
+        try:
+            from observability.metrics import language_routing_total
+            language_routing_total.labels(routing_path=routing_path, route_lang=route_lang).inc()
+        except Exception as exc:
+            logger.warning("Failed to record language routing metric: %s", exc)
 
         # Send transcript event so frontend shows what was heard
         if stt_text:
@@ -1392,31 +1400,174 @@ async def _run_pipeline(
                 "route_lang": route_lang,
             })
 
-        tts_engine = ml_result.get("tts_engine", "kokoro")
-        if tts_engine == "mms":
-            # Send MMS-TTS WAV bytes directly
-            wav_bytes = ml_result.get("tts_wav_bytes") or b""
-            if wav_bytes:
-                await set_state(ConversationState.THINKING)
-                await websocket.send_bytes(wav_bytes)
-                latency_metrics["first_audio"] = round(time.time() - start_time, 2)
-        else:
+        # Retrieve profile preferences
+        lang_pref = "auto"
+        glossary_mode = "english"
+        if agent_controller is not None:
+            profile = agent_controller._profile_manager.get_profile()
+            if profile:
+                lang_pref = getattr(profile, "output_language_preference", "auto")
+                glossary_mode = getattr(profile, "glossary_mode", "english")
+
+        # Determine target output language
+        response_lang = lang_pref if lang_pref != "auto" else route_lang
+
+        # 3. Input translation (only for kannada / marathi)
+        llm_input = transcript
+        needs_translation = route_lang in ("kannada", "marathi")
+        if needs_translation and transcript:
+            from i18n.term_glossary import protect_terms, restore_terms
+            protected_transcript, mapping = protect_terms(transcript)
+            english_input_protected, _ = multilingual_pipeline.translate_to_english(protected_transcript, route_lang)
+            llm_input = restore_terms(english_input_protected, mapping, mode="english")
+
+        # Determine TTS engine selection
+        use_mms_for_hindi = False
+        if response_lang == "hindi":
+            has_devanagari = multilingual_pipeline.router.contains_devanagari_script(transcript)
+            use_mms_for_hindi = (lang_pref == "hindi") or (lang_pref == "auto" and route_lang == "hindi" and has_devanagari)
+
+        tts_engine = "mms" if (response_lang in ("kannada", "marathi") or use_mms_for_hindi) else "kokoro"
+
+        # 4. Stream LLM response & TTS
+        import base64
+        if tts_engine == "kokoro":
             # English response — stream through Kokoro
-            llm_english = ml_result.get("llm_english_response") or ""
-            if llm_english:
-                await set_state(ConversationState.THINKING)
-                async def _ml_english_stream():
-                    yield {"raw": llm_english, "planned": llm_english}
-                await _stream_llm_and_tts(
-                    websocket, _ml_english_stream(), loop, set_state,
-                    speed, voice, latency_metrics, start_time, student_id=user_id
+            if agent_controller is not None:
+                llm_stream = agent_controller.stream(
+                    llm_input, session_id, user_id=user_id,
+                    audio_array=audio_array_ml, ip_address=client_ip,
+                    voice_style=voice_style
                 )
+            else:
+                llm_stream = llm_engine.stream_tokens(llm_input)
+
+            await set_state(ConversationState.THINKING)
+            await _stream_llm_and_tts(
+                websocket, llm_stream, loop, set_state,
+                speed, voice, latency_metrics, start_time, student_id=user_id
+            )
+        else:
+            # Indic response — stream, translate, synthesize sentence-by-sentence
+            if agent_controller is not None:
+                llm_stream = agent_controller.stream(
+                    llm_input, session_id, user_id=user_id,
+                    audio_array=audio_array_ml, ip_address=client_ip,
+                    voice_style=voice_style
+                )
+            else:
+                llm_stream = llm_engine.stream_tokens(llm_input)
+
+            translation_queue = asyncio.Queue()
+            tts_queue = asyncio.Queue()
+            audio_queue = asyncio.Queue()
+
+            async def llm_reader():
+                sentence_buffer = ""
+                try:
+                    async for token_dict in llm_stream:
+                        raw_token = token_dict.get("raw", "")
+                        planned_token = token_dict.get("planned", "")
+                        followup_text = token_dict.get("followup", "")
+
+                        if planned_token:
+                            sentence_buffer += planned_token
+                            if is_sentence_complete(sentence_buffer):
+                                await translation_queue.put(sentence_buffer)
+                                sentence_buffer = ""
+
+                        if raw_token:
+                            await websocket.send_json({"type": "assistant_text_delta", "text": raw_token})
+                        if followup_text:
+                            await websocket.send_json({"type": "followup", "text": followup_text})
+
+                    if sentence_buffer.strip():
+                        await translation_queue.put(sentence_buffer)
+                except Exception as exc:
+                    logger.exception("LLM reader error in multilingual stream: %s", exc)
+                finally:
+                    await translation_queue.put(None)
+
+            async def translator_worker():
+                tgt_code = NLLB_LANG_MAP.get(response_lang, "hin_Deva")
+                try:
+                    while True:
+                        eng_sentence = await translation_queue.get()
+                        if eng_sentence is None:
+                            break
+
+                        # Protect, Translate, Restore
+                        from i18n.term_glossary import protect_terms, restore_terms
+                        protected, mapping = protect_terms(eng_sentence)
+
+                        translated_protected, _ = await loop.run_in_executor(
+                            None, lambda: multilingual_pipeline.translator.translate(protected, "eng_Latn", tgt_code)
+                        )
+
+                        translated = restore_terms(translated_protected, mapping, mode=glossary_mode, target_language=response_lang)
+                        await tts_queue.put(translated)
+                        translation_queue.task_done()
+                except Exception as exc:
+                    logger.exception("Translator worker error in multilingual stream: %s", exc)
+                finally:
+                    await tts_queue.put(None)
+
+            async def tts_worker():
+                mms_lang = MMS_TTS_LANG_MAP.get(response_lang, "hin")
+                try:
+                    while True:
+                        sentence = await tts_queue.get()
+                        if sentence is None:
+                            break
+
+                        wav_bytes = await loop.run_in_executor(
+                            None, lambda: multilingual_pipeline.mms_tts.synthesize(sentence, mms_lang)
+                        )
+                        await audio_queue.put(wav_bytes)
+                        tts_queue.task_done()
+                except Exception as exc:
+                    logger.exception("TTS worker error in multilingual stream: %s", exc)
+                finally:
+                    await audio_queue.put(None)
+
+            async def audio_sender():
+                first_audio_sent = False
+                try:
+                    while True:
+                        wav_bytes = await audio_queue.get()
+                        if wav_bytes is None:
+                            break
+
+                        if wav_bytes:
+                            if not first_audio_sent:
+                                first_audio_sent = True
+                                await websocket.send_json({"type": "tts_start"})
+                                await set_state(ConversationState.SPEAKING)
+                                latency_metrics["first_audio"] = round(time.time() - start_time, 2)
+
+                            base64_wav = base64.b64encode(wav_bytes).decode("utf-8")
+                            await websocket.send_json({
+                                "type": "audio_chunk",
+                                "audio": base64_wav,
+                                "word_timestamps": []
+                            })
+                        audio_queue.task_done()
+                except Exception as exc:
+                    logger.exception("Audio sender error in multilingual stream: %s", exc)
+
+            await set_state(ConversationState.THINKING)
+            reader_task = asyncio.create_task(llm_reader())
+            trans_task = asyncio.create_task(translator_worker())
+            tts_task = asyncio.create_task(tts_worker())
+            sender_task = asyncio.create_task(audio_sender())
+
+            await asyncio.gather(reader_task, trans_task, tts_task, sender_task)
 
         await set_state(ConversationState.IDLE)
         latency_metrics["complete"] = round(time.time() - start_time, 2)
         logger.info(
-            "[MULTILINGUAL] Turn complete | route=%s | timings=%s",
-            route_lang, ml_result.get("timings", {})
+            "[MULTILINGUAL] Turn complete | route=%s | response_lang=%s | first_audio=%.2fs | complete=%.2fs",
+            route_lang, response_lang, latency_metrics.get("first_audio", -1), latency_metrics["complete"]
         )
         await websocket.send_json({"type": "assistant_finished"})
         return
