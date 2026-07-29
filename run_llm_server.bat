@@ -28,9 +28,9 @@ REM ==================================================================
 
 set MODEL=backend\models\EduMentor-Qwen3-Q6_K.gguf
 
-REM Add Ollama lib dir + CUDA v12 DLLs to PATH so GPU support is loaded
+REM Add Ollama lib dir + CUDA v13/v12 DLLs to PATH so GPU support is loaded
 set OLLAMA_LIB=C:\Users\savan\AppData\Local\Programs\Ollama\lib\ollama
-set PATH=%OLLAMA_LIB%;%OLLAMA_LIB%\cuda_v12;%PATH%
+set PATH=%OLLAMA_LIB%;%OLLAMA_LIB%\cuda_v13;%OLLAMA_LIB%\cuda_v12;%PATH%
 
 echo [EduMentor] Starting llama.cpp server...
 echo Model: %MODEL%
