@@ -45,6 +45,7 @@ class Intent(str, Enum):
     PROJECT_HELP        = "PROJECT_HELP"          # "Help me with my project"
     CAREER_GUIDANCE     = "CAREER_GUIDANCE"       # "How do I get a job?"
     UNSAFE              = "UNSAFE"                # Caught by safety guard
+    SETTINGS_UPDATE     = "SETTINGS_UPDATE"       # "switch to Kannada"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -306,38 +307,44 @@ class StudentProfile:
         discipline:       Selected discipline (e.g. cse, mech, eee)
         active_topics:    List of topics active in the current session
     """
-    name:             str        = "Student"
-    level:            str        = "beginner"
-    learning_topics:  List[str]  = field(default_factory=list)
-    weak_topics:      List[str]  = field(default_factory=list)
-    preferred_style:  str        = "examples"
-    session_count:    int        = 0
-    discipline:       str        = "cse"
-    active_topics:    List[str]  = field(default_factory=list)
+    name:                       str        = "Student"
+    level:                      str        = "beginner"
+    learning_topics:            List[str]  = field(default_factory=list)
+    weak_topics:                List[str]  = field(default_factory=list)
+    preferred_style:            str        = "examples"
+    session_count:              int        = 0
+    discipline:                 str        = "cse"
+    active_topics:              List[str]  = field(default_factory=list)
+    output_language_preference: str        = "auto"
+    glossary_mode:              str        = "english"
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "name":            self.name,
-            "level":           self.level,
-            "learning_topics": self.learning_topics,
-            "weak_topics":     self.weak_topics,
-            "preferred_style": self.preferred_style,
-            "session_count":   self.session_count,
-            "discipline":      self.discipline,
-            "active_topics":   self.active_topics,
+            "name":                       self.name,
+            "level":                      self.level,
+            "learning_topics":            self.learning_topics,
+            "weak_topics":                self.weak_topics,
+            "preferred_style":            self.preferred_style,
+            "session_count":              self.session_count,
+            "discipline":                 self.discipline,
+            "active_topics":              self.active_topics,
+            "output_language_preference": self.output_language_preference,
+            "glossary_mode":              self.glossary_mode,
         }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "StudentProfile":
         return cls(
-            name            = data.get("name", "Student"),
-            level           = data.get("level", "beginner"),
-            learning_topics = data.get("learning_topics", []),
-            weak_topics     = data.get("weak_topics", []),
-            preferred_style = data.get("preferred_style", "examples"),
-            session_count   = data.get("session_count", 0),
-            discipline      = data.get("discipline", "cse"),
-            active_topics   = data.get("active_topics", []),
+            name                       = data.get("name", "Student"),
+            level                      = data.get("level", "beginner"),
+            learning_topics            = data.get("learning_topics", []),
+            weak_topics                = data.get("weak_topics", []),
+            preferred_style            = data.get("preferred_style", "examples"),
+            session_count              = data.get("session_count", 0),
+            discipline                 = data.get("discipline", "cse"),
+            active_topics              = data.get("active_topics", []),
+            output_language_preference = data.get("output_language_preference", "auto"),
+            glossary_mode              = data.get("glossary_mode", "english"),
         )
 
     def to_prompt_block(self) -> str:
