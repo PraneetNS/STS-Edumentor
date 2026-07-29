@@ -47,7 +47,7 @@ _SYSTEM_PROMPT = (
 )
 
 # User prompt template: lists all valid intents and the message to classify
-_USER_TEMPLATE = """Intents: CONCEPT_EXPLANATION, CODE_HELP, DEBUGGING, QUIZ_REQUEST, REPEAT_LAST, SIMPLIFY, FOLLOW_UP, OFF_TOPIC, GREETING, THANKS, PDF_QUESTION, PROJECT_HELP, CAREER_GUIDANCE, UNSAFE
+_USER_TEMPLATE = """Intents: CONCEPT_EXPLANATION, CODE_HELP, DEBUGGING, QUIZ_REQUEST, REPEAT_LAST, SIMPLIFY, FOLLOW_UP, OFF_TOPIC, GREETING, THANKS, PDF_QUESTION, PROJECT_HELP, CAREER_GUIDANCE, UNSAFE, SETTINGS_UPDATE
 
 needs_history=true when the message refers to previous conversation (it, that, again, simpler, explain more, continue).
 
@@ -74,6 +74,7 @@ _NEEDS_HISTORY_DEFAULTS: dict = {
     Intent.PROJECT_HELP:        True,   # Usually references ongoing project
     Intent.CAREER_GUIDANCE:     False,
     Intent.UNSAFE:              False,
+    Intent.SETTINGS_UPDATE:     False,
 }
 
 
@@ -163,6 +164,9 @@ class IntentClassifier:
         (r"\b(debug|error|bug|fix|not working|broken|exception|traceback)\b", Intent.DEBUGGING, True, 0.88),
         (r"\b(code|write|function|class|implement|script|program)\b", Intent.CODE_HELP, False, 0.80),
         (r"\b(more|tell me more|elaborate|continue|go on|and then)\b", Intent.FOLLOW_UP, True, 0.85),
+        (r"\b(switch to|reply in|change language to|speak in|use language|use)\b\s*(kannada|marathi|hindi|english|auto)\b", Intent.SETTINGS_UPDATE, False, 1.0),
+        (r"\b(reply|speak|write)\s*(only\s*)?in\s*(kannada|marathi|hindi|english)\b", Intent.SETTINGS_UPDATE, False, 1.0),
+        (r"\b(kannada|marathi|hindi|english)\s*preference\b", Intent.SETTINGS_UPDATE, False, 1.0),
     ]
 
     _compiled_quick: Optional[list] = None
