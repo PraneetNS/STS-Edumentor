@@ -48,32 +48,55 @@ class MMSTTSEngine:
     MODEL_ID = "ai4bharat/indic-parler-tts"
 
     def __init__(self) -> None:
+        import threading
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self._model = None
         self._tokenizer = None
+        self._lock = threading.Lock()
+        self.warmed_up = False
         logger.info(
             "[OK] IndicParlerTTS engine initialized (lazy-load, device=%s).", self.device
         )
+        # Start background warmup to load weights and synthesize a dummy character per language
+        threading.Thread(target=self._background_warmup, daemon=True).start()
 
     def _load_model(self) -> None:
         """Lazy-load the indic-parler-tts model on first synthesis call."""
-        if self._model is None:
-            from parler_tts import ParlerTTSForConditionalGeneration
-            from transformers import AutoTokenizer
+        with self._lock:
+            if self._model is None:
+                from parler_tts import ParlerTTSForConditionalGeneration
+                from transformers import AutoTokenizer
 
-            logger.info("Loading AI4Bharat indic-parler-tts model (%s) ...", self.MODEL_ID)
-            t0 = time.time()
+                logger.info("Loading AI4Bharat indic-parler-tts model (%s) ...", self.MODEL_ID)
+                t0 = time.time()
 
-            self._tokenizer = AutoTokenizer.from_pretrained(self.MODEL_ID)
-            self._model = ParlerTTSForConditionalGeneration.from_pretrained(
-                self.MODEL_ID,
-                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-            ).to(self.device)
-            self._model.eval()
+                import os
+                hf_token = os.getenv("HF_TOKEN")
+                self._tokenizer = AutoTokenizer.from_pretrained(self.MODEL_ID, token=hf_token)
+                self._model = ParlerTTSForConditionalGeneration.from_pretrained(
+                    self.MODEL_ID,
+                    torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
+                    token=hf_token,
+                ).to(self.device)
+                self._model.eval()
 
-            logger.info(
-                "[OK] indic-parler-tts loaded in %.2fs on %s.", time.time() - t0, self.device
-            )
+                logger.info(
+                    "[OK] indic-parler-tts loaded in %.2fs on %s.", time.time() - t0, self.device
+                )
+
+    def _background_warmup(self) -> None:
+        """Load model and run a dummy synthesis for each supported language to warm cache."""
+        logger.info("Starting background warmup for IndicParlerTTS...")
+        try:
+            self._load_model()
+            # Synthesize one character per supported language to cache voice weights
+            for lang_code in ["hin", "kan", "mar"]:
+                logger.info("Warming up IndicParlerTTS voice weights for lang '%s'...", lang_code)
+                self.synthesize("म", lang_code)
+            self.warmed_up = True
+            logger.info("IndicParlerTTS background warmup complete.")
+        except Exception as e:
+            logger.warning("IndicParlerTTS background warmup failed: %s", e)
 
     def synthesize(self, text: str, lang: str) -> bytes:
         """
