@@ -19,9 +19,11 @@
     "Civil Engineering"
   ],
   "preferred_style": "examples",
-  "session_count": 42,
+  "session_count": 49,
   "discipline": "cse",
   "active_topics": [
-    "Algorithms"
-  ]
+    "Machine Learning"
+  ],
+  "output_language_preference": "auto",
+  "glossary_mode": "english"
 }
