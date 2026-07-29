@@ -8,7 +8,7 @@ block analysis, Devanagari lexical pattern matching, and Latin keyword fallbacks
 
 import re
 import logging
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 
 logger = logging.getLogger("edumentor.speech.language_router")
 
@@ -26,7 +26,8 @@ DEVANAGARI_MARATHI_KEYWORDS = {
     "आहे", "नाही", "आणि", "काय", "करतात", "केले", "आहेत", "म्हणजे", "मध्ये",
     "पण", "तर", "होते", "झाले", "कडून", "साठी", "पेक्षा", "येतो", "झाली",
     "केली", "केला", "पुनरावृत्ती", "अशी", "ज्यामध्ये", "स्वतःला", "म्हणून",
-    "केल्यास", "तेव्हा", "म्हणते", "द्या", "पुनराव्रुत्ती", "स्वताला", "जामदे"
+    "केल्यास", "तेव्हा", "म्हणते", "द्या", "पुनराव्रुत्ती", "स्वताला", "जामदे",
+    "कसे", "कायानी", "मला", "करून", "तुम्हाला", "येथे"
 }
 
 # Unique Hindi keywords in Devanagari
@@ -56,10 +57,33 @@ LATIN_MARATHI_KEYWORDS = {
     "baghu", "karu", "kartoy", "kartyat", "bolto", "punaravruti"
 }
 
+# Romanized Hindi/Hinglish keywords (Latin script)
+LATIN_HINDI_KEYWORDS = {
+    "kya", "hai", "hain", "aur", "mein", "se", "ko", "ka", "ki", "ke", "tha", "thi", "the",
+    "ho", "rha", "raha", "rahi", "rahe", "kar", "karna", "karke", "karta", "karte", "krta",
+    "krte", "bhi", "toh", "ek", "haan", "nhi", "nahi", "kuch", "apne", "aap", "karne",
+    "karty", "krke", "kaise", "kese", "hoga", "hogi", "hogya", "gaya", "gayi", "gaye",
+    "karo", "karoo", "batao", "samjhao", "sikhaya", "samajh", "aaya", "aayi"
+}
+
+# Common English function words to confirm standard English queries
+ENGLISH_FUNCTION_WORDS = {
+    "the", "of", "and", "a", "to", "in", "is", "you", "that", "it", "he", "was", "for", "on",
+    "are", "as", "with", "his", "they", "i", "at", "be", "this", "have", "from", "or", "one",
+    "had", "by", "word", "but", "not", "what", "all", "were", "we", "when", "your", "can",
+    "said", "there", "use", "an", "each", "which", "she", "do", "how", "their", "if", "will",
+    "up", "other", "about", "out", "many", "then", "them", "these", "so", "some", "her",
+    "would", "make", "like", "him", "into", "time", "has", "look", "two", "more", "write",
+    "go", "see", "number", "no", "way", "could", "people", "my", "than", "first", "water",
+    "been", "call", "who", "oil", "its", "now", "find", "long", "down", "day", "did", "get",
+    "come", "made", "may", "part", "explain", "what", "how", "why", "describe", "recursion",
+    "programming", "computer", "science", "engineering"
+}
+
 
 class LanguageRouter:
     """
-    Routes a post-STT text transcript to 'hindi', 'marathi', or 'kannada'
+    Routes a post-STT text transcript to 'hindi', 'marathi', 'kannada', or 'english'
     using Unicode script checks and lexical dictionaries.
     """
 
@@ -74,23 +98,28 @@ class LanguageRouter:
         return any('\u0900' <= char <= '\u097f' for char in text)
 
     @classmethod
-    def route(cls, text: str) -> Tuple[str, Dict[str, Any]]:
+    def route(cls, text: str, whisper_detected_lang: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
         """
         Classifies transcript and returns (route_lang, metadata_details).
-        Possible return languages: 'hindi', 'marathi', 'kannada'.
+        Possible return languages: 'hindi', 'marathi', 'kannada', 'english'.
         """
         if not text or not text.strip():
-            return "hindi", {"reason": "Empty text, defaulted to Hindi", "scores": {}}
+            return "english", {
+                "reason": "Empty text, defaulted to English",
+                "scores": {},
+                "routing_path": "english-default"
+            }
 
         # Clean words for lookup
-        tokens = [w.strip(".,!?\"'()[]।;-") for w in text.lower().split()]
+        tokens = [w.strip(".,!?\"'()[]।;-").lower() for w in text.split()]
         raw_words = [w.strip(".,!?\"'()[]।;-") for w in text.split()]
 
         # 1. Kannada Unicode Script Check (Unconditional route)
         if cls.contains_kannada_script(text):
             return "kannada", {
                 "reason": "Kannada Unicode characters detected in transcript",
-                "scores": {"kannada_script": True}
+                "scores": {"kannada_script": True},
+                "routing_path": "keyword-match"
             }
 
         # 2. Devanagari Unicode Script Check
@@ -100,14 +129,16 @@ class LanguageRouter:
             if kannada_deva_matches:
                 return "kannada", {
                     "reason": f"Devanagari Kannada phonetic match found: {kannada_deva_matches}",
-                    "scores": {"kannada_deva_matches": len(kannada_deva_matches)}
+                    "scores": {"kannada_deva_matches": len(kannada_deva_matches)},
+                    "routing_path": "keyword-match"
                 }
 
             # Check for Marathi-specific letter 'ळ' (Devanagari Letter LLA)
             if 'ळ' in text:
                 return "marathi", {
                     "reason": "Marathi-specific Devanagari character 'ळ' detected",
-                    "scores": {"has_lla_char": True}
+                    "scores": {"has_lla_char": True},
+                    "routing_path": "keyword-match"
                 }
 
             # Disambiguate Marathi vs Hindi Devanagari vocabulary
@@ -117,34 +148,77 @@ class LanguageRouter:
             if marathi_score > hindi_score:
                 return "marathi", {
                     "reason": f"Devanagari Marathi lexicon score ({marathi_score}) > Hindi score ({hindi_score})",
-                    "scores": {"marathi": marathi_score, "hindi": hindi_score}
+                    "scores": {"marathi": marathi_score, "hindi": hindi_score},
+                    "routing_path": "keyword-match"
                 }
             else:
                 return "hindi", {
                     "reason": f"Devanagari Hindi lexicon score ({hindi_score}) >= Marathi score ({marathi_score})",
-                    "scores": {"marathi": marathi_score, "hindi": hindi_score}
+                    "scores": {"marathi": marathi_score, "hindi": hindi_score},
+                    "routing_path": "keyword-match"
                 }
 
         # 3. Latin / Romanized Script Check (Keyword Matching)
         kannada_latin_matches = [w for w in tokens if w in LATIN_KANNADA_KEYWORDS]
         marathi_latin_matches = [w for w in tokens if w in LATIN_MARATHI_KEYWORDS]
+        hindi_latin_matches = [w for w in tokens if w in LATIN_HINDI_KEYWORDS]
 
         kannada_score = len(kannada_latin_matches)
         marathi_score = len(marathi_latin_matches)
+        hindi_score = len(hindi_latin_matches)
 
         if kannada_score > 0 and kannada_score > marathi_score:
             return "kannada", {
                 "reason": f"Latin Kannada keywords found: {kannada_latin_matches}",
-                "scores": {"kannada": kannada_score, "marathi": marathi_score}
+                "scores": {"kannada": kannada_score, "marathi": marathi_score, "hindi": hindi_score},
+                "routing_path": "keyword-match"
             }
         elif marathi_score > 0 and marathi_score > kannada_score:
             return "marathi", {
                 "reason": f"Latin Marathi keywords found: {marathi_latin_matches}",
-                "scores": {"kannada": kannada_score, "marathi": marathi_score}
+                "scores": {"kannada": kannada_score, "marathi": marathi_score, "hindi": hindi_score},
+                "routing_path": "keyword-match"
             }
 
-        # Fallback to Hindi/Hinglish
-        return "hindi", {
-            "reason": "Only Latin script detected with no strong Kannada/Marathi keywords. Defaulted to Hinglish/Hindi.",
-            "scores": {"kannada": kannada_score, "marathi": marathi_score}
+        # If they are 0 or tied, check for Hindi/Hinglish keywords (or mixed Indic signals)
+        if hindi_score > 0 or kannada_score > 0 or marathi_score > 0:
+            return "hindi", {
+                "reason": f"Latin Hinglish/Hindi keywords or mixed signals found: hindi_matches={hindi_latin_matches}",
+                "scores": {"kannada": kannada_score, "marathi": marathi_score, "hindi": hindi_score},
+                "routing_path": "keyword-match"
+            }
+
+        # 4. Fallback to Whisper's detected language when scores are all 0
+        if whisper_detected_lang:
+            w_lang = whisper_detected_lang.lower().strip()
+            if w_lang in ("kn", "kannada"):
+                return "kannada", {
+                    "reason": f"No keywords matched. Whisper detected language {whisper_detected_lang!r} used as fallback.",
+                    "scores": {"kannada": 0, "marathi": 0, "hindi": 0},
+                    "routing_path": "whisper-probability-fallback"
+                }
+            elif w_lang in ("mr", "marathi"):
+                return "marathi", {
+                    "reason": f"No keywords matched. Whisper detected language {whisper_detected_lang!r} used as fallback.",
+                    "scores": {"kannada": 0, "marathi": 0, "hindi": 0},
+                    "routing_path": "whisper-probability-fallback"
+                }
+            elif w_lang in ("hi", "hindi"):
+                return "hindi", {
+                    "reason": f"No keywords matched. Whisper detected language {whisper_detected_lang!r} used as fallback.",
+                    "scores": {"kannada": 0, "marathi": 0, "hindi": 0},
+                    "routing_path": "whisper-probability-fallback"
+                }
+            elif w_lang in ("en", "english"):
+                return "english", {
+                    "reason": f"No keywords matched. Whisper detected language {whisper_detected_lang!r} used as fallback.",
+                    "scores": {"kannada": 0, "marathi": 0, "hindi": 0},
+                    "routing_path": "whisper-probability-fallback"
+                }
+
+        # 5. Default to English when no Indic keywords are matched and Whisper has no signal
+        return "english", {
+            "reason": "Only Latin script detected with no Indic keywords. Classified as English.",
+            "scores": {"kannada": kannada_score, "marathi": marathi_score, "hindi": hindi_score},
+            "routing_path": "english-default"
         }
