@@ -159,9 +159,11 @@ class LanguageRouter:
                 }
 
         # 3. Latin / Romanized Script Check (Keyword Matching)
-        kannada_latin_matches = [w for w in tokens if w in LATIN_KANNADA_KEYWORDS]
-        marathi_latin_matches = [w for w in tokens if w in LATIN_MARATHI_KEYWORDS]
-        hindi_latin_matches = [w for w in tokens if w in LATIN_HINDI_KEYWORDS]
+        # Filter out common English function words to prevent false Hinglish matches (such as 'the' matching Hinglish 'थे')
+        indic_tokens = [w for w in tokens if w not in ENGLISH_FUNCTION_WORDS]
+        kannada_latin_matches = [w for w in indic_tokens if w in LATIN_KANNADA_KEYWORDS]
+        marathi_latin_matches = [w for w in indic_tokens if w in LATIN_MARATHI_KEYWORDS]
+        hindi_latin_matches = [w for w in indic_tokens if w in LATIN_HINDI_KEYWORDS]
 
         kannada_score = len(kannada_latin_matches)
         marathi_score = len(marathi_latin_matches)
