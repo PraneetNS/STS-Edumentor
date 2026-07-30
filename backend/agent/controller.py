@@ -69,6 +69,10 @@ agent_logger = logging.getLogger("edumentor.agent.events")
 
 
 def get_max_tokens_for_intent(user_text: str, intent: Intent) -> int:
+    # Short conversational turns: cap at 80 tokens so the LLM can't generate
+    # a 150-word essay for a "Hi" or "Thanks" message.
+    if intent in (Intent.GREETING, Intent.THANKS, Intent.SETTINGS_UPDATE):
+        return 80
     query = user_text.lower()
     needs_silent = (
         intent in (Intent.CODE_HELP, Intent.DEBUGGING) or
@@ -78,6 +82,7 @@ def get_max_tokens_for_intent(user_text: str, intent: Intent) -> int:
     if needs_silent:
         return 512  # Raise token ceiling for visual/code requests
     return 250      # Keep voice-only or short replies compact and fast
+
 
 
 class AgentController:

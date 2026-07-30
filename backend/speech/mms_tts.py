@@ -1,14 +1,13 @@
 """
-EduMentor Voice — AI4Bharat indic-parler-tts Engine
+EduMentor Voice — Meta MMS-TTS Engine
 
-Replaces Meta MMS-TTS with the AI4Bharat indic-parler-tts model for
-high-quality, natural Indic TTS (Hindi, Kannada, Marathi, and 21+ other languages).
+Uses Meta's official Massively Multilingual Speech (MMS) checkpoints:
+  - Hin: facebook/mms-tts-hin
+  - Kan: facebook/mms-tts-kan
+  - Mar: facebook/mms-tts-mar
 
-Gated model: requires HF_TOKEN with accepted terms at:
-  https://huggingface.co/ai4bharat/indic-parler-tts
-
-Requires:
-  pip install git+https://github.com/huggingface/parler-tts.git
+These checkpoints are un-gated, extremely lightweight (~36M params each),
+synthesize in <100ms on GPU, and require minimal VRAM (~150MB).
 """
 
 import io
@@ -16,174 +15,144 @@ import logging
 import os
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 import time
-from typing import Optional
+from typing import Optional, Dict
 
 import numpy as np
 import soundfile as sf
 import torch
+from transformers import VitsModel, AutoTokenizer
 
 logger = logging.getLogger("edumentor.speech.mms_tts")
-
-# Voice description for indic-parler-tts
-# Controls gender, pace, and quality of Indic output
-_VOICE_DESCRIPTION = (
-    "A female speaker with a clear, natural, and calm voice. "
-    "The recording is of high quality with a slight room acoustic."
-)
-
-# Language name → Parler-TTS description modifier
-_LANG_DESC_MAP = {
-    "hin": "The speaker speaks in Hindi.",
-    "kan": "The speaker speaks in Kannada.",
-    "mar": "The speaker speaks in Marathi.",
-}
 
 
 class MMSTTSEngine:
     """
-    AI4Bharat indic-parler-tts engine (replaces Meta MMS-TTS).
-
-    Exposes the same synthesize(text, lang) interface so no changes
-    are needed in multilingual_pipeline.py.
+    Genuine Meta MMS-TTS engine using open VITS checkpoints.
     """
 
-    MODEL_ID = "ai4bharat/indic-parler-tts"
+    LANG_MODEL_MAP = {
+        "hin": "facebook/mms-tts-hin",
+        "kan": "facebook/mms-tts-kan",
+        "mar": "facebook/mms-tts-mar",
+    }
 
     def __init__(self) -> None:
         import threading
-        import os
         self.device = os.getenv("MMS_TTS_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
-        self._model = None
-        self._tokenizer = None
+        self._models: Dict[str, VitsModel] = {}
+        self._tokenizers: Dict[str, AutoTokenizer] = {}
         self._lock = threading.Lock()
         self.warmed_up = False
         logger.info(
-            "[OK] IndicParlerTTS engine initialized (lazy-load, device=%s).", self.device
+            "[OK] Meta MMS-TTS engine initialized (lazy-load, device=%s).", self.device
         )
-        # Start background warmup to load weights and synthesize a dummy character per language
+        # Background warmup task to load and synthesize dummy speech for all 3 languages
         threading.Thread(target=self._background_warmup, daemon=True).start()
 
-    def _load_model(self) -> None:
-        """Lazy-load the indic-parler-tts model on first synthesis call."""
+    def _load_model(self, lang: str) -> None:
+        """Lazy-load the tokenizer and VITS model for the given language."""
+        if lang not in self.LANG_MODEL_MAP:
+            raise ValueError(f"Unsupported language code: {lang}")
+
         with self._lock:
-            if self._model is None:
+            if lang not in self._models:
+                model_id = self.LANG_MODEL_MAP[lang]
+                logger.info("Loading Meta MMS-TTS model (%s) on %s ...", model_id, self.device)
+                t0 = time.time()
+
                 if self.device == "cpu":
                     from config import Config
                     torch.set_num_threads(Config.TTS_CPU_THREADS)
                     logger.info("Set PyTorch CPU threads to: %d", Config.TTS_CPU_THREADS)
 
-                from parler_tts import ParlerTTSForConditionalGeneration
-                from transformers import AutoTokenizer
+                tokenizer = AutoTokenizer.from_pretrained(model_id)
+                model = VitsModel.from_pretrained(model_id).to(self.device)
+                model.eval()
 
-                logger.info("Loading AI4Bharat indic-parler-tts model (%s) ...", self.MODEL_ID)
-                t0 = time.time()
-
-                import os
-                hf_token = os.getenv("HF_TOKEN")
-                self._tokenizer = AutoTokenizer.from_pretrained(self.MODEL_ID, token=hf_token)
-                self._model = ParlerTTSForConditionalGeneration.from_pretrained(
-                    self.MODEL_ID,
-                    torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-                    token=hf_token,
-                ).to(self.device)
-                self._model.eval()
-
+                self._tokenizers[lang] = tokenizer
+                self._models[lang] = model
                 logger.info(
-                    "[OK] indic-parler-tts loaded in %.2fs on %s.", time.time() - t0, self.device
+                    "[OK] Meta MMS-TTS %s loaded in %.2fs on %s.", model_id, time.time() - t0, self.device
                 )
 
     def _background_warmup(self) -> None:
-        """Load model and run a dummy synthesis for each supported language to warm cache."""
-        logger.info("Starting background warmup for IndicParlerTTS...")
+        """Background warmup task to pre-load and cache the VITS checkpoints."""
+        logger.info("Starting background warmup for Meta MMS-TTS...")
         try:
-            self._load_model()
-            # Synthesize a short word per supported language to cache voice weights
             warmup_words = {
                 "hin": "नमस्ते",
                 "kan": "ನಮಸ್ಕಾರ",
                 "mar": "नमस्कार"
             }
             for lang_code in ["hin", "kan", "mar"]:
-                logger.info("Warming up IndicParlerTTS voice weights for lang '%s'...", lang_code)
+                logger.info("Warming up Meta MMS-TTS for lang '%s'...", lang_code)
+                self._load_model(lang_code)
                 self.synthesize(warmup_words[lang_code], lang_code)
+            
             if self.device == "cuda":
                 allocated = torch.cuda.memory_allocated(0) // (1024**2)
                 reserved  = torch.cuda.memory_reserved(0)  // (1024**2)
                 logger.info(
-                    "[GPU] indic-parler-tts warmup complete. VRAM allocated=%dMiB reserved=%dMiB",
+                    "[GPU] Meta MMS-TTS warmup complete. VRAM allocated=%dMiB reserved=%dMiB",
                     allocated, reserved
                 )
-            logger.info("IndicParlerTTS background warmup complete.")
+            logger.info("Meta MMS-TTS background warmup complete.")
         except Exception as e:
-            logger.warning("IndicParlerTTS background warmup failed: %s", e)
+            logger.warning("Meta MMS-TTS background warmup failed: %s", e)
         finally:
             self.warmed_up = True
 
     def synthesize(self, text: str, lang: str) -> bytes:
         """
-        Synthesize text into WAV bytes using AI4Bharat indic-parler-tts.
+        Synthesize text into WAV bytes using Meta VITS MMS-TTS.
 
         Args:
-            text: Text in the target Indic script (or romanized).
+            text: Native script text (Devanagari/Kannada).
             lang: Language code — 'hin', 'kan', 'mar'.
 
         Returns:
             WAV audio bytes.
         """
+        text = text.strip()
+        if not text:
+            return b""
+
         t_start = time.time()
         try:
-            self._load_model()
+            self._load_model(lang)
+            tokenizer = self._tokenizers[lang]
+            model = self._models[lang]
 
-            # Retrieve description prompt and configuration
-            lang_mod = _LANG_DESC_MAP.get(lang, "")
-            desc_prompt = f"{_VOICE_DESCRIPTION} {lang_mod}".strip()
-
-            # Tokenize description and text
-            desc_input = self._tokenizer(desc_prompt, return_tensors="pt").to(self.device)
-            text_input = self._tokenizer(text, return_tensors="pt").to(self.device)
+            inputs = tokenizer(text, return_tensors="pt").to(self.device)
 
             try:
-                # Generate waveform — CUDA OOM fallback to CPU if VRAM exhausted
-                with torch.inference_mode():
-                    generation = self._model.generate(
-                        input_ids=desc_input.input_ids,
-                        attention_mask=desc_input.attention_mask,
-                        prompt_input_ids=text_input.input_ids,
-                        prompt_attention_mask=text_input.text_input if hasattr(text_input, "text_input") else text_input.attention_mask,
-                    )
+                # Generate waveform waveform tensor is shape (1, num_samples)
+                with torch.no_grad():
+                    output = model(**inputs).waveform
             except (torch.cuda.OutOfMemoryError, RuntimeError) as oom_exc:
                 if self.device == "cuda" and ("CUDA out of memory" in str(oom_exc) or isinstance(oom_exc, torch.cuda.OutOfMemoryError)):
                     logger.warning(
-                        "[GPU OOM] indic-parler-tts CUDA OOM for %d-char %s text — falling back to CPU for this call. "
-                        "VRAM allocated=%dMiB. Error: %s",
-                        len(text), lang,
-                        torch.cuda.memory_allocated(0) // (1024**2),
-                        oom_exc
+                        "[GPU OOM] Meta MMS-TTS CUDA OOM translating %d chars — falling back to CPU. Error: %s",
+                        len(text), oom_exc
                     )
                     torch.cuda.empty_cache()
-                    # CPU fallback for this single call
-                    model_cpu = self._model.to("cpu")
-                    desc_cpu  = self._tokenizer(desc_prompt, return_tensors="pt")
-                    text_cpu  = self._tokenizer(text, return_tensors="pt")
-                    with torch.inference_mode():
-                        generation = model_cpu.generate(
-                            input_ids=desc_cpu.input_ids,
-                            attention_mask=desc_cpu.attention_mask,
-                            prompt_input_ids=text_cpu.input_ids,
-                            prompt_attention_mask=text_cpu.text_input if hasattr(text_cpu, "text_input") else text_cpu.attention_mask,
-                        )
-                    # Move model back to CUDA after fallback
-                    self._model = model_cpu.to(self.device)
+                    # Safe fallback to CPU
+                    model_cpu = model.to("cpu")
+                    inputs_cpu = tokenizer(text, return_tensors="pt").to("cpu")
+                    with torch.no_grad():
+                        output = model_cpu(**inputs_cpu).waveform
+                    # Restore model to device
+                    model.to(self.device)
                 else:
                     raise
 
-            audio_arr = generation.cpu().float().numpy()
+            audio_arr = output[0].cpu().numpy()
             if audio_arr.ndim > 1:
                 audio_arr = audio_arr.squeeze()
             if audio_arr.ndim == 0:
                 audio_arr = np.array([0.0], dtype=np.float32)
 
-            sampling_rate = self._model.config.sampling_rate
+            sampling_rate = model.config.sampling_rate
 
             # Encode to WAV bytes
             buf = io.BytesIO()
@@ -193,14 +162,14 @@ class MMSTTSEngine:
 
             latency = time.time() - t_start
             logger.debug(
-                "indic-parler-tts synthesized %d chars (%s) on %s → %d bytes WAV in %.2fs",
+                "Meta MMS-TTS synthesized %d chars (%s) on %s → %d bytes WAV in %.2fs",
                 len(text), lang, self.device, len(wav_bytes), latency,
             )
             return wav_bytes
 
         except Exception as e:
             logger.exception(
-                "indic-parler-tts synthesis failed for %r (%s): %s", text[:60], lang, e
+                "Meta MMS-TTS synthesis failed for %r (%s): %s", text[:60], lang, e
             )
             return b""
 

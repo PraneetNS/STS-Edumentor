@@ -134,8 +134,8 @@ _INTENT_TEMPLATES: Dict[Intent, str] = {
         "Keep the response natural, conversational, and brief (around 30 to 50 words). Speak only."
     ),
     Intent.THANKS: (
-        "The student is expressing gratitude. Respond warmly and in detail, encouraging them to keep going. "
-        "Ensure the entire response is around 120 to 150 words in total (including the follow-up question asking what they'd like to explore next)."
+        "The student is expressing gratitude. Respond warmly, briefly, and encouragingly. "
+        "Keep the response concise — around 30 to 50 words — and end with a follow-up question about what they'd like to explore next."
     ),
     Intent.PDF_QUESTION: (
         "The student is asking about content from an uploaded document. "
@@ -317,16 +317,25 @@ class PromptBuilder:
             )
         })
 
-        # ── Layer 3.9: Length hard reminder (injected just before user msg) ──
-        messages.append({
-            "role": "system",
-            "content": (
-                "[MANDATORY LENGTH DIRECTIVE — CRITICAL]\n"
-                "Your spoken explanation inside the <speak>...</speak> tags MUST be detailed, thorough, and contain at least 130 to 150 words (which is around 160 to 200 tokens). "
-                "Do NOT write a short response. You MUST explain the concept fully and step-by-step so that the output crosses 150 tokens. "
-                "This is a strict requirement to ensure a high-quality, comprehensive response."
-            )
-        })
+        # ── Layer 3.9: Length hard reminder (injected for technical intents only) ──
+        # Skip for short-turn intents (GREETING, THANKS, SETTINGS_UPDATE) since their
+        # intent instructions already mandate brevity (30-50 words). Injecting a 130-150
+        # word floor on top would override that and force the LLM to generate 160-200 tokens
+        # even for a simple "Hi" — costing 20-40 extra seconds on a CPU LLM.
+        _LONG_INTENTS = {
+            Intent.CONCEPT_EXPLANATION, Intent.CODE_HELP, Intent.DEBUGGING,
+            Intent.FOLLOW_UP, Intent.OFF_TOPIC, Intent.PDF_QUESTION,
+        }
+        if context.intent in _LONG_INTENTS:
+            messages.append({
+                "role": "system",
+                "content": (
+                    "[MANDATORY LENGTH DIRECTIVE — CRITICAL]\n"
+                    "Your spoken explanation inside the <speak>...</speak> tags MUST be detailed, thorough, and contain at least 130 to 150 words (which is around 160 to 200 tokens). "
+                    "Do NOT write a short response. You MUST explain the concept fully and step-by-step so that the output crosses 150 tokens. "
+                    "This is a strict requirement to ensure a high-quality, comprehensive response."
+                )
+            })
 
         # ── Layer 4: Current user message ─────────────────────────────
         messages.append({"role": "user", "content": context.user_text})
