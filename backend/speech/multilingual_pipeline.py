@@ -94,14 +94,27 @@ class MultilingualPipeline:
         )
 
         parts = []
+        time_to_first_output = None
         for seg in segments:
+            if time_to_first_output is None:
+                time_to_first_output = time.time() - t_start
             text = seg.text.strip()
             if text and not self.whisper_engine._is_hallucination(text):
                 parts.append(text)
 
+        if time_to_first_output is None:
+            time_to_first_output = time.time() - t_start
+
         transcript = " ".join(parts).strip()
         detected_lang = info.language  # Whisper's best guess (unreliable for code-mix)
         latency = time.time() - t_start
+
+        try:
+            from observability.metrics import multilingual_stt_ttf_seconds, multilingual_stt_total_seconds
+            multilingual_stt_ttf_seconds.labels(language=detected_lang).observe(time_to_first_output)
+            multilingual_stt_total_seconds.labels(language=detected_lang).observe(latency)
+        except Exception as exc:
+            logger.warning("Failed to record STT metrics: %s", exc)
 
         logger.info(
             "Multilingual STT: %r | whisper_lang=%s (prob=%.2f) | latency=%.2fs",
@@ -199,10 +212,17 @@ class MultilingualPipeline:
         # ── Stage 2: Language Router ─────────────────────────────────────────
         t_route = time.time()
         route_lang, route_meta = self.router.route(transcript, whisper_lang)
-        timings["router"] = round(time.time() - t_route, 3)
+        router_latency = time.time() - t_route
+        timings["router"] = round(router_latency, 3)
         result["route_lang"] = route_lang
         result["route_metadata"] = route_meta
         logger.info("Router decision: %s | reason: %s", route_lang, route_meta.get("reason"))
+
+        try:
+            from observability.metrics import multilingual_router_classify_seconds
+            multilingual_router_classify_seconds.labels(language=route_lang).observe(router_latency)
+        except Exception as exc:
+            logger.warning("Failed to record router metrics: %s", exc)
 
         # Increment Prometheus metric
         routing_path = route_meta.get("routing_path", "hindi-default")
@@ -230,19 +250,42 @@ class MultilingualPipeline:
 
         if needs_translation:
             t_translate_in = time.time()
-            # Protect terms
-            protected_transcript, mapping = protect_terms(transcript)
-            english_input_protected, _ = self.translate_to_english(protected_transcript, route_lang)
-            # Restore protected terms in English mode for the LLM
-            english_input = restore_terms(english_input_protected, mapping, mode="english")
             
-            timings["translate_in"] = round(time.time() - t_translate_in, 3)
+            # Protect terms
+            t_prot = time.time()
+            protected_transcript, mapping = protect_terms(transcript)
+            prot_latency = time.time() - t_prot
+
+            t_call = time.time()
+            english_input_protected, _ = self.translate_to_english(protected_transcript, route_lang)
+            call_latency = time.time() - t_call
+
+            # Restore protected terms in English mode for the LLM
+            t_rest = time.time()
+            english_input = restore_terms(english_input_protected, mapping, mode="english")
+            rest_latency = time.time() - t_rest
+            
+            translate_in_latency = time.time() - t_translate_in
+            timings["translate_in"] = round(translate_in_latency, 3)
             result["translated_to_en"] = english_input
             llm_input = english_input
+
+            try:
+                from observability.metrics import (
+                    multilingual_glossary_protect_seconds,
+                    multilingual_translate_in_seconds,
+                    multilingual_glossary_restore_seconds
+                )
+                multilingual_glossary_protect_seconds.labels(language=route_lang).observe(prot_latency)
+                multilingual_translate_in_seconds.labels(language=route_lang).observe(call_latency)
+                multilingual_glossary_restore_seconds.labels(language=route_lang).observe(rest_latency)
+            except Exception as exc:
+                logger.warning("Failed to record translate_in stages metrics: %s", exc)
 
         # ── Stage 4: LLM (unchanged agent pipeline) ──────────────────────────
         t_llm = time.time()
         llm_tokens = []
+        ttft = None
 
         if self.agent_controller is not None:
             async for token_dict in self.agent_controller.stream(
@@ -250,19 +293,34 @@ class MultilingualPipeline:
                 audio_array=audio_array, ip_address=ip_address,
                 voice_style=voice_style
             ):
+                if ttft is None:
+                    ttft = time.time() - t_llm
                 raw_token = token_dict.get("raw", "")
                 if raw_token:
                     llm_tokens.append(raw_token)
         else:
             async for token_dict in self.llm_engine.stream_tokens(llm_input):
+                if ttft is None:
+                    ttft = time.time() - t_llm
                 raw_token = token_dict.get("raw", "")
                 if raw_token:
                     llm_tokens.append(raw_token)
 
         llm_response_english = "".join(llm_tokens).strip()
-        timings["llm"] = round(time.time() - t_llm, 3)
+        llm_latency = time.time() - t_llm
+        timings["llm"] = round(llm_latency, 3)
         result["llm_english_response"] = llm_response_english
         logger.info("LLM response (EN, %d chars) in %.2fs", len(llm_response_english), timings["llm"])
+
+        if ttft is None:
+            ttft = llm_latency
+
+        try:
+            from observability.metrics import multilingual_llm_ttft_seconds, multilingual_llm_completion_seconds
+            multilingual_llm_ttft_seconds.labels(language=response_lang).observe(ttft)
+            multilingual_llm_completion_seconds.labels(language=response_lang).observe(llm_latency)
+        except Exception as exc:
+            logger.warning("Failed to record LLM metrics: %s", exc)
 
         # ── Stage 5: Back-translation (if needed) ────────────────────────────
         tts_text = llm_response_english
@@ -277,29 +335,85 @@ class MultilingualPipeline:
 
         if back_translate_lang:
             t_translate_out = time.time()
+            
+            t_prot = time.time()
             protected_response, mapping = protect_terms(llm_response_english)
+            prot_latency = time.time() - t_prot
+
+            t_call = time.time()
             translated_protected, _ = self.translate_from_english(protected_response, back_translate_lang)
+            call_latency = time.time() - t_call
+
+            t_rest = time.time()
             translated_response = restore_terms(translated_protected, mapping, mode=glossary_mode, target_language=back_translate_lang)
-            timings["translate_out"] = round(time.time() - t_translate_out, 3)
+            rest_latency = time.time() - t_rest
+
+            translate_out_latency = time.time() - t_translate_out
+            timings["translate_out"] = round(translate_out_latency, 3)
             result["translated_from_en"] = translated_response
             tts_text = translated_response
+
+            try:
+                from observability.metrics import (
+                    multilingual_glossary_protect_seconds,
+                    multilingual_translate_out_seconds,
+                    multilingual_glossary_restore_seconds
+                )
+                multilingual_glossary_protect_seconds.labels(language=back_translate_lang).observe(prot_latency)
+                multilingual_translate_out_seconds.labels(language=back_translate_lang).observe(call_latency)
+                multilingual_glossary_restore_seconds.labels(language=back_translate_lang).observe(rest_latency)
+            except Exception as exc:
+                logger.warning("Failed to record back-translation metrics: %s", exc)
+
         elif use_mms_for_hindi:
             t_translate_out = time.time()
+            
+            t_prot = time.time()
             protected_response, mapping = protect_terms(llm_response_english)
+            prot_latency = time.time() - t_prot
+
+            t_call = time.time()
             translated_protected, _ = self.translate_from_english(protected_response, "hindi")
+            call_latency = time.time() - t_call
+
+            t_rest = time.time()
             translated_response = restore_terms(translated_protected, mapping, mode=glossary_mode, target_language="hindi")
-            timings["translate_out"] = round(time.time() - t_translate_out, 3)
+            rest_latency = time.time() - t_rest
+
+            translate_out_latency = time.time() - t_translate_out
+            timings["translate_out"] = round(translate_out_latency, 3)
             result["translated_from_en"] = translated_response
             tts_text = translated_response
+
+            try:
+                from observability.metrics import (
+                    multilingual_glossary_protect_seconds,
+                    multilingual_translate_out_seconds,
+                    multilingual_glossary_restore_seconds
+                )
+                multilingual_glossary_protect_seconds.labels(language="hindi").observe(prot_latency)
+                multilingual_translate_out_seconds.labels(language="hindi").observe(call_latency)
+                multilingual_glossary_restore_seconds.labels(language="hindi").observe(rest_latency)
+            except Exception as exc:
+                logger.warning("Failed to record back-translation metrics for Hindi: %s", exc)
 
         # ── Stage 6: TTS Routing ──────────────────────────────────────────────
         if response_lang in ("kannada", "marathi") or use_mms_for_hindi:
             t_tts = time.time()
             wav_bytes, _ = self.synthesize_indic(tts_text, response_lang)
-            timings["tts"] = round(time.time() - t_tts, 3)
+            tts_latency = time.time() - t_tts
+            timings["tts"] = round(tts_latency, 3)
             result["tts_wav_bytes"] = wav_bytes
             result["tts_engine"] = "mms"
             result["tts_lang"] = response_lang
+
+            try:
+                from observability.metrics import multilingual_tts_ttf_seconds, multilingual_tts_completion_seconds
+                # Since this is non-streaming end-to-end, time to first byte of synthesis is the same as the total synthesis latency
+                multilingual_tts_ttf_seconds.labels(language=response_lang).observe(tts_latency)
+                multilingual_tts_completion_seconds.labels(language=response_lang).observe(tts_latency)
+            except Exception as exc:
+                logger.warning("Failed to record TTS metrics: %s", exc)
         else:
             result["tts_wav_bytes"] = None
             result["tts_engine"] = "kokoro"
