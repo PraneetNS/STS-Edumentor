@@ -8,6 +8,10 @@ from typing import Dict, Any, List
 import dotenv
 dotenv.load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
 
+import logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 
 # Dynamically add NVIDIA cuDNN and cuBLAS bin paths to Windows DLL search directory and PATH
@@ -80,7 +84,7 @@ TEST_SCENARIOS = [
     {
         "id": "e",
         "name": "Code-mixed Input",
-        "text": "Recursion ek logic hai jahan code and function thanna thaanu call karta hai",
+        "text": "Recursion endarenu ek logic hai jahan code and function thanna thaanu call karta hai",
         "gtts_lang": "kn",
         "expected_route": "kannada",
         "expected_tts": "mms",
@@ -187,7 +191,7 @@ async def run_scenario_stream(
                 planned_token = token_dict.get("planned", "")
                 if planned_token:
                     sentence_buffer += planned_token
-                    if is_sentence_complete(sentence_buffer):
+                    if is_sentence_complete(sentence_buffer) or len(sentence_buffer) >= Config.TTS_CHUNK_CHARS:
                         await translation_queue.put(sentence_buffer)
                         sentence_buffer = ""
             if sentence_buffer.strip():
