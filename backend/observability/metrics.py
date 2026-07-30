@@ -121,6 +121,95 @@ language_routing_total = MetricProxy(
     labelnames=["routing_path", "route_lang"]
 )
 
+# 7. Multilingual Stage-by-Stage Latencies
+multilingual_stt_ttf_seconds = MetricProxy(
+    Histogram,
+    "edumentor_multilingual_stt_ttf_seconds",
+    "Time to first Whisper segment output",
+    labelnames=["language"],
+    buckets=[0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
+)
+
+multilingual_stt_total_seconds = MetricProxy(
+    Histogram,
+    "edumentor_multilingual_stt_total_seconds",
+    "Total Whisper transcription time",
+    labelnames=["language"],
+    buckets=[0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 15.0]
+)
+
+multilingual_router_classify_seconds = MetricProxy(
+    Histogram,
+    "edumentor_multilingual_router_classify_seconds",
+    "Time to classify input language",
+    labelnames=["language"],
+    buckets=[0.0005, 0.001, 0.002, 0.005, 0.01, 0.05]
+)
+
+multilingual_glossary_protect_seconds = MetricProxy(
+    Histogram,
+    "edumentor_multilingual_glossary_protect_seconds",
+    "Time to mask technical terms in input or response",
+    labelnames=["language"],
+    buckets=[0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1]
+)
+
+multilingual_translate_in_seconds = MetricProxy(
+    Histogram,
+    "edumentor_multilingual_translate_in_seconds",
+    "Time for NLLB translate-in call",
+    labelnames=["language"],
+    buckets=[0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
+)
+
+multilingual_llm_ttft_seconds = MetricProxy(
+    Histogram,
+    "edumentor_multilingual_llm_ttft_seconds",
+    "Time to first LLM token in multilingual stream",
+    labelnames=["language"],
+    buckets=[0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
+)
+
+multilingual_llm_completion_seconds = MetricProxy(
+    Histogram,
+    "edumentor_multilingual_llm_completion_seconds",
+    "Total time to complete LLM generation in multilingual stream",
+    labelnames=["language"],
+    buckets=[0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 30.0]
+)
+
+multilingual_translate_out_seconds = MetricProxy(
+    Histogram,
+    "edumentor_multilingual_translate_out_seconds",
+    "Time for NLLB translate-out call (per sentence or overall)",
+    labelnames=["language"],
+    buckets=[0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
+)
+
+multilingual_glossary_restore_seconds = MetricProxy(
+    Histogram,
+    "edumentor_multilingual_glossary_restore_seconds",
+    "Time to restore technical terms in input or response",
+    labelnames=["language"],
+    buckets=[0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1]
+)
+
+multilingual_tts_ttf_seconds = MetricProxy(
+    Histogram,
+    "edumentor_multilingual_tts_ttf_seconds",
+    "Time to generate first audio byte of TTS",
+    labelnames=["language"],
+    buckets=[0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 15.0]
+)
+
+multilingual_tts_completion_seconds = MetricProxy(
+    Histogram,
+    "edumentor_multilingual_tts_completion_seconds",
+    "Time for TTS synthesis calls",
+    labelnames=["language"],
+    buckets=[0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 15.0]
+)
+
 
 def set_registry(registry):
     """
@@ -142,3 +231,16 @@ def set_registry(registry):
     celebration_triggered_total._instance = None
     memory_recall_total._instance = None
     language_routing_total._instance = None
+    
+    multilingual_stt_ttf_seconds._instance = None
+    multilingual_stt_total_seconds._instance = None
+    multilingual_router_classify_seconds._instance = None
+    multilingual_glossary_protect_seconds._instance = None
+    multilingual_translate_in_seconds._instance = None
+    multilingual_llm_ttft_seconds._instance = None
+    multilingual_llm_completion_seconds._instance = None
+    multilingual_translate_out_seconds._instance = None
+    multilingual_glossary_restore_seconds._instance = None
+    multilingual_tts_ttf_seconds._instance = None
+    multilingual_tts_completion_seconds._instance = None
+
