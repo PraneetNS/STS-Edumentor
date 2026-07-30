@@ -61,3 +61,8 @@ create_db.py
 
 # --- Verification / one-off scripts inside tests ---
 backend/tests/verify_sse.py
+
+# --- Scratch and audio files (never commit) ---
+scratch/
+backend/scratch/
+test.mp3
