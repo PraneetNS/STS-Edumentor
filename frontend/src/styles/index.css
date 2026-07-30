@@ -917,7 +917,8 @@ body,
   color: var(--text-primary);
   border-radius: 16px 4px 16px 16px;
   box-shadow: var(--shadow-sm);
-  width: fit-content;
+  width: max-content;
+  max-width: 100%;
 }
 
 .message.assistant .msg-bubble {
