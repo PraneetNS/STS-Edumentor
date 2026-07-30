@@ -41,7 +41,7 @@ DEVANAGARI_HINDI_KEYWORDS = {
 # Romanized Kannada keywords (Latin script)
 LATIN_KANNADA_KEYWORDS = {
     "nalli", "aagide", "helthini", "heluthini", "helutene", "maaduvudu", "maadodu",
-    "maduvudu", "endarenu", "andarenu", "reno", "kodi", "ide", "idare", "iddare", "illa",
+    "maduvudu", "endarenu", "andarenu", "reno", "enu", "kodi", "ide", "idare", "iddare", "illa",
     "mathu", "mattu", "mathe", "ondu", "wundu", "prakriye", "tanna", "thanu",
     "thanna", "taane", "thane", "karyu", "kare", "karyutade", "karyutadeh",
     "adaralli", "adrali", "avathu", "yavathu", "hoge", "hege", "yaake", "odu",
@@ -50,7 +50,7 @@ LATIN_KANNADA_KEYWORDS = {
 
 # Romanized Marathi keywords (Latin script)
 LATIN_MARATHI_KEYWORDS = {
-    "ahe", "aahe", "ahet", "aahet", "mhanje", "mahanj", "mhanajae", "karto", "karate", "karatat",
+    "ahe", "aahe", "ahet", "aahet", "mhanje", "mahanj", "mhanajae", "mahansh", "rekharshan", "karto", "karate", "karatat",
     "nahi", "naahi", "ani", "aani", "kay", "kaay", "madhye", "madhe", "pan", "tar",
     "hote", "jhale", "zale", "sope", "peksha", "changle", "changli", "swatahlah",
     "swatahla", "swata", "goshta", "karava", "karaycha", "marathi", "sangto",
@@ -63,7 +63,8 @@ LATIN_HINDI_KEYWORDS = {
     "ho", "rha", "raha", "rahi", "rahe", "kar", "karna", "karke", "karta", "karte", "krta",
     "krte", "bhi", "toh", "ek", "haan", "nhi", "nahi", "kuch", "apne", "aap", "karne",
     "karty", "krke", "kaise", "kese", "hoga", "hogi", "hogya", "gaya", "gayi", "gaye",
-    "karo", "karoo", "batao", "samjhao", "sikhaya", "samajh", "aaya", "aayi"
+    "karo", "karoo", "batao", "samjhao", "sikhaya", "samajh", "aaya", "aayi",
+    "mereko", "tereko", "mujhe", "mere", "mujko", "bata"
 }
 
 # Common English function words to confirm standard English queries
