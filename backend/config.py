@@ -308,4 +308,10 @@ class Config:
     MASTERY_SCHEDULER_ENABLED: bool = os.getenv("MASTERY_SCHEDULER_ENABLED", "true").lower() == "true"
     MASTERY_DUE_CHECK_LIMIT: int = int(os.getenv("MASTERY_DUE_CHECK_LIMIT", "1"))
 
+    # CPU Thread Tuning configurations
+    WHISPER_CPU_THREADS: int = int(os.getenv("WHISPER_CPU_THREADS", "4"))
+    NLLB_INTRA_THREADS: int = int(os.getenv("NLLB_INTRA_THREADS", "2"))
+    TTS_CPU_THREADS: int = int(os.getenv("TTS_CPU_THREADS", "4"))
+
+
 
