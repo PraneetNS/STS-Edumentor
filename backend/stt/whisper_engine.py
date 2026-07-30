@@ -36,6 +36,7 @@ class WhisperEngine:
             Config.WHISPER_MODEL,
             device=Config.WHISPER_DEVICE,
             compute_type=Config.WHISPER_COMPUTE_TYPE,
+            cpu_threads=Config.WHISPER_CPU_THREADS,
         )
         self.sample_rate = Config.AUDIO_SAMPLE_RATE
 
@@ -100,6 +101,7 @@ class WhisperEngine:
         audio_array: np.ndarray,
         initial_prompt: Optional[str] = None,
         prefix: Optional[str] = None,
+        language: Optional[str] = "en",
     ) -> tuple[str, float]:
         """
         Transcribe a mono Float32 numpy array (16 kHz) and return transcript + min avg_logprob.
@@ -109,7 +111,7 @@ class WhisperEngine:
 
         segments, info = self.model.transcribe(
             audio_array,
-            language="en",
+            language=language,
             task="transcribe",
             vad_filter=Config.WHISPER_VAD_FILTER, # Bind to config setting to control silent hallucination suppression
             beam_size=Config.WHISPER_BEAM_SIZE,
@@ -136,8 +138,8 @@ class WhisperEngine:
 
         transcript = " ".join(parts).strip()
         logger.info(
-            "Transcript (with confidence): %r (lang=%.2f, min_avg_logprob=%.2f)",
-            transcript, info.language_probability, min_avg_logprob
+            "Transcript (with confidence): %r (detected_lang=%s, lang_prob=%.2f, min_avg_logprob=%.2f)",
+            transcript, info.language, info.language_probability, min_avg_logprob
         )
         return transcript, min_avg_logprob
 
@@ -146,6 +148,7 @@ class WhisperEngine:
         audio_array: np.ndarray,
         initial_prompt: Optional[str] = None,
         prefix: Optional[str] = None,
+        language: Optional[str] = "en",
     ) -> str:
         """
         Transcribe a mono Float32 numpy array (16 kHz) to text.
@@ -154,6 +157,7 @@ class WhisperEngine:
             audio_array: Float32 numpy array, values in [-1.0, 1.0], 16 kHz.
             initial_prompt: Optional initial prompt to guide spelling and context.
             prefix: Optional prefix text for incremental decoding.
+            language: Optional target language code (e.g. "en"), or None to auto-detect.
 
         Returns:
             Transcribed text string, or empty string if nothing detected.
@@ -163,7 +167,7 @@ class WhisperEngine:
 
         segments, info = self.model.transcribe(
             audio_array,
-            language="en",
+            language=language,
             task="transcribe",
             vad_filter=Config.WHISPER_VAD_FILTER, # Bind to config setting to control silent hallucination suppression
             # Using beam size greater than 1 increases vocabulary accuracy and resolves name-mangling
@@ -182,7 +186,7 @@ class WhisperEngine:
                 parts.append(text)
 
         transcript = " ".join(parts).strip()
-        logger.info("Transcript: %r (lang=%.2f)", transcript, info.language_probability)
+        logger.info("Transcript: %r (detected_lang=%s, lang_prob=%.2f)", transcript, info.language, info.language_probability)
         return transcript
 
     @staticmethod
