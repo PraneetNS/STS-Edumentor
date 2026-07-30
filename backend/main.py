@@ -899,7 +899,11 @@ async def voice_endpoint(websocket: WebSocket):
 
                     live_text = await loop.run_in_executor(
                         None,
-                        lambda: whisper_engine.transcribe(audio_array, initial_prompt=initial_prompt)
+                        lambda: whisper_engine.transcribe(
+                            audio_array,
+                            initial_prompt=initial_prompt,
+                            language=None,  # Allow auto-detection during live feedback
+                        )
                     )
                     if live_text:
                         # Apply speech correction normalization
@@ -1382,19 +1386,24 @@ async def _run_pipeline(
 
     # ── MULTILINGUAL BRANCH ───────────────────────────────────────────────────
     # When MULTILINGUAL_ENABLED=true and the multilingual pipeline is ready,
-    # delegate the entire turn to it. The English-only path below is untouched.
-    if multilingual_pipeline is not None and not pre_transcribed_text:
+    # delegate the entire turn to it.
+    if multilingual_pipeline is not None:
         audio_array_ml = int16_bytes_to_float32(raw_pcm)
-
-        # 1. STT (multilingual Whisper)
-        t_stt = time.time()
-        transcript, whisper_lang, stt_latency = multilingual_pipeline.transcribe_multilingual(
-            audio_array_ml
-        )
+        if pre_transcribed_text:
+            transcript = pre_transcribed_text
+            whisper_lang = None
+            stt_latency = 0.0
+        else:
+            # 1. STT (multilingual Whisper)
+            t_stt = time.time()
+            transcript, whisper_lang, stt_latency = multilingual_pipeline.transcribe_multilingual(
+                audio_array_ml
+            )
         stt_text = transcript
 
         # 2. Language Router
         route_lang, route_meta = multilingual_pipeline.router.route(transcript, whisper_lang)
+        logger.info("Language Router: transcript=%r (whisper_lang=%s) -> route_lang=%r (reason=%s)", transcript, whisper_lang, route_lang, route_meta.get("reason"))
 
         # Increment Prometheus metric
         routing_path = route_meta.get("routing_path", "hindi-default")
@@ -1478,15 +1487,25 @@ async def _run_pipeline(
 
             async def llm_reader():
                 sentence_buffer = ""
+                t_llm_start = time.time()
+                ttft = None
                 try:
                     async for token_dict in llm_stream:
+                        if ttft is None:
+                            ttft = time.time() - t_llm_start
+                            try:
+                                from observability.metrics import multilingual_llm_ttft_seconds
+                                multilingual_llm_ttft_seconds.labels(language=response_lang).observe(ttft)
+                            except Exception as exc:
+                                logger.warning("Failed to record LLM TTFT metric: %s", exc)
+
                         raw_token = token_dict.get("raw", "")
                         planned_token = token_dict.get("planned", "")
                         followup_text = token_dict.get("followup", "")
 
                         if planned_token:
                             sentence_buffer += planned_token
-                            if is_sentence_complete(sentence_buffer):
+                            if is_sentence_complete(sentence_buffer) or len(sentence_buffer) >= Config.TTS_CHUNK_CHARS:
                                 await translation_queue.put(sentence_buffer)
                                 sentence_buffer = ""
 
@@ -1500,25 +1519,66 @@ async def _run_pipeline(
                 except Exception as exc:
                     logger.exception("LLM reader error in multilingual stream: %s", exc)
                 finally:
+                    llm_latency = time.time() - t_llm_start
+                    try:
+                        from observability.metrics import multilingual_llm_completion_seconds
+                        multilingual_llm_completion_seconds.labels(language=response_lang).observe(llm_latency)
+                    except Exception as exc:
+                        logger.warning("Failed to record LLM completion metric: %s", exc)
                     await translation_queue.put(None)
 
             async def translator_worker():
                 tgt_code = NLLB_LANG_MAP.get(response_lang, "hin_Deva")
+                from i18n.term_glossary import protect_terms, restore_terms
                 try:
                     while True:
                         eng_sentence = await translation_queue.get()
                         if eng_sentence is None:
                             break
 
-                        # Protect, Translate, Restore
-                        from i18n.term_glossary import protect_terms, restore_terms
-                        protected, mapping = protect_terms(eng_sentence)
+                        # Protect → Translate → Restore all in one executor call so
+                        # none of the CPU-bound work (protect_terms: ~16ms on 300 words)
+                        # blocks the async event loop thread.
+                        gl_mode = glossary_mode
+                        resp_lang = response_lang
 
-                        translated_protected, _ = await loop.run_in_executor(
-                            None, lambda: multilingual_pipeline.translator.translate(protected, "eng_Latn", tgt_code)
+                        def _full_translate(sentence=eng_sentence, tc=tgt_code):
+                            t_prot = time.time()
+                            _protected, _mapping = protect_terms(sentence)
+                            _prot_lat = time.time() - t_prot
+
+                            t_trans = time.time()
+                            _translated_protected, _ = multilingual_pipeline.translator.translate(
+                                _protected, "eng_Latn", tc
+                            )
+                            _trans_lat = time.time() - t_trans
+
+                            t_rest = time.time()
+                            _translated = restore_terms(
+                                _translated_protected, _mapping,
+                                mode=gl_mode, target_language=resp_lang
+                            )
+                            _rest_lat = time.time() - t_rest
+
+                            return _translated, _prot_lat, _trans_lat, _rest_lat
+
+                        t_total = time.time()
+                        translated, prot_latency, trans_latency, rest_latency = await loop.run_in_executor(
+                            None, _full_translate
                         )
 
-                        translated = restore_terms(translated_protected, mapping, mode=glossary_mode, target_language=response_lang)
+                        try:
+                            from observability.metrics import (
+                                multilingual_glossary_protect_seconds,
+                                multilingual_translate_out_seconds,
+                                multilingual_glossary_restore_seconds
+                            )
+                            multilingual_glossary_protect_seconds.labels(language=response_lang).observe(prot_latency)
+                            multilingual_translate_out_seconds.labels(language=response_lang).observe(trans_latency)
+                            multilingual_glossary_restore_seconds.labels(language=response_lang).observe(rest_latency)
+                        except Exception as exc:
+                            logger.warning("Failed to record translate_out stages metrics: %s", exc)
+
                         await tts_queue.put(translated)
                         translation_queue.task_done()
                 except Exception as exc:
@@ -1526,17 +1586,34 @@ async def _run_pipeline(
                 finally:
                     await tts_queue.put(None)
 
+
             async def tts_worker():
                 mms_lang = MMS_TTS_LANG_MAP.get(response_lang, "hin")
+                is_first_sentence = True
                 try:
                     while True:
                         sentence = await tts_queue.get()
                         if sentence is None:
                             break
 
+                        t_tts = time.time()
                         wav_bytes = await loop.run_in_executor(
-                            None, lambda: multilingual_pipeline.mms_tts.synthesize(sentence, mms_lang)
+                            None, lambda s=sentence, ml=mms_lang: multilingual_pipeline.mms_tts.synthesize(s, ml)
                         )
+                        tts_latency = time.time() - t_tts
+
+                        try:
+                            from observability.metrics import (
+                                multilingual_tts_ttf_seconds,
+                                multilingual_tts_completion_seconds
+                            )
+                            if is_first_sentence:
+                                is_first_sentence = False
+                                multilingual_tts_ttf_seconds.labels(language=response_lang).observe(tts_latency)
+                            multilingual_tts_completion_seconds.labels(language=response_lang).observe(tts_latency)
+                        except Exception as exc:
+                            logger.warning("Failed to record TTS metrics in main: %s", exc)
+
                         await audio_queue.put(wav_bytes)
                         tts_queue.task_done()
                 except Exception as exc:
@@ -1555,9 +1632,10 @@ async def _run_pipeline(
                         if wav_bytes:
                             if not first_audio_sent:
                                 first_audio_sent = True
-                                await websocket.send_json({"type": "tts_start"})
-                                await set_state(ConversationState.SPEAKING)
                                 latency_metrics["first_audio"] = round(time.time() - start_time, 2)
+                                # Set speaking state and notify frontend BEFORE the first audio chunk
+                                await set_state(ConversationState.SPEAKING)
+                                await websocket.send_json({"type": "tts_start"})
 
                             base64_wav = base64.b64encode(wav_bytes).decode("utf-8")
                             await websocket.send_json({

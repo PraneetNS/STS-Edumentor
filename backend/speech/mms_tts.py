@@ -67,6 +67,11 @@ class MMSTTSEngine:
         """Lazy-load the indic-parler-tts model on first synthesis call."""
         with self._lock:
             if self._model is None:
+                if self.device == "cpu":
+                    from config import Config
+                    torch.set_num_threads(Config.TTS_CPU_THREADS)
+                    logger.info("Set PyTorch CPU threads to: %d", Config.TTS_CPU_THREADS)
+
                 from parler_tts import ParlerTTSForConditionalGeneration
                 from transformers import AutoTokenizer
 
@@ -101,6 +106,13 @@ class MMSTTSEngine:
             for lang_code in ["hin", "kan", "mar"]:
                 logger.info("Warming up IndicParlerTTS voice weights for lang '%s'...", lang_code)
                 self.synthesize(warmup_words[lang_code], lang_code)
+            if self.device == "cuda":
+                allocated = torch.cuda.memory_allocated(0) // (1024**2)
+                reserved  = torch.cuda.memory_reserved(0)  // (1024**2)
+                logger.info(
+                    "[GPU] indic-parler-tts warmup complete. VRAM allocated=%dMiB reserved=%dMiB",
+                    allocated, reserved
+                )
             logger.info("IndicParlerTTS background warmup complete.")
         except Exception as e:
             logger.warning("IndicParlerTTS background warmup failed: %s", e)
@@ -121,23 +133,49 @@ class MMSTTSEngine:
         t_start = time.time()
         try:
             self._load_model()
-            
+
             # Retrieve description prompt and configuration
             lang_mod = _LANG_DESC_MAP.get(lang, "")
             desc_prompt = f"{_VOICE_DESCRIPTION} {lang_mod}".strip()
-            
+
             # Tokenize description and text
             desc_input = self._tokenizer(desc_prompt, return_tensors="pt").to(self.device)
             text_input = self._tokenizer(text, return_tensors="pt").to(self.device)
 
-            # Generate waveform
-            with torch.inference_mode():
-                generation = self._model.generate(
-                    input_ids=desc_input.input_ids,
-                    attention_mask=desc_input.attention_mask,
-                    prompt_input_ids=text_input.input_ids,
-                    prompt_attention_mask=text_input.text_input if hasattr(text_input, "text_input") else text_input.attention_mask,
-                )
+            try:
+                # Generate waveform — CUDA OOM fallback to CPU if VRAM exhausted
+                with torch.inference_mode():
+                    generation = self._model.generate(
+                        input_ids=desc_input.input_ids,
+                        attention_mask=desc_input.attention_mask,
+                        prompt_input_ids=text_input.input_ids,
+                        prompt_attention_mask=text_input.text_input if hasattr(text_input, "text_input") else text_input.attention_mask,
+                    )
+            except (torch.cuda.OutOfMemoryError, RuntimeError) as oom_exc:
+                if self.device == "cuda" and ("CUDA out of memory" in str(oom_exc) or isinstance(oom_exc, torch.cuda.OutOfMemoryError)):
+                    logger.warning(
+                        "[GPU OOM] indic-parler-tts CUDA OOM for %d-char %s text — falling back to CPU for this call. "
+                        "VRAM allocated=%dMiB. Error: %s",
+                        len(text), lang,
+                        torch.cuda.memory_allocated(0) // (1024**2),
+                        oom_exc
+                    )
+                    torch.cuda.empty_cache()
+                    # CPU fallback for this single call
+                    model_cpu = self._model.to("cpu")
+                    desc_cpu  = self._tokenizer(desc_prompt, return_tensors="pt")
+                    text_cpu  = self._tokenizer(text, return_tensors="pt")
+                    with torch.inference_mode():
+                        generation = model_cpu.generate(
+                            input_ids=desc_cpu.input_ids,
+                            attention_mask=desc_cpu.attention_mask,
+                            prompt_input_ids=text_cpu.input_ids,
+                            prompt_attention_mask=text_cpu.text_input if hasattr(text_cpu, "text_input") else text_cpu.attention_mask,
+                        )
+                    # Move model back to CUDA after fallback
+                    self._model = model_cpu.to(self.device)
+                else:
+                    raise
 
             audio_arr = generation.cpu().float().numpy()
             if audio_arr.ndim > 1:
@@ -155,8 +193,8 @@ class MMSTTSEngine:
 
             latency = time.time() - t_start
             logger.debug(
-                "indic-parler-tts synthesized %d chars (%s) → %d bytes WAV in %.2fs",
-                len(text), lang, len(wav_bytes), latency,
+                "indic-parler-tts synthesized %d chars (%s) on %s → %d bytes WAV in %.2fs",
+                len(text), lang, self.device, len(wav_bytes), latency,
             )
             return wav_bytes
 
