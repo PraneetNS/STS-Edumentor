@@ -114,3 +114,18 @@ def test_three_way_mixed_whisper_translation_small():
     lang, meta = LanguageRouter.route(text)
     assert lang == "kannada"
     assert "kannada" in meta["reason"].lower()
+
+
+def test_english_technical_terms_routing():
+    # Technical English queries containing words like 'ide', 'code', 'tar' should route to English
+    text_1 = "what is an ide"
+    lang_1, meta_1 = LanguageRouter.route(text_1)
+    assert lang_1 == "english"
+
+    text_2 = "how to write recursion code in python"
+    lang_2, meta_2 = LanguageRouter.route(text_2)
+    assert lang_2 == "english"
+
+    text_3 = "unpack tar archive using tar command"
+    lang_3, meta_3 = LanguageRouter.route(text_3)
+    assert lang_3 == "english"
