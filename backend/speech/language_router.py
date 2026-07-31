@@ -102,7 +102,12 @@ class LanguageRouter:
         return any('\u0900' <= char <= '\u097f' for char in text)
 
     @classmethod
-    def route(cls, text: str, whisper_detected_lang: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
+    def route(
+        cls,
+        text: str,
+        whisper_detected_lang: Optional[str] = None,
+        lang_pref: Optional[str] = None
+    ) -> Tuple[str, Dict[str, Any]]:
         """
         Classifies transcript and returns (route_lang, metadata_details).
         Possible return languages: 'hindi', 'marathi', 'kannada', 'english'.
@@ -155,9 +160,46 @@ class LanguageRouter:
                     "scores": {"marathi": marathi_score, "hindi": hindi_score},
                     "routing_path": "keyword-match"
                 }
-            else:
+            elif hindi_score > marathi_score:
                 return "hindi", {
-                    "reason": f"Devanagari Hindi lexicon score ({hindi_score}) >= Marathi score ({marathi_score})",
+                    "reason": f"Devanagari Hindi lexicon score ({hindi_score}) > Marathi score ({marathi_score})",
+                    "scores": {"marathi": marathi_score, "hindi": hindi_score},
+                    "routing_path": "keyword-match"
+                }
+            else:
+                # Lexicon scores are tied or both 0. Fall back to user preference or Whisper's language detection if valid.
+                if lang_pref and lang_pref.lower() in ("kn", "kannada", "mr", "marathi", "hi", "hindi"):
+                    lp = lang_pref.lower().strip()
+                    resolved_lp = "kannada" if lp in ("kn", "kannada") else ("marathi" if lp in ("mr", "marathi") else "hindi")
+                    return resolved_lp, {
+                        "reason": f"Devanagari script detected but lexicon scores tied. User preference {lang_pref!r} used as fallback.",
+                        "scores": {"marathi": marathi_score, "hindi": hindi_score},
+                        "routing_path": "preference-bias-fallback"
+                    }
+                if whisper_detected_lang:
+                    w_lang = whisper_detected_lang.lower().strip()
+                    if w_lang in ("kn", "kannada"):
+                        return "kannada", {
+                            "reason": f"Devanagari script detected but lexicon scores tied. Whisper detected language {whisper_detected_lang!r} used as fallback.",
+                            "scores": {"marathi": marathi_score, "hindi": hindi_score},
+                            "routing_path": "whisper-probability-fallback"
+                        }
+                    elif w_lang in ("mr", "marathi"):
+                        return "marathi", {
+                            "reason": f"Devanagari script detected but lexicon scores tied. Whisper detected language {whisper_detected_lang!r} used as fallback.",
+                            "scores": {"marathi": marathi_score, "hindi": hindi_score},
+                            "routing_path": "whisper-probability-fallback"
+                        }
+                    elif w_lang in ("hi", "hindi"):
+                        return "hindi", {
+                            "reason": f"Devanagari script detected but lexicon scores tied. Whisper detected language {whisper_detected_lang!r} used as fallback.",
+                            "scores": {"marathi": marathi_score, "hindi": hindi_score},
+                            "routing_path": "whisper-probability-fallback"
+                        }
+
+                # Fallback to Hindi default for Devanagari script
+                return "hindi", {
+                    "reason": f"Devanagari Hindi lexicon fallback (tied score {hindi_score})",
                     "scores": {"marathi": marathi_score, "hindi": hindi_score},
                     "routing_path": "keyword-match"
                 }
@@ -194,7 +236,15 @@ class LanguageRouter:
                 "routing_path": "keyword-match"
             }
 
-        # 4. Fallback to Whisper's detected language when scores are all 0
+        # 4. Fallback to user preference or Whisper's detected language when scores are all 0
+        if lang_pref and lang_pref.lower() in ("kn", "kannada", "mr", "marathi", "hi", "hindi", "en", "english"):
+            lp = lang_pref.lower().strip()
+            resolved_lp = "kannada" if lp in ("kn", "kannada") else ("marathi" if lp in ("mr", "marathi") else ("hindi" if lp in ("hi", "hindi") else "english"))
+            return resolved_lp, {
+                "reason": f"No keywords matched. User preference {lang_pref!r} used fallback.",
+                "scores": {"kannada": 0, "marathi": 0, "hindi": 0},
+                "routing_path": "preference-bias-fallback"
+            }
         if whisper_detected_lang:
             w_lang = whisper_detected_lang.lower().strip()
             if w_lang in ("kn", "kannada"):
