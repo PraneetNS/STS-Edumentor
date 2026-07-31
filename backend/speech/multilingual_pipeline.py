@@ -81,7 +81,7 @@ class MultilingualPipeline:
         import faster_whisper
         t_start = time.time()
 
-        # Run without language="en" forcing so Whisper can detect non-English
+        # 1. Run without language forcing so Whisper can detect non-English
         segments, info = self.whisper_engine.model.transcribe(
             audio_array,
             task="transcribe",
@@ -92,6 +92,8 @@ class MultilingualPipeline:
             condition_on_previous_text=False,
             initial_prompt=initial_prompt,
         )
+
+        detected_lang = info.language
 
         parts = []
         time_to_first_output = None
@@ -106,7 +108,119 @@ class MultilingualPipeline:
             time_to_first_output = time.time() - t_start
 
         transcript = " ".join(parts).strip()
-        detected_lang = info.language  # Whisper's best guess (unreliable for code-mix)
+
+        # 2. Check if the first pass transcript is valid (non-empty & classified as allowed)
+        accept_first_pass = False
+        if transcript:
+            route_lang, route_meta = self.router.route(transcript, detected_lang)
+            if route_lang in ("kannada", "marathi", "hindi"):
+                accept_first_pass = True
+                logger.info(
+                    "[MULTILINGUAL STT] First pass transcript accepted (route_lang=%r, detected_lang=%r): %r",
+                    route_lang, detected_lang, transcript
+                )
+            elif route_lang == "english" and detected_lang == "en":
+                accept_first_pass = True
+                logger.info(
+                    "[MULTILINGUAL STT] First pass transcript accepted as English: %r",
+                    transcript
+                )
+
+        # 3. If first pass is not accepted (empty or unallowed script), re-transcribe forcing allowed language
+        if not accept_first_pass:
+            # Strictly constrain language to allowed set: en, kn, hi, mr
+            ALLOWED_LANGS = {"en", "kn", "hi", "mr"}
+
+            # Helper: pick the best allowed language from all_language_probs
+            def _best_allowed_lang(info_obj):
+                best_lang, best_prob = "en", -1.0
+                if hasattr(info_obj, "all_language_probs") and info_obj.all_language_probs:
+                    for lang, prob in info_obj.all_language_probs:
+                        if lang in ALLOWED_LANGS and prob > best_prob:
+                            best_prob = prob
+                            best_lang = lang
+                return best_lang, best_prob
+
+            best_lang, best_prob = _best_allowed_lang(info)
+
+            # If the best allowed language is not 'en' (or if we need to force it), re-transcribe
+            if best_lang != "en":
+                logger.info(
+                    "[CONSTRAINED STT] First pass not accepted (transcript=%r, detected_lang=%r). "
+                    "Re-transcribing forcing allowed language %r (prob=%.4f)...",
+                    transcript, detected_lang, best_lang, best_prob
+                )
+                # IMPORTANT: drop initial_prompt — the Latin-heavy prompt suppresses native script output.
+                segments, info = self.whisper_engine.model.transcribe(
+                    audio_array,
+                    language=best_lang,
+                    task="transcribe",
+                    vad_filter=Config.WHISPER_VAD_FILTER,
+                    beam_size=Config.WHISPER_BEAM_SIZE,
+                    best_of=Config.WHISPER_BEAM_SIZE,
+                    temperature=0.0,
+                    condition_on_previous_text=False,
+                    initial_prompt=None,
+                )
+                detected_lang = info.language
+
+                parts = []
+                for seg in segments:
+                    text = seg.text.strip()
+                    if text and not self.whisper_engine._is_hallucination(text):
+                        parts.append(text)
+                transcript = " ".join(parts).strip()
+
+        # 4. Last-resort bare pass if transcript is STILL empty
+        if not transcript:
+            ALLOWED_LANGS = {"en", "kn", "hi", "mr"}
+            retry_lang = None
+            if detected_lang in ALLOWED_LANGS and detected_lang != "en":
+                # Scenario A: forced lang re-transcription also failed
+                retry_lang = detected_lang
+            elif detected_lang == "en":
+                # Scenario B: check if a non-en allowed lang scored higher
+                best_indic, best_indic_prob = "en", -1.0
+                if hasattr(info, "all_language_probs") and info.all_language_probs:
+                    for lang, prob in info.all_language_probs:
+                        if lang in ALLOWED_LANGS and lang != "en" and prob > best_indic_prob:
+                            best_indic_prob = prob
+                            best_indic = lang
+                if best_indic != "en" and best_indic_prob > 0.3:
+                    logger.info(
+                        "[CONSTRAINED STT] Empty transcript + low-confidence en. "
+                        "Better Indic lang: %r (prob=%.4f). Will retry.",
+                        best_indic, best_indic_prob
+                    )
+                    retry_lang = best_indic
+
+            if retry_lang:
+                logger.info(
+                    "[CONSTRAINED STT] Last-resort bare pass: lang=%r, vad_filter=False, temp=0.2, no prompt",
+                    retry_lang
+                )
+                bare_segs, bare_info = self.whisper_engine.model.transcribe(
+                    audio_array,
+                    language=retry_lang,
+                    task="transcribe",
+                    vad_filter=False,       # Disable VAD — might trim valid speech at edges
+                    beam_size=Config.WHISPER_BEAM_SIZE,
+                    best_of=Config.WHISPER_BEAM_SIZE,
+                    temperature=0.2,        # Slight temperature to help low-resource languages
+                    condition_on_previous_text=False,
+                    initial_prompt=None,    # No prompt — Latin bias suppresses native script
+                )
+                bare_parts = []
+                for seg in bare_segs:
+                    text = seg.text.strip()
+                    if text and not self.whisper_engine._is_hallucination(text):
+                        bare_parts.append(text)
+                bare_transcript = " ".join(bare_parts).strip()
+                if bare_transcript:
+                    logger.info("[CONSTRAINED STT] Last-resort pass recovered: %r", bare_transcript)
+                    transcript = bare_transcript
+                    detected_lang = bare_info.language
+
         latency = time.time() - t_start
 
         try:
