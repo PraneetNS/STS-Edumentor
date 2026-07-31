@@ -77,6 +77,141 @@ TRANSLITERATIONS = {
         "kannada": "ಫಂಕ್ಷನ್",
         "marathi": "फंक्शन",
         "hindi": "फंक्शन"
+    },
+    "ai": {
+        "kannada": "ಎಐ",
+        "marathi": "एआय",
+        "hindi": "एआई"
+    },
+    "computer": {
+        "kannada": "ಕಂಪ್ಯೂಟರ್",
+        "marathi": "कॉम्प्युटर",
+        "hindi": "कंप्यूटर"
+    },
+    "engineering": {
+        "kannada": "ಎಂಜಿನಿಯರಿಂಗ್",
+        "marathi": "इंजिनीअरिंग",
+        "hindi": "इंजीनियरिंग"
+    },
+    "technology": {
+        "kannada": "ಟೆಕ್ನಾಲಜಿ",
+        "marathi": "ಟೆಕ್ನಾಲಜಿ",
+        "hindi": "टेक्नोलॉजी"
+    },
+    "science": {
+        "kannada": "ಸೈನ್ಸ್",
+        "marathi": "सायन्स",
+        "hindi": "साइंस"
+    },
+    "algorithm": {
+        "kannada": "ಅಲ್ಗಾರಿದಮ್",
+        "marathi": "अल्गोरिदम",
+        "hindi": "एल्गोरिदम"
+    },
+    "algorithms": {
+        "kannada": "ಅಲ್ಗಾರಿದಮ್ಗಳು",
+        "marathi": "अल्गोरिदम",
+        "hindi": "एल्गोरिदम"
+    },
+    "compiler": {
+        "kannada": "ಕಂಪೈಲರ್",
+        "marathi": "कंपायलिर",
+        "hindi": "कंपाइलर"
+    },
+    "compilers": {
+        "kannada": "ಕಂಪೈಲರ್ಗಳು",
+        "marathi": "कंपायलर्स",
+        "hindi": "कंपाइलर्स"
+    },
+    "thread": {
+        "kannada": "ಥ್ರೆಡ್",
+        "marathi": "थ्रेड",
+        "hindi": "थ्रेड"
+    },
+    "threads": {
+        "kannada": "ಥ್ರೆಡ್ಗಳು",
+        "marathi": "थ्रेड्स",
+        "hindi": "थ्रेड्स"
+    },
+    "process": {
+        "kannada": "ಪ್ರೊಸೆಸ್",
+        "marathi": "प्रोसेस",
+        "hindi": "प्रोसेस"
+    },
+    "processes": {
+        "kannada": "ಪ್ರೊಸೆಸ್ಗಳು",
+        "marathi": "प्रोसेसेस",
+        "hindi": "प्रोसेसेस"
+    },
+    "database": {
+        "kannada": "ಡೇಟಾಬೇಸ್",
+        "marathi": "डेटाबेस",
+        "hindi": "डेटाबेस"
+    },
+    "databases": {
+        "kannada": "ಡೇಟಾಬೇಸ್ಗಳು",
+        "marathi": "डेटाबेस",
+        "hindi": "डेटाबेस"
+    },
+    "cache": {
+        "kannada": "ಕ್ಯಾಶ್",
+        "marathi": "कॅश",
+        "hindi": "कैश"
+    },
+    "caches": {
+        "kannada": "ಕ್ಯಾಶ್ಗಳು",
+        "marathi": "कॅश",
+        "hindi": "कैश"
+    },
+    "variable": {
+        "kannada": "ವೇರಿಯಬಲ್",
+        "marathi": "व्हेरिएबल",
+        "hindi": "वेरिएबल"
+    },
+    "variables": {
+        "kannada": "ವೇರಿಯಬಲ್ಗಳು",
+        "marathi": "व्हेरिएबल्स",
+        "hindi": "वेरिएबल्स"
+    },
+    "loop": {
+        "kannada": "ಲೂಪ್",
+        "marathi": "लूप",
+        "hindi": "लूप"
+    },
+    "loops": {
+        "kannada": "ಲೂಪ್ಗಳು",
+        "marathi": "लूप्स",
+        "hindi": "लूप्स"
+    },
+    "code": {
+        "kannada": "ಕೋಡ್",
+        "marathi": "कोड",
+        "hindi": "कोड"
+    },
+    "codes": {
+        "kannada": "ಕೋಡ್ಗಳು",
+        "marathi": "कोड्स",
+        "hindi": "कोड्स"
+    },
+    "coding": {
+        "kannada": "ಕೋಡಿಂಗ್",
+        "marathi": "कोडिंग",
+        "hindi": "कोडिंग"
+    },
+    "program": {
+        "kannada": "ಪ್ರೋಗ್ರಾಂ",
+        "marathi": "प्रोग्राम",
+        "hindi": "प्रोग्राम"
+    },
+    "programs": {
+        "kannada": "ಪ್ರೋಗ್ರಾಂಗಳು",
+        "marathi": "प्रोग्राम्स",
+        "hindi": "प्रोग्राम्स"
+    },
+    "programming": {
+        "kannada": "ಪ್ರೋಗ್ರಾಮಿಂಗ್",
+        "marathi": "प्रोग्रामिंग",
+        "hindi": "प्रोग्रामिंग"
     }
 }
 
