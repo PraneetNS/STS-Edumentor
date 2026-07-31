@@ -255,6 +255,16 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Multilingual pipeline disabled (MULTILINGUAL_ENABLED=false).")
 
+    # ── STEP 1: Runtime config dump (actual in-process values) ────────────────
+    logger.info("=" * 60)
+    logger.info("[RUNTIME CONFIG] MULTILINGUAL_ENABLED = %s", Config.MULTILINGUAL_ENABLED)
+    logger.info("[RUNTIME CONFIG] WHISPER_MODEL        = %s", Config.WHISPER_MODEL)
+    logger.info("[RUNTIME CONFIG] WHISPER_DEVICE       = %s", Config.WHISPER_DEVICE)
+    logger.info("[RUNTIME CONFIG] WHISPER_COMPUTE_TYPE = %s", Config.WHISPER_COMPUTE_TYPE)
+    nllb_device = os.getenv("NLLB_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
+    mms_tts_device = os.getenv("MMS_TTS_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
+    logger.info("[RUNTIME CONFIG] NLLB_DEVICE          = %s", nllb_device)
+    logger.info("[RUNTIME CONFIG] MMS_TTS_DEVICE       = %s", mms_tts_device)
     logger.info("=" * 60)
     logger.info("  All engines ready -- accepting connections")
     logger.info("=" * 60)
@@ -892,10 +902,10 @@ async def voice_endpoint(websocket: WebSocket):
                 if current_len > 0:
                     new_bytes = b"".join(audio_chunks[:current_len])
                     audio_array = int16_bytes_to_float32(new_bytes)
-                    discipline = "cse"
-                    if profile_manager:
-                        discipline = profile_manager.get_discipline()
-                    initial_prompt = whisper_engine.get_prompt_for_discipline(discipline, user_corrections)
+                    if Config.MULTILINGUAL_ENABLED:
+                        initial_prompt = Config.MULTILINGUAL_WHISPER_PROMPT
+                    else:
+                        initial_prompt = whisper_engine.get_prompt_for_discipline(discipline, user_corrections)
 
                     live_text = await loop.run_in_executor(
                         None,
@@ -930,6 +940,10 @@ async def voice_endpoint(websocket: WebSocket):
         # Stop live transcription immediately
         if live_transcribe_task and not live_transcribe_task.done():
             live_transcribe_task.cancel()
+            try:
+                await live_transcribe_task
+            except asyncio.CancelledError:
+                pass
 
         # Cancel any active running pipeline task first (to support interruption/new start)
         if pipeline_task and not pipeline_task.done():
@@ -1267,6 +1281,21 @@ async def _run_pipeline(
       3. Stream LLM tokens + sentence-buffer TTS in parallel
       4. Send "done" when everything is complete
     """
+    def clean_speak_text(text: str) -> str:
+        import re
+        if not text:
+            return ""
+        # Strip out <show> blocks and their contents
+        text = re.sub(r"<show(?:\s+[^>]*)?>.*?</show>", "", text, flags=re.DOTALL | re.IGNORECASE)
+        # Strip out <followup> blocks and their contents
+        text = re.sub(r"<followup>.*?</followup>", "", text, flags=re.DOTALL | re.IGNORECASE)
+        # Strip out markdown code fences and their contents
+        text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+        # Strip remaining tag boundaries
+        text = re.sub(r"</?(?:speak|show|followup)(?:\s+[^>]*)?>", "", text, flags=re.IGNORECASE)
+        return re.sub(r"\s+", " ", text).strip()
+
+
     start_time = time.time()
     latency_metrics = {
         "vad_end": 0.0,
@@ -1389,21 +1418,79 @@ async def _run_pipeline(
     # delegate the entire turn to it.
     if multilingual_pipeline is not None:
         audio_array_ml = int16_bytes_to_float32(raw_pcm)
+
+        # 1. Frequency profile safety check (adversarial/ultrasonic check)
+        is_safe, reason = check_audio_frequency_profile(audio_array_ml, Config.AUDIO_SAMPLE_RATE)
+        if not is_safe:
+            logger.warning(f"[AUDIO GUARD] Multilingual frame rejected: {reason}")
+            await set_state(ConversationState.IDLE)
+            await websocket.send_json({"type": "done"})
+            return
+
+        # 2. Utterance duration cap and noise filter validation
+        duration_seconds = len(audio_array_ml) / Config.AUDIO_SAMPLE_RATE
+        if not validate_utterance_duration(duration_seconds):
+            logger.warning("Multilingual utterance duration validation failed: %.2fs", duration_seconds)
+            if duration_seconds < Config.MIN_UTTERANCE_MS / 1000:
+                logger.info("Multilingual utterance too short (treated as noise) — responding with clarification prompt.")
+                await set_state(ConversationState.THINKING)
+                async def _short_audio_stream():
+                    yield {"raw": "Can you please repeat it once again?", "planned": "Can you please repeat it once again?"}
+                await _stream_llm_and_tts(websocket, _short_audio_stream(), loop, set_state, speed, voice, latency_metrics, start_time)
+                await set_state(ConversationState.IDLE)
+                await websocket.send_json({"type": "assistant_finished"})
+                return
+
         if pre_transcribed_text:
             transcript = pre_transcribed_text
             whisper_lang = None
             stt_latency = 0.0
+            logger.info("[ML-STAGE-1] STT: using pre_transcribed_text=%r", transcript)
         else:
-            # 1. STT (multilingual Whisper)
+            # STT (multilingual Whisper) — calls model.transcribe() with NO language= arg (auto-detect)
             t_stt = time.time()
-            transcript, whisper_lang, stt_latency = multilingual_pipeline.transcribe_multilingual(
-                audio_array_ml
+            logger.info("[ML-STAGE-1] STT: calling multilingual transcribe (no forced language) ...")
+            
+            def _transcribe_runner():
+                return multilingual_pipeline.transcribe_multilingual(
+                    audio_array_ml,
+                    initial_prompt=Config.MULTILINGUAL_WHISPER_PROMPT
+                )
+                
+            transcript, whisper_lang, stt_latency = await loop.run_in_executor(None, _transcribe_runner)
+            logger.info(
+                "[ML-STAGE-1] STT done in %.3fs | whisper_lang=%r | transcript repr=%r",
+                stt_latency, whisper_lang, transcript
             )
+
+        if not transcript:
+            logger.info("[ML-STAGE-1] Empty multilingual transcript — responding with clarification prompt.")
+            await set_state(ConversationState.THINKING)
+            async def _empty_transcript_stream():
+                yield {"raw": "Can you please repeat it once again?", "planned": "Can you please repeat it once again?"}
+            await _stream_llm_and_tts(websocket, _empty_transcript_stream(), loop, set_state, speed, voice, latency_metrics, start_time)
+            await set_state(ConversationState.IDLE)
+            await websocket.send_json({"type": "assistant_finished"})
+            return
+
+        # Retrieve profile preferences first to bias routing decisions
+        lang_pref = "auto"
+        glossary_mode = "english"
+        if agent_controller is not None:
+            profile = agent_controller._profile_manager.get_profile()
+            if profile:
+                lang_pref = getattr(profile, "output_language_preference", "auto")
+                glossary_mode = getattr(profile, "glossary_mode", "english")
+
         stt_text = transcript
 
         # 2. Language Router
-        route_lang, route_meta = multilingual_pipeline.router.route(transcript, whisper_lang)
-        logger.info("Language Router: transcript=%r (whisper_lang=%s) -> route_lang=%r (reason=%s)", transcript, whisper_lang, route_lang, route_meta.get("reason"))
+        logger.info("[ML-STAGE-2] Router input: text repr=%r | whisper_lang=%r | lang_pref=%r", transcript, whisper_lang, lang_pref)
+        route_lang, route_meta = multilingual_pipeline.router.route(transcript, whisper_lang, lang_pref)
+        logger.info(
+            "[ML-STAGE-2] Router output: route_lang=%r | reason=%r | routing_path=%r",
+            route_lang, route_meta.get("reason"), route_meta.get("routing_path")
+        )
 
         # Increment Prometheus metric
         routing_path = route_meta.get("routing_path", "hindi-default")
@@ -1423,26 +1510,41 @@ async def _run_pipeline(
                 "route_lang": route_lang,
             })
 
-        # Retrieve profile preferences
-        lang_pref = "auto"
-        glossary_mode = "english"
-        if agent_controller is not None:
-            profile = agent_controller._profile_manager.get_profile()
-            if profile:
-                lang_pref = getattr(profile, "output_language_preference", "auto")
-                glossary_mode = getattr(profile, "glossary_mode", "english")
-
         # Determine target output language
         response_lang = lang_pref if lang_pref != "auto" else route_lang
 
         # 3. Input translation (only for kannada / marathi)
         llm_input = transcript
         needs_translation = route_lang in ("kannada", "marathi")
+        logger.info(
+            "[ML-STAGE-3] Translation check: needs_translation=%s | route_lang=%r | response_lang=%r",
+            needs_translation, route_lang, response_lang
+        )
         if needs_translation and transcript:
             from i18n.term_glossary import protect_terms, restore_terms
+            t_trans_in = time.time()
             protected_transcript, mapping = protect_terms(transcript)
-            english_input_protected, _ = multilingual_pipeline.translate_to_english(protected_transcript, route_lang)
+            logger.info("[ML-STAGE-3] Translating to EN: protected repr=%r", protected_transcript)
+            english_input_protected, trans_lat = multilingual_pipeline.translate_to_english(protected_transcript, route_lang)
             llm_input = restore_terms(english_input_protected, mapping, mode="english")
+            logger.info(
+                "[ML-STAGE-3] Translate-IN done in %.3fs | en_input repr=%r",
+                trans_lat, llm_input
+            )
+        else:
+            logger.info("[ML-STAGE-3] Translation skipped — LLM input repr=%r", llm_input)
+
+        # Inject language context hint for regional language sessions
+        # This tells the LLM: (a) user prefers regional lang, (b) keep response in engineering domain
+        if response_lang in ("kannada", "marathi", "hindi"):
+            lang_display = {"kannada": "Kannada", "marathi": "Marathi", "hindi": "Hindi"}.get(response_lang, response_lang.capitalize())
+            llm_input = (
+                f"[CONTEXT: The student is asking in {lang_display}. This is an engineering education platform. "
+                f"Always respond strictly about engineering, computer science, mathematics, or technology topics. "
+                f"Keep the answer focused on the engineering domain — do not drift to general conversation. "
+                f"Your response will be automatically translated to {lang_display} for the student.]\n\n"
+                + llm_input
+            )
 
         # Determine TTS engine selection
         use_mms_for_hindi = False
@@ -1451,6 +1553,7 @@ async def _run_pipeline(
             use_mms_for_hindi = (lang_pref == "hindi") or (lang_pref == "auto" and route_lang == "hindi" and has_devanagari)
 
         tts_engine = "mms" if (response_lang in ("kannada", "marathi") or use_mms_for_hindi) else "kokoro"
+        logger.info("[ML-STAGE-4] TTS engine selected: %r | use_mms_for_hindi=%s", tts_engine, use_mms_for_hindi)
 
         # 4. Stream LLM response & TTS
         import base64
@@ -1489,6 +1592,7 @@ async def _run_pipeline(
                 sentence_buffer = ""
                 t_llm_start = time.time()
                 ttft = None
+                is_first_chunk = True
                 try:
                     async for token_dict in llm_stream:
                         if ttft is None:
@@ -1505,21 +1609,57 @@ async def _run_pipeline(
 
                         if planned_token:
                             sentence_buffer += planned_token
-                            if is_sentence_complete(sentence_buffer) or len(sentence_buffer) >= Config.TTS_CHUNK_CHARS:
-                                await translation_queue.put(sentence_buffer)
-                                sentence_buffer = ""
+                            
+                            should_flush = False
+                            stripped = sentence_buffer.strip()
+                            if is_first_chunk:
+                                import re
+                                # Flush on sentence end if length >= 3
+                                if len(stripped) >= 3 and re.search(r"(?<=\S{2})[.!?]+['\"`’”\]\)]*(?:\s|$)", stripped):
+                                    should_flush = True
+                                # Flush on clause end if length >= 8
+                                elif len(stripped) >= 8 and re.search(r"(?<=\S{2})[,;:—\n\r]+['\"`’”\]\)]*(?:\s|$)", stripped):
+                                    should_flush = True
+                                # Fallback if it exceeds chunk characters
+                                elif len(stripped) >= Config.TTS_CHUNK_CHARS:
+                                    should_flush = True
+                            else:
+                                if is_sentence_complete(sentence_buffer) or len(sentence_buffer) >= Config.TTS_CHUNK_CHARS:
+                                    should_flush = True
 
-                        if raw_token:
-                            await websocket.send_json({"type": "assistant_text_delta", "text": raw_token})
+                            if should_flush:
+                                clean_sentence = clean_speak_text(sentence_buffer)
+                                if clean_sentence:
+                                    logger.info("[ML-LLM-READER] Flushing sentence to translation_queue: %r", clean_sentence)
+                                    await translation_queue.put(clean_sentence)
+                                sentence_buffer = ""
+                                is_first_chunk = False
+
                         if followup_text:
-                            await websocket.send_json({"type": "followup", "text": followup_text})
+                            # Translate followup_text to the target language before sending
+                            from speech.multilingual_pipeline import NLLB_LANG_MAP
+                            tc = NLLB_LANG_MAP.get(response_lang, "hin_Deva")
+                            def _trans_followup(text=followup_text, tc_code=tc):
+                                _translated, _ = multilingual_pipeline.translator.translate(
+                                    text, "eng_Latn", tc_code
+                                )
+                                return _translated
+                            translated_followup = await loop.run_in_executor(None, _trans_followup)
+                            await websocket.send_json({"type": "followup", "text": translated_followup})
 
                     if sentence_buffer.strip():
-                        await translation_queue.put(sentence_buffer)
+                        clean_remainder = clean_speak_text(sentence_buffer)
+                        if clean_remainder:
+                            logger.info("[ML-LLM-READER] Flushing final remainder to translation_queue: %r", clean_remainder)
+                            await translation_queue.put(clean_remainder)
                 except Exception as exc:
-                    logger.exception("LLM reader error in multilingual stream: %s", exc)
+                    logger.exception("[ML-LLM-READER] ERROR in LLM reader: %s", exc)
+                    # Ensure downstream workers are not left waiting forever
+                    await translation_queue.put(None)
+                    return
                 finally:
                     llm_latency = time.time() - t_llm_start
+                    logger.info("[ML-LLM-READER] Complete in %.3fs — putting sentinel to translation_queue", llm_latency)
                     try:
                         from observability.metrics import multilingual_llm_completion_seconds
                         multilingual_llm_completion_seconds.labels(language=response_lang).observe(llm_latency)
@@ -1528,6 +1668,7 @@ async def _run_pipeline(
                     await translation_queue.put(None)
 
             async def translator_worker():
+                from speech.multilingual_pipeline import NLLB_LANG_MAP
                 tgt_code = NLLB_LANG_MAP.get(response_lang, "hin_Deva")
                 from i18n.term_glossary import protect_terms, restore_terms
                 sent_idx = 0
@@ -1584,7 +1725,11 @@ async def _run_pipeline(
                             logger.warning("Failed to record translate_out stages metrics: %s", exc)
 
                         logger.info("[ML-TRANS-WORKER] Putting sentence[%d] to tts_queue.", sent_idx)
-                        await tts_queue.put(translated)
+                        await websocket.send_json({"type": "assistant_text_delta", "text": translated + " "})
+                        
+                        from i18n.term_glossary import transliterate_latin_words
+                        translated_tts = transliterate_latin_words(translated, response_lang)
+                        await tts_queue.put(translated_tts)
                         translation_queue.task_done()
                         sent_idx += 1
                 except Exception as exc:
@@ -1598,6 +1743,7 @@ async def _run_pipeline(
 
 
             async def tts_worker():
+                from speech.multilingual_pipeline import MMS_TTS_LANG_MAP
                 mms_lang = MMS_TTS_LANG_MAP.get(response_lang, "hin")
                 is_first_sentence = True
                 tts_idx = 0
@@ -1668,7 +1814,6 @@ async def _run_pipeline(
                             if not first_audio_sent:
                                 first_audio_sent = True
                                 latency_metrics["first_audio"] = round(time.time() - start_time, 2)
-                                # Set speaking state and notify frontend BEFORE the first audio chunk
                                 await set_state(ConversationState.SPEAKING)
                                 await websocket.send_json({"type": "tts_start"})
                                 logger.info("[ML-AUDIO-SENDER] First audio sent to frontend at %.2fs", latency_metrics["first_audio"])
@@ -1699,7 +1844,7 @@ async def _run_pipeline(
         latency_metrics["complete"] = round(time.time() - start_time, 2)
         logger.info(
             "[MULTILINGUAL] Turn complete | route=%s | response_lang=%s | first_audio=%.2fs | complete=%.2fs",
-            route_lang, response_lang, latency_metrics.get("first_audio", -1), latency_metrics["complete"]
+            route_lang, response_lang, float(latency_metrics.get("first_audio") or -1), latency_metrics["complete"]
         )
         await websocket.send_json({"type": "assistant_finished"})
         return
