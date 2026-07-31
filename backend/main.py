@@ -1530,15 +1530,15 @@ async def _run_pipeline(
             async def translator_worker():
                 tgt_code = NLLB_LANG_MAP.get(response_lang, "hin_Deva")
                 from i18n.term_glossary import protect_terms, restore_terms
+                sent_idx = 0
                 try:
                     while True:
                         eng_sentence = await translation_queue.get()
+                        logger.info("[ML-TRANS-WORKER] Got from translation_queue[%d]: %r", sent_idx, eng_sentence)
                         if eng_sentence is None:
+                            logger.info("[ML-TRANS-WORKER] Sentinel received — done translating.")
                             break
 
-                        # Protect → Translate → Restore all in one executor call so
-                        # none of the CPU-bound work (protect_terms: ~16ms on 300 words)
-                        # blocks the async event loop thread.
                         gl_mode = glossary_mode
                         resp_lang = response_lang
 
@@ -1566,6 +1566,10 @@ async def _run_pipeline(
                         translated, prot_latency, trans_latency, rest_latency = await loop.run_in_executor(
                             None, _full_translate
                         )
+                        logger.info(
+                            "[ML-TRANS-WORKER] Translated[%d] in %.3fs | result repr=%r",
+                            sent_idx, trans_latency, translated
+                        )
 
                         try:
                             from observability.metrics import (
@@ -1579,28 +1583,49 @@ async def _run_pipeline(
                         except Exception as exc:
                             logger.warning("Failed to record translate_out stages metrics: %s", exc)
 
+                        logger.info("[ML-TRANS-WORKER] Putting sentence[%d] to tts_queue.", sent_idx)
                         await tts_queue.put(translated)
                         translation_queue.task_done()
+                        sent_idx += 1
                 except Exception as exc:
-                    logger.exception("Translator worker error in multilingual stream: %s", exc)
+                    logger.exception("[ML-TRANS-WORKER] ERROR: %s", exc)
+                    # Propagate sentinel so tts_worker doesn't hang
+                    await tts_queue.put(None)
+                    return
                 finally:
+                    logger.info("[ML-TRANS-WORKER] Putting sentinel to tts_queue.")
                     await tts_queue.put(None)
 
 
             async def tts_worker():
                 mms_lang = MMS_TTS_LANG_MAP.get(response_lang, "hin")
                 is_first_sentence = True
+                tts_idx = 0
                 try:
                     while True:
                         sentence = await tts_queue.get()
+                        logger.info("[ML-TTS-WORKER] Got from tts_queue[%d]: %r", tts_idx, sentence)
                         if sentence is None:
+                            logger.info("[ML-TTS-WORKER] Sentinel received — done synthesizing.")
                             break
 
                         t_tts = time.time()
+                        logger.info("[ML-TTS-WORKER] Synthesizing[%d] with mms_lang=%r ...", tts_idx, mms_lang)
                         wav_bytes = await loop.run_in_executor(
                             None, lambda s=sentence, ml=mms_lang: multilingual_pipeline.mms_tts.synthesize(s, ml)
                         )
                         tts_latency = time.time() - t_tts
+                        logger.info(
+                            "[ML-TTS-WORKER] Synth[%d] done in %.3fs | wav_bytes len=%d (empty=%s)",
+                            tts_idx, tts_latency, len(wav_bytes), len(wav_bytes) == 0
+                        )
+
+                        if len(wav_bytes) == 0:
+                            logger.error(
+                                "[ML-TTS-WORKER] MMS-TTS returned EMPTY bytes for sentence[%d]=%r lang=%r — "
+                                "this means synthesis silently failed. Check logs above for the actual error.",
+                                tts_idx, sentence, mms_lang
+                            )
 
                         try:
                             from observability.metrics import (
@@ -1614,19 +1639,29 @@ async def _run_pipeline(
                         except Exception as exc:
                             logger.warning("Failed to record TTS metrics in main: %s", exc)
 
+                        logger.info("[ML-TTS-WORKER] Putting audio[%d] (%d bytes) to audio_queue.", tts_idx, len(wav_bytes))
                         await audio_queue.put(wav_bytes)
                         tts_queue.task_done()
+                        tts_idx += 1
                 except Exception as exc:
-                    logger.exception("TTS worker error in multilingual stream: %s", exc)
+                    logger.exception("[ML-TTS-WORKER] ERROR: %s", exc)
+                    # Propagate sentinel so audio_sender doesn't hang
+                    await audio_queue.put(None)
+                    return
                 finally:
+                    logger.info("[ML-TTS-WORKER] Putting sentinel to audio_queue.")
                     await audio_queue.put(None)
 
             async def audio_sender():
                 first_audio_sent = False
+                audio_idx = 0
                 try:
                     while True:
                         wav_bytes = await audio_queue.get()
+                        logger.info("[ML-AUDIO-SENDER] Got from audio_queue[%d]: len=%s sentinel=%s",
+                                    audio_idx, len(wav_bytes) if wav_bytes is not None else "N/A", wav_bytes is None)
                         if wav_bytes is None:
+                            logger.info("[ML-AUDIO-SENDER] Sentinel received — done sending audio.")
                             break
 
                         if wav_bytes:
@@ -1636,6 +1671,7 @@ async def _run_pipeline(
                                 # Set speaking state and notify frontend BEFORE the first audio chunk
                                 await set_state(ConversationState.SPEAKING)
                                 await websocket.send_json({"type": "tts_start"})
+                                logger.info("[ML-AUDIO-SENDER] First audio sent to frontend at %.2fs", latency_metrics["first_audio"])
 
                             base64_wav = base64.b64encode(wav_bytes).decode("utf-8")
                             await websocket.send_json({
@@ -1643,9 +1679,13 @@ async def _run_pipeline(
                                 "audio": base64_wav,
                                 "word_timestamps": []
                             })
+                            logger.info("[ML-AUDIO-SENDER] Sent audio_chunk[%d] (%d bytes wav).", audio_idx, len(wav_bytes))
+                        else:
+                            logger.warning("[ML-AUDIO-SENDER] Skipping empty wav_bytes at index %d.", audio_idx)
                         audio_queue.task_done()
+                        audio_idx += 1
                 except Exception as exc:
-                    logger.exception("Audio sender error in multilingual stream: %s", exc)
+                    logger.exception("[ML-AUDIO-SENDER] ERROR: %s", exc)
 
             await set_state(ConversationState.THINKING)
             reader_task = asyncio.create_task(llm_reader())
