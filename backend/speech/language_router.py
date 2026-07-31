@@ -78,7 +78,10 @@ ENGLISH_FUNCTION_WORDS = {
     "go", "see", "number", "no", "way", "could", "people", "my", "than", "first", "water",
     "been", "call", "who", "oil", "its", "now", "find", "long", "down", "day", "did", "get",
     "come", "made", "may", "part", "explain", "what", "how", "why", "describe", "recursion",
-    "programming", "computer", "science", "engineering"
+    "programming", "computer", "science", "engineering", "ide", "code", "coding", "codes",
+    "program", "programs", "tar", "file", "files", "data", "variable", "variables", "function",
+    "functions", "class", "classes", "object", "objects", "loop", "loops", "run", "compile",
+    "error", "bugs", "null", "void", "string", "integer", "boolean", "array", "list"
 }
 
 
