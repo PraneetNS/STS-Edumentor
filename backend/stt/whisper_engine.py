@@ -179,6 +179,36 @@ class WhisperEngine:
             prefix=prefix,
         )
 
+        # Strictly constrain language to allowed set: en, kn, hi, mr during auto-detection
+        if language is None:
+            ALLOWED_LANGS = {"en", "kn", "hi", "mr"}
+            detected_lang = info.language
+            if detected_lang not in ALLOWED_LANGS:
+                best_lang = "en"
+                best_prob = -1.0
+                if hasattr(info, "all_language_probs") and info.all_language_probs:
+                    for lang, prob in info.all_language_probs:
+                        if lang in ALLOWED_LANGS and prob > best_prob:
+                            best_prob = prob
+                            best_lang = lang
+                logger.info(
+                    "[CONSTRAINED LIVE STT] Whisper detected unsupported language %r. Restricting to allowed set %s -> selected %r (prob=%.4f). Re-transcribing...",
+                    detected_lang, ALLOWED_LANGS, best_lang, best_prob
+                )
+                # Re-transcribe forcing the allowed language
+                segments, info = self.model.transcribe(
+                    audio_array,
+                    language=best_lang,
+                    task="transcribe",
+                    vad_filter=Config.WHISPER_VAD_FILTER,
+                    beam_size=Config.WHISPER_BEAM_SIZE,
+                    best_of=Config.WHISPER_BEAM_SIZE,
+                    temperature=0.0,
+                    condition_on_previous_text=False,
+                    initial_prompt=initial_prompt or Config.WHISPER_PROMPT,
+                    prefix=prefix,
+                )
+
         parts = []
         for seg in segments:
             text = seg.text.strip()
