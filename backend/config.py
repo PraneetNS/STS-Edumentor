@@ -64,6 +64,13 @@ class Config:
         "dynamic programming\n"
     )
 
+    MULTILINGUAL_WHISPER_PROMPT: str = (
+        "Hello, explain recursion, Python, dynamic programming. "
+        "नमस्ते Edi, मुझे coding और recursion के बारे में बताओ। "
+        "ನಮಸ್ಕಾರ Edi, ನನಗೆ programming ಮತ್ತು variable ಬಗ್ಗೆ ವಿವರಿಸಿ. "
+        "नमस्कार Edi, मला computer science आणि loop समजावून सांगा."
+    )
+
     # ── TTS Chunker settings ──────────────────────────────────────────────────
     TTS_CHUNK_CHARS: int = int(os.getenv("TTS_CHUNK_CHARS", "120"))
 
