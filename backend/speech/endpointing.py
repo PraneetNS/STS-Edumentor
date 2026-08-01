@@ -72,6 +72,15 @@ _TRAILING_INCOMPLETE = {
     "were", "that", "which", "if", "then", "also", "well", "actually",
     "basically", "i", "you", "we", "my", "your", "hmm", "hmmm", "uhm",
     "err", "mhm", "ah", "eh",
+    # Hindi/Hinglish fillers
+    "और", "लेकिन", "तो", "या", "क्योंकि", "मतलब", "जैसे",
+    "aur", "lekin", "to", "ya", "kyunki", "matlab", "jaise",
+    # Kannada fillers
+    "ಮತ್ತು", "ಆದರೆ", "ಅಥವಾ", "ಅಂದರೆ", "ಹಾಗೂ",
+    "mattu", "aadare", "athava", "andare",
+    # Marathi fillers
+    "आणि", "पण", "म्हणजे", "किंवा",
+    "ani", "pan", "mhanje", "kinva",
 }
 
 # Sentence-final punctuation from the normalizer/stabilizer output (including Devanagari danda and double danda).
