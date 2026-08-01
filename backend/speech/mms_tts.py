@@ -126,6 +126,8 @@ class MMSTTSEngine:
             model = self._models[lang]
 
             inputs = tokenizer(text, return_tensors="pt").to(self.device)
+            # Guard against zero-token outputs which cause a VITS forward pass pad crash.
+            # Without this, modeling_vits raises ValueError: negative output size.
             if "input_ids" in inputs and inputs["input_ids"].shape[1] == 0:
                 logger.warning(
                     "[MMS-TTS] Tokenizer returned 0 tokens for text %r (likely unsupported characters/script) — skipping model forward pass.",
