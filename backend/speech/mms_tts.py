@@ -144,7 +144,8 @@ class MMSTTSEngine:
                     )
                     try:
                         torch.cuda.empty_cache()
-                        # Lazy-load a separate CPU model instance if not already cached
+                        # Lazy-load a separate CPU model instance if not already cached.
+                        # This prevents the need to physically swap primary GPU model weights over PCIe.
                         with self._lock:
                             if self._models_cpu.get(lang) is None:
                                 model_id = self.LANG_MODEL_MAP[lang]
