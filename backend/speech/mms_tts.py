@@ -40,6 +40,7 @@ class MMSTTSEngine:
         import threading
         self.device = os.getenv("MMS_TTS_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
         self._models: Dict[str, VitsModel] = {}
+        # Separate CPU-resident models cached to prevent weight movement overhead during fallbacks
         self._models_cpu: Dict[str, VitsModel] = {}
         self._tokenizers: Dict[str, AutoTokenizer] = {}
         self._lock = threading.Lock()
