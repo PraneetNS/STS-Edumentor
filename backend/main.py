@@ -1876,6 +1876,8 @@ async def _run_pipeline(
             tts_task = asyncio.create_task(tts_worker())
             sender_task = asyncio.create_task(audio_sender())
 
+            # Task supervisor wrapper to monitor workers. If any task raises an exception (crashes),
+            # we catch it, cancel sibling tasks immediately, notify client, and fail cleanly.
             try:
                 await asyncio.gather(reader_task, trans_task, tts_task, sender_task)
             except Exception as pipeline_exc:
