@@ -21,6 +21,10 @@ Versioning adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `WARN` and `RATE_LIMITED` event constants to `WSEvent` in `constants.py`.
 - `DIAGRAM` as an additional `ShowType` alias for Mermaid-rendered diagram blocks.
 - Cloud LLM engine (`cloud/cloud_llm_engine.py`) now reads `CLOUD_MODEL_ID` and `CLOUD_MAX_TOKENS` from environment variables, removing hardcoded defaults.
+- Support for Hindi (Devanagari) danda `।` and double danda `॥` in sentence boundary regex for correct streaming chunk splits.
+- Support for Hindi, Kannada, and Marathi question words anywhere in a sentence and common filler words in semantic endpointing.
+- Tokenizer zero-token check in MMS-TTS to prevent relative position padding crash on non-target Latin characters.
+- Guarded device restoration in MMS-TTS CPU fallback to prevent server process crashes.
 - This `CHANGELOG.md` file.
 
 ### Changed
