@@ -60,6 +60,10 @@ def test_is_sentence_complete():
     assert is_sentence_complete("This is a short clause;") is False  # < 30 chars
     assert is_sentence_complete("This is a sufficiently long sentence that is structured as a clause; ") is True  # >= 30 chars
 
+    # Devanagari danda and double danda punctuation
+    assert is_sentence_complete("रिकर्सन एक प्रोग्रामिंग तकनीक है।") is True
+    assert is_sentence_complete("यह एक वाक्य है॥") is True
+
 
 def test_split_into_sentences():
     text = "Hello! How are you doing today? I am a voice tutor."
