@@ -124,6 +124,12 @@ class MMSTTSEngine:
             model = self._models[lang]
 
             inputs = tokenizer(text, return_tensors="pt").to(self.device)
+            if "input_ids" in inputs and inputs["input_ids"].shape[1] == 0:
+                logger.warning(
+                    "[MMS-TTS] Tokenizer returned 0 tokens for text %r (likely unsupported characters/script) — skipping model forward pass.",
+                    text
+                )
+                return b""
 
             try:
                 # Generate waveform waveform tensor is shape (1, num_samples)
