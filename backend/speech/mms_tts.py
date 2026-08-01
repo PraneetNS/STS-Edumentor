@@ -40,6 +40,7 @@ class MMSTTSEngine:
         import threading
         self.device = os.getenv("MMS_TTS_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
         self._models: Dict[str, VitsModel] = {}
+        self._models_cpu: Dict[str, VitsModel] = {}
         self._tokenizers: Dict[str, AutoTokenizer] = {}
         self._lock = threading.Lock()
         self.warmed_up = False
@@ -141,20 +142,28 @@ class MMSTTSEngine:
                         "[GPU OOM] Meta MMS-TTS CUDA OOM translating %d chars — falling back to CPU. Error: %s",
                         len(text), oom_exc
                     )
-                    torch.cuda.empty_cache()
-                    # Safe fallback to CPU
-                    model_cpu = model.to("cpu")
-                    inputs_cpu = tokenizer(text, return_tensors="pt").to("cpu")
-                    with torch.no_grad():
-                        output = model_cpu(**inputs_cpu).waveform
-                    # Restore model to device
                     try:
-                        model.to(self.device)
-                    except Exception as restoration_exc:
-                        logger.warning(
-                            "[GPU OOM] Failed to restore MMS-TTS model to device %s. Keeping model on CPU. Error: %s",
-                            self.device, restoration_exc
+                        torch.cuda.empty_cache()
+                        # Lazy-load a separate CPU model instance if not already cached
+                        with self._lock:
+                            if self._models_cpu.get(lang) is None:
+                                model_id = self.LANG_MODEL_MAP[lang]
+                                logger.info("Lazy-loading separate Meta MMS-TTS CPU model instance for %s fallback (%s) ...", lang, model_id)
+                                model_cpu = VitsModel.from_pretrained(model_id).to("cpu")
+                                model_cpu.eval()
+                                self._models_cpu[lang] = model_cpu
+                            else:
+                                model_cpu = self._models_cpu[lang]
+
+                        inputs_cpu = tokenizer(text, return_tensors="pt").to("cpu")
+                        with torch.no_grad():
+                            output = model_cpu(**inputs_cpu).waveform
+                    except Exception as fallback_exc:
+                        logger.error(
+                            "[GPU OOM] Failure during CPU fallback synthesis for text %r. Returning empty waveform. Error: %s",
+                            text, fallback_exc
                         )
+                        return b""
                 else:
                     raise
 
