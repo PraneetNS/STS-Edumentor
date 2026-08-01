@@ -31,7 +31,8 @@ async def test_pure_latin_chunk_merging_and_fallback():
     while not engine.warmed_up and asyncio.get_event_loop().time() - t_start < 25:
         await asyncio.sleep(0.5)
 
-    # Scenarios for Hindi and Kannada
+    # Scenarios for Hindi and Kannada verifying leading, trailing, and standalone
+    # pure-Latin chunks (representing glossary-restored English technical terms).
     test_cases = [
         {
             "lang": "hindi",
