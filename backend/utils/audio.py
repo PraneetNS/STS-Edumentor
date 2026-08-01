@@ -51,8 +51,8 @@ def float32_to_int16_bytes(audio: np.ndarray) -> bytes:
 
 # Clause-ending punctuation: comma, semicolon, colon, newline, etc.
 _CLAUSE_END_RE = re.compile(r"(?<=\S{2})[,;:—\n\r]+(?:\s|$)")
-# Sentence-ending punctuation: period, exclamation mark, question mark
-_SENTENCE_END_RE = re.compile(r"(?<=\S{2})[.!?]+(?:\s|$)")
+# Sentence-ending punctuation: period, exclamation mark, question mark, Devanagari danda, double danda
+_SENTENCE_END_RE = re.compile(r"(?<=\S{2})([.!?।॥])+(?:\s|$)")
 
 MIN_SENTENCE_CHARS = 3
 MIN_CLAUSE_CHARS = 30
