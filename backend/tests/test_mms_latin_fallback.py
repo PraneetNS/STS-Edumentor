@@ -113,3 +113,6 @@ async def test_pure_latin_chunk_merging_and_fallback():
         while not audio_queue.empty():
             await audio_queue.get()
             audio_queue.task_done()
+
+    # End of test suite: successfully verified that pure-Latin chunks
+    # are gracefully processed and do not interrupt subsequent native chunks.
