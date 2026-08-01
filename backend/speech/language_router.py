@@ -120,8 +120,8 @@ class LanguageRouter:
             }
 
         # Clean words for lookup
-        tokens = [w.strip(".,!?\"'()[]।;-").lower() for w in text.split()]
-        raw_words = [w.strip(".,!?\"'()[]।;-") for w in text.split()]
+        tokens = [w.strip(".,!?\"'()[]।॥;-").lower() for w in text.split()]
+        raw_words = [w.strip(".,!?\"'()[]।॥;-") for w in text.split()]
 
         # 1. Kannada Unicode Script Check (Unconditional route)
         if cls.contains_kannada_script(text):
