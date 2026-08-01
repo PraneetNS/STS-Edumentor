@@ -191,6 +191,7 @@ async def run_scenario_stream(
                 planned_token = token_dict.get("planned", "")
                 if planned_token:
                     sentence_buffer += planned_token
+                    # Note: is_sentence_complete supports Devanagari danda/double danda punctuation
                     if is_sentence_complete(sentence_buffer) or len(sentence_buffer) >= Config.TTS_CHUNK_CHARS:
                         await translation_queue.put(sentence_buffer)
                         sentence_buffer = ""
