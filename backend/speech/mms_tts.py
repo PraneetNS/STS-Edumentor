@@ -148,7 +148,13 @@ class MMSTTSEngine:
                     with torch.no_grad():
                         output = model_cpu(**inputs_cpu).waveform
                     # Restore model to device
-                    model.to(self.device)
+                    try:
+                        model.to(self.device)
+                    except Exception as restoration_exc:
+                        logger.warning(
+                            "[GPU OOM] Failed to restore MMS-TTS model to device %s. Keeping model on CPU. Error: %s",
+                            self.device, restoration_exc
+                        )
                 else:
                     raise
 
