@@ -71,6 +71,14 @@ def test_fixed_mode_fires_exactly_at_default_timeout():
     ("um", Completeness.TRAILING_INCOMPLETE),  # filler word -> extend wait, don't fast-fire
     ("okay so", Completeness.TRAILING_INCOMPLETE),
     ("", Completeness.AMBIGUOUS),
+    # Indic questions (anywhere in sentence)
+    ("रिकर्सन क्या होता है", Completeness.CONFIDENT_COMPLETE),
+    ("Recursion endarenu", Completeness.CONFIDENT_COMPLETE),
+    ("polymorphism mhanje kay", Completeness.CONFIDENT_COMPLETE),
+    # Indic fillers (trailing)
+    ("और", Completeness.TRAILING_INCOMPLETE),
+    ("ಮತ್ತು", Completeness.TRAILING_INCOMPLETE),
+    ("म्हणजे", Completeness.TRAILING_INCOMPLETE),
 ])
 def test_classify_completeness(endpointer, text, expected):
     assert endpointer.classify_completeness(text) == expected

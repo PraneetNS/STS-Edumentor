@@ -97,10 +97,11 @@ _QUESTION_STARTERS = re.compile(
 
 
 # Interrogative indicators for Indic languages (Hindi, Kannada, Marathi) anywhere in the sentence.
+# Uses explicit word boundary markers to ensure correct matching with Unicode character combining marks.
 _INDIC_QUESTION_WORDS = re.compile(
-    r"\b(क्या|क्यों|कैसे|कब|कहाँ|कौन|किस|kya|kyon|kaise|kab|kahan|kaun|kis|"
-    r"ಏನು|ಯಾಕೆ|ಹೇಗೆ|ಯಾವಾಗ|ಎಲ್ಲಿ|ಯಾರು|enu|yaake|hege|yaavaga|elli|yaaru|"
-    r"काय|का|कसे|केव्हा|कुठे|कोण|kay|ka|kase|kevhā|kuthe|kon)\b",
+    r"(?:^|\s|[.,;:!?।॥()\"'\-])(क्या|क्यों|कैसे|कब|कहाँ|कौन|किस|kya|kyon|kaise|kab|kahan|kaun|kis|"
+    r"ಏನು|ಯಾಕೆ|ಹೇಗೆ|ಯಾವಾಗ|ಎಲ್ಲಿ|ಯಾರು|ಎಂದರೇನು|ಏನಿದು|enu|endarenu|andarenu|enidu|yaake|hege|yaavaga|elli|yaaru|"
+    r"काय|का|कसे|केव्हा|कुठे|कोण|kay|ka|kase|kevhā|kuthe|kon)(?=$|\s|[.,;:!?।॥()\"'\-])",
     re.IGNORECASE,
 )
 
@@ -139,7 +140,8 @@ class SemanticEndpointer:
             return Completeness.AMBIGUOUS
 
         words = text.split()
-        last_word = re.sub(r"[^\w']", "", words[-1]).lower() if words else ""
+        # Strip standard punctuation instead of non-word characters to preserve Indic combining characters
+        last_word = re.sub(r"[.,;:!?()\"'\-।॥]", "", words[-1]).lower() if words else ""
 
         if last_word in _TRAILING_INCOMPLETE:
             return Completeness.TRAILING_INCOMPLETE
