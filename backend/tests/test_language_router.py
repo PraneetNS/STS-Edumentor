@@ -129,3 +129,11 @@ def test_english_technical_terms_routing():
     text_3 = "unpack tar archive using tar command"
     lang_3, meta_3 = LanguageRouter.route(text_3)
     assert lang_3 == "english"
+
+
+def test_double_danda_stripping():
+    # Devanagari text ending in double danda '॥' should route correctly
+    text = "पुनराव्रुत्ती ही एक वषी प्रक्रिया है, जामदे फुंक्षन स्वताला कौल करते॥"
+    lang, meta = LanguageRouter.route(text)
+    assert lang == "marathi"
+    assert "marathi" in meta["reason"].lower()
