@@ -1749,6 +1749,8 @@ async def _run_pipeline(
                 tts_idx = 0
                 sentence_buffer = ""
 
+                # Helper to check if text contains native characters for target Indic language.
+                # Crucial to prevent VITS modeling pad crashes resulting from zero-token output.
                 def has_native_script_characters(text: str) -> bool:
                     from i18n.term_glossary import normalize_lang
                     norm_lang = normalize_lang(response_lang)
