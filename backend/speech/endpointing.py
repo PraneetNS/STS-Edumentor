@@ -96,6 +96,15 @@ _QUESTION_STARTERS = re.compile(
 )
 
 
+# Interrogative indicators for Indic languages (Hindi, Kannada, Marathi) anywhere in the sentence.
+_INDIC_QUESTION_WORDS = re.compile(
+    r"\b(क्या|क्यों|कैसे|कब|कहाँ|कौन|किस|kya|kyon|kaise|kab|kahan|kaun|kis|"
+    r"ಏನು|ಯಾಕೆ|ಹೇಗೆ|ಯಾವಾಗ|ಎಲ್ಲಿ|ಯಾರು|enu|yaake|hege|yaavaga|elli|yaaru|"
+    r"काय|का|कसे|केव्हा|कुठे|कोण|kay|ka|kase|kevhā|kuthe|kon)\b",
+    re.IGNORECASE,
+)
+
+
 class Completeness(str, Enum):
     CONFIDENT_COMPLETE = "confident_complete"
     AMBIGUOUS = "ambiguous"
@@ -136,7 +145,7 @@ class SemanticEndpointer:
             return Completeness.TRAILING_INCOMPLETE
 
         has_terminal_punct = bool(_TERMINAL_PUNCT.search(text))
-        looks_like_question = bool(_QUESTION_STARTERS.search(text))
+        looks_like_question = bool(_QUESTION_STARTERS.search(text)) or bool(_INDIC_QUESTION_WORDS.search(text))
 
         if has_terminal_punct and len(words) >= self.config.min_words_for_fast_fire:
             return Completeness.CONFIDENT_COMPLETE
