@@ -74,8 +74,8 @@ _TRAILING_INCOMPLETE = {
     "err", "mhm", "ah", "eh",
 }
 
-# Sentence-final punctuation from the normalizer/stabilizer output.
-_TERMINAL_PUNCT = re.compile(r"[.?!]\s*$")
+# Sentence-final punctuation from the normalizer/stabilizer output (including Devanagari danda and double danda).
+_TERMINAL_PUNCT = re.compile(r"[.?!।॥]\s*$")
 
 # Interrogative openers -- questions are usually complete once they hit a
 # terminal token, and are lower-risk to fast-fire on (tutoring context =
