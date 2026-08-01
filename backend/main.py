@@ -1427,7 +1427,8 @@ async def _run_pipeline(
             await websocket.send_json({"type": "done"})
             return
 
-        # 2. Utterance duration cap and noise filter validation
+        # 2. Utterance duration cap and noise filter validation.
+        # Bypass duration checks if text_query (pre_transcribed_text) is provided since no audio is sent.
         if not pre_transcribed_text:
             duration_seconds = len(audio_array_ml) / Config.AUDIO_SAMPLE_RATE
             if not validate_utterance_duration(duration_seconds):
