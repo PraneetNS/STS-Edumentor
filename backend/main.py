@@ -2499,3 +2499,5 @@ async def _stream_llm_and_tts(
         await asyncio.gather(reader_task, worker_task, sender_task, filler_task, return_exceptions=True)
         raise
 
+
+# For translation routes (kannada, marathi), we want sentence-level translation to prevent fragmentation.
