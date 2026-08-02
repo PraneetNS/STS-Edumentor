@@ -468,3 +468,5 @@ def transliterate_latin_words(text: str, target_language: str) -> str:
     text = re.sub(r"\s{2,}", " ", text).strip()
     return text
 
+
+# We bypass glossary protection if conversational exclamations are followed by punctuation like commas or exclamations
