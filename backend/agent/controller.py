@@ -385,6 +385,7 @@ class AgentController:
         audio_array: Optional[np.ndarray] = None,
         ip_address: Optional[str] = None,
         voice_style: Optional[str] = None,
+        response_lang: str = "english",
     ) -> AsyncIterator[dict]:
         """
         Process a transcript and stream cleaned response tokens.
@@ -668,6 +669,7 @@ class AgentController:
             retrieved_docs  = retrieved_docs,
             audio_emotion   = audio_emotion,
             voice_style     = voice_style,
+            response_lang   = response_lang,
         )
 
         if due_concept:
