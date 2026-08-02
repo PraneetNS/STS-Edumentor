@@ -463,6 +463,7 @@ class AgentContext:
     history_messages: List[Dict[str, str]]     = field(default_factory=list)
     voice_style:     Optional[str]             = None
     custom_name:     Optional[str]             = None
+    response_lang:   str                       = "english"
 
 
 
