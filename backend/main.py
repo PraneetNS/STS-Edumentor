@@ -1517,7 +1517,7 @@ async def _run_pipeline(
 
         # 3. Input translation (only for kannada / marathi)
         llm_input = transcript
-        needs_translation = route_lang in ("kannada", "marathi")
+        needs_translation = route_lang in ("hindi", "kannada", "marathi")
         logger.info(
             "[ML-STAGE-3] Translation check: needs_translation=%s | route_lang=%r | response_lang=%r",
             needs_translation, route_lang, response_lang
@@ -1683,11 +1683,7 @@ async def _run_pipeline(
                         gl_mode = glossary_mode
                         resp_lang = response_lang
 
-                        if resp_lang == "hindi":
-                            logger.info("[ML-TRANS-WORKER] Hindi native route — skipping translation for sentence: %r", eng_sentence)
-                            await tts_queue.put(eng_sentence)
-                            sent_idx += 1
-                            continue
+
 
                         def _full_translate(sentence=eng_sentence, tc=tgt_code):
                             t_prot = time.time()

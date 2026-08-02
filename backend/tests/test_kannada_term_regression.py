@@ -76,6 +76,38 @@ class TestKannadaTermRegression(unittest.TestCase):
         self.assertIn("रिकर्शन", restored_native)
         self.assertNotIn("recursion", restored_native.lower())
 
+    def test_hindi_recursion_protection(self):
+        """
+        Verifies that 'रिकर्सन' is properly identified and masked as 'recursion'
+        and restored correctly in both English (mode='english') and native (mode='native') modes for Hindi.
+        """
+        input_text = "रिकर्सन क्या होता है और इसका एक उदाहरण दीजिए"
+        
+        # 1. Protection (passing 'hindi' as query language)
+        protected, mapping = protect_terms(input_text, "hindi")
+        print("Protected Hindi text:", repr(protected))
+        print("Mapping:", mapping)
+        
+        # Verify that placeholder exists
+        self.assertEqual(len(mapping), 1)
+        placeholder = list(mapping.keys())[0]
+        self.assertIn(placeholder, protected)
+        
+        # Verify that placeholder maps specifically to 'recursion' (English root)
+        self.assertEqual(mapping[placeholder].lower(), "recursion")
+        
+        # 2. English restoration
+        restored_en = restore_terms(protected, mapping, mode="english", target_language="hindi")
+        print("Restored English (Hindi):", restored_en)
+        self.assertIn("recursion", restored_en.lower())
+        self.assertNotIn("रिकर्सन", restored_en)
+        
+        # 3. Native Hindi restoration
+        restored_native = restore_terms(protected, mapping, mode="native", target_language="hindi")
+        print("Restored Native (Hindi):", restored_native)
+        self.assertIn("रिकर्शन", restored_native)
+        self.assertNotIn("recursion", restored_native.lower())
+
     def test_everyday_conversational_false_positives(self):
         """
         Stress-tests the glossary protection system against everyday conversational

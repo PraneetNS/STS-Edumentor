@@ -126,14 +126,13 @@ async def run_scenario_stream(
     glossary_mode = profile.glossary_mode
     response_lang = lang_pref if lang_pref != "auto" else route_lang
     
-    # 4. Translate input if Kannada/Marathi
-    needs_translation = route_lang in ("kannada", "marathi")
+    needs_translation = route_lang in ("hindi", "kannada", "marathi")
     translation_in_latency = 0.0
     llm_input = transcript
     if needs_translation and transcript:
         from i18n.term_glossary import protect_terms, restore_terms
         t_tin = time.time()
-        protected, mapping = protect_terms(transcript)
+        protected, mapping = protect_terms(transcript, route_lang)
         en_input_protected, _ = translator.translate(protected, route_lang, "english")
         llm_input = restore_terms(en_input_protected, mapping, mode="english")
         translation_in_latency = time.time() - t_tin
@@ -289,7 +288,7 @@ async def run_all_acceptance_tests():
         assert rep["tts_engine"] == scen["expected_tts"], f"Expected TTS engine {scen['expected_tts']}, got {rep['tts_engine']}. Transcript: {rep['stt_transcript']!r}"
         if scen.get("check_glossary"):
             # 'Recursion' should survive in English
-            assert "Recursion" in rep["output_text"], f"Expected 'Recursion' to survive in English in: {rep['output_text']}"
+            assert "recursion" in rep["output_text"].lower(), f"Expected 'recursion' to survive in English in: {rep['output_text']}"
             
         print(f"  [STT] Transcript: {rep['stt_transcript']!r}", flush=True)
         print(f"  [LLM Input] {rep['llm_input']!r}", flush=True)
@@ -314,7 +313,7 @@ async def run_all_acceptance_tests():
     assert rep_f["route_lang"] == "hindi", "Should still recognize input as Hindi"
     assert rep_f["response_lang"] == "kannada", "Should override response language to Kannada"
     assert rep_f["tts_engine"] == "mms", "Should route to MMS-TTS because of Kannada preference override"
-    assert "Recursion" in rep_f["output_text"], f"Expected 'Recursion' to survive in: {rep_f['output_text']}"
+    assert "recursion" in rep_f["output_text"].lower(), f"Expected 'recursion' to survive in: {rep_f['output_text']}"
     print(f"  [STT] Transcript: {rep_f['stt_transcript']!r}", flush=True)
     print(f"  [Output] {rep_f['output_text']!r}", flush=True)
     print(f"  [Latency] first_audio={rep_f['first_audio_latency']}s | total={rep_f['total_latency']}s", flush=True)

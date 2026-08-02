@@ -9,8 +9,9 @@ from agent.models import AgentContext, StudentProfile, Intent, KnowledgeRoute
 def test_prompt_regression_hindi_vs_kannada():
     """
     Asserts that PromptBuilder constructs system prompt contexts correctly:
-    - Hindi has DIRECTLY in Hindi system instructions and NO auto-translation text.
-    - Kannada has auto-translation text and NO direct response instructions.
+    - Both Hindi and Kannada are treated as translation bridge paths.
+    - Both have the auto-translation context hints.
+    - Neither has the direct response instructions.
     """
     # 1. Hindi test case
     hindi_context = AgentContext(
@@ -28,8 +29,8 @@ def test_prompt_regression_hindi_vs_kannada():
     # Layer 2 (dynamic context system prompt) should contain language instructions
     hindi_sys_prompt = hindi_messages[1]["content"]
     
-    assert "DIRECTLY in Hindi (Devanagari script)" in hindi_sys_prompt
-    assert "automatically translated" not in hindi_sys_prompt
+    assert "automatically translated to Hindi" in hindi_sys_prompt
+    assert "DIRECTLY in" not in hindi_sys_prompt
 
     # 2. Kannada test case
     kannada_context = AgentContext(

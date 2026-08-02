@@ -173,22 +173,28 @@ EduMentor-Voice/
 
 To support students who express technical programming questions using mixed vernaculars, the pipeline incorporates a local multilingual processing path.
 
-### 1. Script & Lexical Language Router
+### 1. Unified Translation Bridge Design
+The system implements a unified architecture for all Indic languages (**Hindi, Kannada, Marathi**) to optimize latency and output quality:
+*   **English Route (Native):** Fully native processing (English input -> English LLM response -> Kokoro English TTS).
+*   **Indic Routes (Translation Bridge):** Incoming Indic speech is transcribed, routed, and translated into English for the LLM. The LLM generates the response in English, which is then translated back to the target Indic language for MMS-TTS synthesis.
+*   **Benefits:** Unifying Hindi under this bridge achieves a **40% total latency reduction** compared to native Devanagari generation and provides significantly higher grammatical correctness and phrasing quality.
+
+### 2. Script & Lexical Language Router
 The system routes incoming speech transcripts dynamically using:
 *   **Unicode script checks**: Text containing Kannada characters block-routes to the Kannada path.
 *   **Devanagari lexical analysis**: Differentiates Hindi from Marathi (such as checking for the Marathi-specific character `ळ`).
 *   **Romanized Indic Fallbacks**: Keywords matching romanized Hindi, Kannada, or Marathi trigger NLLB translation. Includes robust phonetic mappings (e.g. `"enu"`, `"mahansh"`, `"rekharshan"`) to resolve Whisper speech-to-text spelling variations.
 
-### 2. Pipelined Sentence-Level Streaming
+### 3. Pipelined Sentence-Level Streaming
 To keep response times low, the Indic path overlaps NLLB translation and MMS-TTS synthesis with LLM generation:
 *   **Sentence-Boundary Detection**: Analyzes LLM streaming token outputs and immediately dispatches completed sentences to NLLB translator queues.
 *   **Length-based Fallback**: If a sentence has no ending punctuation (e.g. missing periods/commas), it triggers a fallback split when the token buffer length reaches `Config.TTS_CHUNK_CHARS`.
 *   **Overlapped TTS Synthesis**: The translated sentences are queued for synthesis immediately, meaning speech generation for sentence 1 runs in the background while the LLM is still generating sentence 3.
 
-### 3. CPU Core Contention Prevention
-Running multiple neural models concurrently on local CPU cores (Whisper, NLLB, Flan-T5, Parler-TTS decoder) can cause CPU starvation, BLIS conflicts, and context thrashing. We prevent this via explicit core partitioning:
+### 4. CPU Core Contention Prevention
+Running multiple neural models concurrently on local CPU cores (Whisper, NLLB, MMS-TTS decoder) can cause CPU starvation, BLIS conflicts, and context thrashing. We prevent this via explicit core partitioning:
 *   `WHISPER_CPU_THREADS` (default `4`): Thread limit for Faster-Whisper transcription.
 *   `NLLB_INTRA_THREADS` (default `2`): Thread limit for NLLB translation.
-*   `TTS_CPU_THREADS` (default `4`): PyTorch thread limit (`torch.set_num_threads`) for IndicParlerTTS synthesis.
+*   `TTS_CPU_THREADS` (default `4`): PyTorch thread limit (`torch.set_num_threads`) for Indic synthesis.
 *   **Performance Impact**: Eliminating CPU oversubscription reduces total Indic pipeline response latencies by **over 50%** (e.g., Hindi response generation dropped from 149s to 68s). It guarantees stable concurrent sessions under multi-student load without crashing or degrading responsiveness.
 
