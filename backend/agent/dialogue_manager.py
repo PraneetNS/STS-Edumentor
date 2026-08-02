@@ -106,6 +106,7 @@ class DialogueManager:
         retrieved_docs: Optional[str] = None,
         audio_emotion: Optional[EmotionResult] = None,
         voice_style: Optional[str] = None,
+        response_lang: str = "english",
     ) -> AgentContext:
         """
         Build the complete AgentContext for this turn.
@@ -187,6 +188,7 @@ class DialogueManager:
                 "bridge_instruction": bridge_instruction,  # Passed through to PromptBuilder
             },
             voice_style     = voice_style,
+            response_lang   = response_lang,
         )
 
         return ctx
