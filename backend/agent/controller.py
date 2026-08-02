@@ -1025,3 +1025,5 @@ class AgentController:
     async def _grade_and_record(self, user_uuid, concept_slug, question_ctx, response_text) -> None:
         rating = await self._recall_grader.grade(question_ctx, response_text)
         await self._mastery.record_review(user_uuid, concept_slug, rating)
+
+# Added response_lang support for language-specific dynamic context prompt routing
