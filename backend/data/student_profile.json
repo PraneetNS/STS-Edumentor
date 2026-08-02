@@ -12,7 +12,8 @@
     "Mechanical Engineering",
     "Databases",
     "Algorithms",
-    "Electrical Engineering"
+    "Electrical Engineering",
+    "Data Structures"
   ],
   "weak_topics": [
     "Machine Learning",
@@ -22,11 +23,12 @@
     "Python"
   ],
   "preferred_style": "examples",
-  "session_count": 75,
+  "session_count": 80,
   "discipline": "cse",
   "active_topics": [
-    "Python",
-    "Machine Learning"
+    "Data Structures",
+    "Algorithms",
+    "Computer Science"
   ],
   "output_language_preference": "auto",
   "glossary_mode": "english"
