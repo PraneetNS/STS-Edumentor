@@ -1525,7 +1525,7 @@ async def _run_pipeline(
         if needs_translation and transcript:
             from i18n.term_glossary import protect_terms, restore_terms
             t_trans_in = time.time()
-            protected_transcript, mapping = protect_terms(transcript)
+            protected_transcript, mapping = protect_terms(transcript, route_lang)
             logger.info("[ML-STAGE-3] Translating to EN: protected repr=%r", protected_transcript)
             english_input_protected, trans_lat = multilingual_pipeline.translate_to_english(protected_transcript, route_lang)
             llm_input = restore_terms(english_input_protected, mapping, mode="english")
@@ -1535,18 +1535,6 @@ async def _run_pipeline(
             )
         else:
             logger.info("[ML-STAGE-3] Translation skipped — LLM input repr=%r", llm_input)
-
-        # Inject language context hint for regional language sessions
-        # This tells the LLM: (a) user prefers regional lang, (b) keep response in engineering domain
-        if response_lang in ("kannada", "marathi", "hindi"):
-            lang_display = {"kannada": "Kannada", "marathi": "Marathi", "hindi": "Hindi"}.get(response_lang, response_lang.capitalize())
-            llm_input = (
-                f"[CONTEXT: The student is asking in {lang_display}. This is an engineering education platform. "
-                f"Always respond strictly about engineering, computer science, mathematics, or technology topics. "
-                f"Keep the answer focused on the engineering domain — do not drift to general conversation. "
-                f"Your response will be automatically translated to {lang_display} for the student.]\n\n"
-                + llm_input
-            )
 
         # Determine TTS engine selection
         use_mms_for_hindi = False
@@ -1565,7 +1553,7 @@ async def _run_pipeline(
                 llm_stream = agent_controller.stream(
                     llm_input, session_id, user_id=user_id,
                     audio_array=audio_array_ml, ip_address=client_ip,
-                    voice_style=voice_style
+                    voice_style=voice_style, response_lang=response_lang
                 )
             else:
                 llm_stream = llm_engine.stream_tokens(llm_input)
@@ -1581,7 +1569,7 @@ async def _run_pipeline(
                 llm_stream = agent_controller.stream(
                     llm_input, session_id, user_id=user_id,
                     audio_array=audio_array_ml, ip_address=client_ip,
-                    voice_style=voice_style
+                    voice_style=voice_style, response_lang=response_lang
                 )
             else:
                 llm_stream = llm_engine.stream_tokens(llm_input)
@@ -1614,20 +1602,31 @@ async def _run_pipeline(
                             
                             should_flush = False
                             stripped = sentence_buffer.strip()
-                            if is_first_chunk:
+                            
+                            # For translation routes (kannada, marathi), we want sentence-level translation
+                            # to prevent fragmentation and keep translation quality high.
+                            # For direct native routes (hindi) or english, we can use fast clause-level flushing.
+                            if response_lang in ("kannada", "marathi"):
                                 import re
-                                # Flush on sentence end if length >= 3
-                                if len(stripped) >= 3 and re.search(r"(?<=\S{2})[.!?]+['\"`’”\]\)]*(?:\s|$)", stripped):
+                                # Flush on sentence boundary
+                                if len(stripped) >= 3 and re.search(r"(?<=\S{2})[.!?|।]+['\"`’”\]\)]*(?:\s|$)", stripped):
                                     should_flush = True
-                                # Flush on clause end if length >= 8
-                                elif len(stripped) >= 8 and re.search(r"(?<=\S{2})[,;:—\n\r]+['\"`’”\]\)]*(?:\s|$)", stripped):
-                                    should_flush = True
-                                # Fallback if it exceeds chunk characters
-                                elif len(stripped) >= Config.TTS_CHUNK_CHARS:
+                                # Fallback if it exceeds a high character limit (e.g. 220 chars) to prevent infinite buffering
+                                elif len(stripped) >= 220:
                                     should_flush = True
                             else:
-                                if is_sentence_complete(sentence_buffer) or len(sentence_buffer) >= Config.TTS_CHUNK_CHARS:
-                                    should_flush = True
+                                # Standard fast clause-level flushing for native/english paths
+                                if is_first_chunk:
+                                    import re
+                                    if len(stripped) >= 3 and re.search(r"(?<=\S{2})[.!?]+['\"`’”\]\)]*(?:\s|$)", stripped):
+                                        should_flush = True
+                                    elif len(stripped) >= 8 and re.search(r"(?<=\S{2})[,;:—\n\r]+['\"`’”\]\)]*(?:\s|$)", stripped):
+                                        should_flush = True
+                                    elif len(stripped) >= Config.TTS_CHUNK_CHARS:
+                                        should_flush = True
+                                else:
+                                    if is_sentence_complete(sentence_buffer) or len(sentence_buffer) >= Config.TTS_CHUNK_CHARS:
+                                        should_flush = True
 
                             if should_flush:
                                 clean_sentence = clean_speak_text(sentence_buffer)
@@ -1680,8 +1679,15 @@ async def _run_pipeline(
                         logger.info("[ML-TRANS-WORKER] Got from translation_queue[%d]: %r", sent_idx, eng_sentence)
                         if eng_sentence is None:
                             logger.info("[ML-TRANS-WORKER] Sentinel received — done translating.")
+                            break
                         gl_mode = glossary_mode
                         resp_lang = response_lang
+
+                        if resp_lang == "hindi":
+                            logger.info("[ML-TRANS-WORKER] Hindi native route — skipping translation for sentence: %r", eng_sentence)
+                            await tts_queue.put(eng_sentence)
+                            sent_idx += 1
+                            continue
 
                         def _full_translate(sentence=eng_sentence, tc=tgt_code):
                             t_prot = time.time()
@@ -1729,7 +1735,32 @@ async def _run_pipeline(
                         
                         from i18n.term_glossary import transliterate_latin_words
                         translated_tts = transliterate_latin_words(translated, response_lang)
-                        await tts_queue.put(translated_tts)
+                        
+                        # Chunk the translated sentence for TTS to keep audio synthesis chunks small and fast
+                        import re
+                        def _split_for_tts(text_val: str) -> list[str]:
+                            pattern = re.compile(r"([^,;!?।|\n\r.]+[,;!?।|\n\r.]*)")
+                            raw_chunks = pattern.findall(text_val)
+                            chunks = []
+                            current_chunk = ""
+                            for rc in raw_chunks:
+                                if len(current_chunk) + len(rc) < 80:
+                                    current_chunk += rc
+                                else:
+                                    if current_chunk.strip():
+                                        chunks.append(current_chunk.strip())
+                                    current_chunk = rc
+                            if current_chunk.strip():
+                                chunks.append(current_chunk.strip())
+                            if not chunks and text_val.strip():
+                                chunks.append(text_val.strip())
+                            return chunks
+                            
+                        tts_chunks = _split_for_tts(translated_tts)
+                        logger.info("[ML-TRANS-WORKER] Split translated sentence[%d] into %d TTS chunks: %r", sent_idx, len(tts_chunks), tts_chunks)
+                        for chunk in tts_chunks:
+                            await tts_queue.put(chunk)
+                            
                         translation_queue.task_done()
                         sent_idx += 1
                 except Exception as exc:
@@ -1761,13 +1792,19 @@ async def _run_pipeline(
                         return any('\u0c80' <= char <= '\u0cff' for char in text)
                     return True
 
-                async def synthesize_and_enqueue(text: str):
+                async def synthesize_and_enqueue(text: str, use_kokoro: bool = False):
                     nonlocal is_first_sentence, tts_idx
                     t_tts = time.time()
-                    logger.info("[ML-TTS-WORKER] Synthesizing[%d] with mms_lang=%r: %r ...", tts_idx, mms_lang, text)
-                    wav_bytes = await loop.run_in_executor(
-                        None, lambda: multilingual_pipeline.mms_tts.synthesize(text, mms_lang)
-                    )
+                    if use_kokoro:
+                        logger.info("[ML-TTS-WORKER] Synthesizing[%d] with Kokoro fallback: %r ...", tts_idx, text)
+                        wav_bytes = await loop.run_in_executor(
+                            None, lambda: kokoro_engine.synthesize(text, voice="af_heart")
+                        )
+                    else:
+                        logger.info("[ML-TTS-WORKER] Synthesizing[%d] with mms_lang=%r: %r ...", tts_idx, mms_lang, text)
+                        wav_bytes = await loop.run_in_executor(
+                            None, lambda: multilingual_pipeline.mms_tts.synthesize(text, mms_lang)
+                        )
                     tts_latency = time.time() - t_tts
                     logger.info(
                         "[ML-TTS-WORKER] Synth[%d] done in %.3fs | wav_bytes len=%d (empty=%s)",
@@ -1807,9 +1844,23 @@ async def _run_pipeline(
                                 final_sentence = sentence_buffer.strip()
                                 # Fallback: if remaining text is pure Latin, force-transliterate it to native script
                                 if not has_native_script_characters(final_sentence):
-                                    logger.info("[ML-TTS-WORKER] Sentinel flush: pure Latin chunk detected, force-transliterating %r", final_sentence)
-                                    final_sentence = transliterate_latin_words(final_sentence, response_lang)
-                                await synthesize_and_enqueue(final_sentence)
+                                    has_glossary_term = False
+                                    if glossary_mode == "english":
+                                        from i18n.term_glossary import GLOSSARY_TERMS
+                                        import re
+                                        words = re.findall(r"[a-zA-Z]+", final_sentence)
+                                        if any(w.lower() in GLOSSARY_TERMS for w in words):
+                                            has_glossary_term = True
+
+                                    if has_glossary_term:
+                                        logger.info("[ML-TTS-WORKER] Sentinel flush: glossary-protected English term %r detected — routing to Kokoro.", final_sentence)
+                                        await synthesize_and_enqueue(final_sentence, use_kokoro=True)
+                                    else:
+                                        logger.info("[ML-TTS-WORKER] Sentinel flush: pure Latin chunk detected, force-transliterating %r", final_sentence)
+                                        final_sentence = transliterate_latin_words(final_sentence, response_lang)
+                                        await synthesize_and_enqueue(final_sentence)
+                                else:
+                                    await synthesize_and_enqueue(final_sentence)
                             break
 
                         # If chunk has no native script characters, buffer it
