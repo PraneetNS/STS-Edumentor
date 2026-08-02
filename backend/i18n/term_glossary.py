@@ -29,9 +29,9 @@ GLOSSARY_TERMS = load_glossary_terms()
 # Transliteration mapping for high-frequency categories to sound natural in TTS/reading
 TRANSLITERATIONS = {
     "recursion": {
-        "kannada": "ರಿಕರ್ಷನ್",
-        "marathi": "रिकर्शन",
-        "hindi": "रिकर्शन"
+        "kannada": ["ರಿಕರ್ಷನ್", "ರಿಕರ್ಶನ್"],
+        "marathi": ["रिकर्शन", "रिकर्तन", "रिकर्सन"],
+        "hindi": ["रिकर्शन", "रिकर्तन", "रिकर्सन"]
     },
     "encapsulation": {
         "kannada": "ಎನ್ಕ್ಯಾಪ್ಸುಲೇಷನ್",
@@ -227,11 +227,12 @@ def normalize_lang(lang: str) -> str:
         return "hindi"
     return lang_lower
 
-def protect_terms(text: str) -> tuple[str, dict]:
+def protect_terms(text: str, lang: str = "english") -> tuple[str, dict]:
     """
-    Scans the text for glossary matches (case-insensitive, word-boundary aware)
-    and replaces each with a unique placeholder token (e.g. __TERM_0__, __TERM_1__),
-    returning the modified text and a mapping of placeholder -> original term.
+    Scans the text for glossary matches (case-insensitive, word-boundary aware
+    for both English and regional Unicode scripts) and replaces each with a unique
+    placeholder token (e.g. __TERM_0__, __TERM_1__), returning the modified text
+    and a mapping of placeholder -> original English term.
     """
     if not text:
         return "", {}
@@ -240,17 +241,63 @@ def protect_terms(text: str) -> tuple[str, dict]:
     modified_text = text
     placeholder_idx = 0
     
+    normalized_lang = normalize_lang(lang)
+    targets = []
+    
+    # 1. English terms from GLOSSARY_TERMS (always look for English terms as students mix languages)
     for term in GLOSSARY_TERMS:
-        if not term.strip():
+        t = term.strip()
+        if t:
+            targets.append((t, t)) # (text_to_match, english_term)
+            
+    # 2. Add transliterated terms ONLY for the active query language (or skip if english)
+    if normalized_lang != "english":
+        for eng_term, lang_map in TRANSLITERATIONS.items():
+            native_term = lang_map.get(normalized_lang)
+            if native_term:
+                if isinstance(native_term, list):
+                    for nt in native_term:
+                        nt_s = nt.strip()
+                        if nt_s:
+                            targets.append((nt_s, eng_term))
+                else:
+                    nt_s = native_term.strip()
+                    if nt_s:
+                        targets.append((nt_s, eng_term))
+                
+    # Dedup match targets to avoid duplicate replacements on same word
+    seen_match_texts = set()
+    deduped_targets = []
+    for match_text, eng_term in targets:
+        match_text_lower = match_text.lower()
+        if match_text_lower not in seen_match_texts:
+            seen_match_texts.add(match_text_lower)
+            deduped_targets.append((match_text, eng_term))
+            
+    # Sort targets by length descending to match longer phrases first
+    deduped_targets.sort(key=lambda x: len(x[0]), reverse=True)
+    
+    for match_text, eng_term in deduped_targets:
+        if not match_text.strip():
             continue
-        # Use regex to find case-insensitive whole word matches
-        pattern = re.compile(rf"\b{re.escape(term)}\b", re.IGNORECASE)
+            
+        # For very common conversational exclamations like 'अरे' and 'ಅರೇ',
+        # we only match if they are not followed by exclamation/comma.
+        if match_text in ("अरे", "ಅರೇ"):
+            pattern = re.compile(
+                rf"(?<![a-zA-Z0-9_\u0900-\u097f\u0c80-\u0cff]){re.escape(match_text)}(?![a-zA-Z0-9_\u0900-\u097f\u0c80-\u0cff])(?![!,])",
+                re.IGNORECASE
+            )
+        else:
+            pattern = re.compile(
+                rf"(?<![a-zA-Z0-9_\u0900-\u097f\u0c80-\u0cff]){re.escape(match_text)}(?![a-zA-Z0-9_\u0900-\u097f\u0c80-\u0cff])",
+                re.IGNORECASE
+            )
         
         def replace_fn(match_obj):
             nonlocal placeholder_idx
             placeholder = f"__TERM_{placeholder_idx}__"
-            val = match_obj.group(0)
-            mapping[placeholder] = val
+            mapping[placeholder] = eng_term
             placeholder_idx += 1
             return placeholder
             
@@ -275,7 +322,10 @@ def restore_terms(text: str, mapping: dict, mode: str = "english", target_langua
             key = orig_term.lower().strip()
             trans_val = TRANSLITERATIONS.get(key, {}).get(normalized_lang)
             if trans_val:
-                restored_text = restored_text.replace(placeholder, trans_val)
+                if isinstance(trans_val, list):
+                    restored_text = restored_text.replace(placeholder, trans_val[0])
+                else:
+                    restored_text = restored_text.replace(placeholder, trans_val)
                 continue
         # Default to English (original term)
         restored_text = restored_text.replace(placeholder, orig_term)
@@ -403,6 +453,8 @@ def transliterate_latin_words(text: str, target_language: str) -> str:
             continue
 
         trans_val = TRANSLITERATIONS.get(key, {}).get(normalized_lang)
+        if isinstance(trans_val, list):
+            trans_val = trans_val[0]
         if not trans_val:
             # Fall back to dynamic phonetic transliterator for infinite vocab coverage
             trans_val = rule_based_transliterate(word, normalized_lang)
