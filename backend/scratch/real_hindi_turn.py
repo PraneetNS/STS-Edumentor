@@ -25,7 +25,7 @@ async def run_hindi_turn():
         "type": "text_query",
         "student_id": "test_student_123",
         "session_id": "test_session_123",
-        "text": "रिकर्सन क्या होता है?"
+        "text": "रिकर्सन क्या होता है और इसका एक उदाहरण दीजिए"
     }
 
     print(f"Connecting to {ws_url[:60]}... [token generated]")
