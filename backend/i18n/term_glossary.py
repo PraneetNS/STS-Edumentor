@@ -317,19 +317,24 @@ def restore_terms(text: str, mapping: dict, mode: str = "english", target_langua
     normalized_lang = normalize_lang(target_language)
     restored_text = text
     
+    import re
     for placeholder, orig_term in mapping.items():
-        if mode == "native" and normalized_lang in ("hindi", "kannada", "marathi"):
-            key = orig_term.lower().strip()
-            trans_val = TRANSLITERATIONS.get(key, {}).get(normalized_lang)
-            if trans_val:
-                if isinstance(trans_val, list):
-                    restored_text = restored_text.replace(placeholder, trans_val[0])
-                else:
-                    restored_text = restored_text.replace(placeholder, trans_val)
-                continue
-        # Default to English (original term)
-        restored_text = restored_text.replace(placeholder, orig_term)
-        
+        match_idx = re.search(r"\d+", placeholder)
+        if match_idx:
+            idx = match_idx.group(0)
+            pattern = re.compile(rf"_*TERM_*{idx}_*(?![0-9])", re.IGNORECASE)
+            
+            replacement = orig_term
+            if mode == "native" and normalized_lang in ("hindi", "kannada", "marathi"):
+                key = orig_term.lower().strip()
+                trans_val = TRANSLITERATIONS.get(key, {}).get(normalized_lang)
+                if trans_val:
+                    if isinstance(trans_val, list):
+                        replacement = trans_val[0]
+                    else:
+                        replacement = trans_val
+            restored_text = pattern.sub(replacement, restored_text)
+            
     return restored_text
 
 
