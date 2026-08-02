@@ -601,3 +601,5 @@ class PromptBuilder:
             {"role": "system", "content": system},
             {"role": "user",   "content": "Please respond."},
         ]
+
+# Ensures Hindi responds directly in Devanagari while Kannada/Marathi set up translation
