@@ -546,6 +546,26 @@ class PromptBuilder:
                 f"- If the student asks what name they kept/gave you, tell them that they haven't set a custom name for you yet, so you are still using your default name, Edi."
             )
 
+        # ── Language Context Hint (Layer 2 system instruction) ──────────────────
+        if getattr(context, "response_lang", "english") in ("kannada", "marathi", "hindi"):
+            resp_lang = context.response_lang
+            lang_display = {"kannada": "Kannada", "marathi": "Marathi", "hindi": "Hindi"}.get(resp_lang, resp_lang.capitalize())
+            if resp_lang == "hindi":
+                context_hint = (
+                    "[CONTEXT: The student is asking in Hindi. This is an engineering education platform. "
+                    "Always respond strictly about engineering, computer science, mathematics, or technology topics. "
+                    "Keep the answer focused on the engineering domain — do not drift to general conversation. "
+                    "You must respond DIRECTLY in Hindi (Devanagari script) for the student. Do not respond in English.]"
+                )
+            else:
+                context_hint = (
+                    f"[CONTEXT: The student is asking in {lang_display}. This is an engineering education platform. "
+                    f"Always respond strictly about engineering, computer science, mathematics, or technology topics. "
+                    f"Keep the answer focused on the engineering domain — do not drift to general conversation. "
+                    f"Your response will be automatically translated to {lang_display} for the student.]"
+                )
+            sections.append(context_hint)
+
         # Join all sections with double newlines
         full_system = "\n\n".join(sections)
         logger.debug(
