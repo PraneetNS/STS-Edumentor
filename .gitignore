@@ -65,4 +65,5 @@ backend/tests/verify_sse.py
 # --- Scratch and audio files (never commit) ---
 scratch/
 backend/scratch/
+backend/data/session_summaries/
 test.mp3
