@@ -164,9 +164,9 @@ class IntentClassifier:
         (r"\b(debug|error|bug|fix|not working|broken|exception|traceback)\b", Intent.DEBUGGING, True, 0.88),
         (r"\b(code|write|function|class|implement|script|program)\b", Intent.CODE_HELP, False, 0.80),
         (r"\b(more|tell me more|elaborate|continue|go on|and then)\b", Intent.FOLLOW_UP, True, 0.85),
-        (r"\b(switch to|reply in|change language to|speak in|use language|use)\b\s*(kannada|marathi|hindi|english|auto)\b", Intent.SETTINGS_UPDATE, False, 1.0),
-        (r"\b(reply|speak|write)\s*(only\s*)?in\s*(kannada|marathi|hindi|english)\b", Intent.SETTINGS_UPDATE, False, 1.0),
-        (r"\b(kannada|marathi|hindi|english)\s*preference\b", Intent.SETTINGS_UPDATE, False, 1.0),
+        (r"\b(switch to|reply in|change language to|speak in|use language|use)\b\s*(kannada|marathi|hindi|english|auto|canada|kanada|kannad|marati|hindhi)\b", Intent.SETTINGS_UPDATE, False, 1.0),
+        (r"\b(reply|speak|write)\s*(only\s*)?in\s*(kannada|marathi|hindi|english|canada|kanada|kannad|marati|hindhi)\b", Intent.SETTINGS_UPDATE, False, 1.0),
+        (r"\b(kannada|marathi|hindi|english|canada|kanada|kannad|marati|hindhi)\s*preference\b", Intent.SETTINGS_UPDATE, False, 1.0),
     ]
 
     _compiled_quick: Optional[list] = None

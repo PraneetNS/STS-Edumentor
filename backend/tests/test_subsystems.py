@@ -55,6 +55,7 @@ class InMemoryDBMock:
         latency_ms: int | None = None,
         tokens_in: int | None = None,
         tokens_out: int | None = None,
+        response_lang: str | None = None,
     ) -> None:
         self._counter += 0.001
         self.logs.append({
@@ -69,6 +70,7 @@ class InMemoryDBMock:
             "latency_ms": latency_ms,
             "tokens_in": tokens_in,
             "tokens_out": tokens_out,
+            "response_lang": response_lang,
             "created_at": time.time() + self._counter
         })
 

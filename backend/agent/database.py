@@ -111,6 +111,7 @@ class DatabaseManager:
             latency_ms      INTEGER,
             tokens_in       INTEGER,
             tokens_out      INTEGER,
+            response_lang   VARCHAR(16),
             created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
         );
         """
@@ -215,6 +216,7 @@ class DatabaseManager:
                 # Alter table migration to support existing/prior database setups
                 await conn.execute("ALTER TABLE conversation_logs ADD COLUMN IF NOT EXISTS tokens_in INTEGER;")
                 await conn.execute("ALTER TABLE conversation_logs ADD COLUMN IF NOT EXISTS tokens_out INTEGER;")
+                await conn.execute("ALTER TABLE conversation_logs ADD COLUMN IF NOT EXISTS response_lang VARCHAR(16);")
                 await conn.execute(query_index_user)
                 await conn.execute(query_index_session)
                 await conn.execute(query_corr_table)
@@ -327,6 +329,7 @@ class DatabaseManager:
         latency_ms: Optional[int] = None,
         tokens_in: Optional[int] = None,
         tokens_out: Optional[int] = None,
+        response_lang: Optional[str] = None,
     ) -> None:
         """
         Write a conversation log row. Executed asynchronously (non-blocking).
@@ -347,8 +350,9 @@ class DatabaseManager:
             flag_reason,
             latency_ms,
             tokens_in,
-            tokens_out
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
+            tokens_out,
+            response_lang
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
         """
         try:
             async with self.pool.acquire() as conn:
@@ -365,16 +369,59 @@ class DatabaseManager:
                     latency_ms,
                     tokens_in,
                     tokens_out,
+                    response_lang,
                 )
                 logger.info(
-                    "Successfully logged turn to DB. user_id=%s, session_id=%s, input_flagged=%s, output_flagged=%s",
+                    "Successfully logged turn to DB. user_id=%s, session_id=%s, input_flagged=%s, output_flagged=%s, response_lang=%s",
                     user_id,
                     session_id,
                     input_flagged,
                     output_flagged,
+                    response_lang,
                 )
         except Exception as e:
             logger.error("Failed to write log to PostgreSQL database: %s", e)
+
+    async def update_log_translation(
+        self,
+        user_id: uuid.UUID,
+        session_id: uuid.UUID,
+        translated_response: str,
+        response_lang: str,
+    ) -> None:
+        """
+        After translation completes, overwrite the most-recently written
+        conversation_logs row for this (user_id, session_id) with:
+          - response_text  → the translated (native-language) text
+          - response_lang  → the confirmed target language
+
+        This ensures the DB stores what the user actually heard, not the
+        intermediate English LLM output.
+        """
+        if not self.enabled or not self.pool:
+            return
+
+        query = """
+        UPDATE conversation_logs
+        SET    response_text = $3,
+               response_lang = $4
+        WHERE  id = (
+            SELECT id FROM conversation_logs
+            WHERE  user_id    = $1
+              AND  session_id = $2
+            ORDER  BY created_at DESC
+            LIMIT  1
+        );
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, user_id, session_id, translated_response, response_lang)
+                logger.info(
+                    "Updated log translation. user_id=%s session_id=%s lang=%s",
+                    user_id, session_id, response_lang,
+                )
+        except Exception as e:
+            logger.error("Failed to update log translation: %s", e)
 
     async def log_low_confidence_response(
         self,

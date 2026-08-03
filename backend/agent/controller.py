@@ -386,6 +386,7 @@ class AgentController:
         ip_address: Optional[str] = None,
         voice_style: Optional[str] = None,
         response_lang: str = "english",
+        original_query: Optional[str] = None,
     ) -> AsyncIterator[dict]:
         """
         Process a transcript and stream cleaned response tokens.
@@ -535,15 +536,29 @@ class AgentController:
         if intent_result.intent == Intent.SETTINGS_UPDATE:
             target_lang = "auto"
             query = processed_text.lower()
-            if "kannada" in query:
+            
+            # Normalize misspellings
+            import re as _re
+            query_normalized = query
+            query_normalized = _re.sub(r"\bcanada\b", "kannada", query_normalized)
+            query_normalized = _re.sub(r"\bkarna?da\b", "kannada", query_normalized)
+            query_normalized = _re.sub(r"\bkanna?d(?:a|e)?\b", "kannada", query_normalized)
+            query_normalized = _re.sub(r"\bcannada\b", "kannada", query_normalized)
+            query_normalized = _re.sub(r"\bkana+da\b", "kannada", query_normalized)
+            query_normalized = _re.sub(r"\bmara?t+h?i\b", "marathi", query_normalized)
+            query_normalized = _re.sub(r"\bmaraathi\b", "marathi", query_normalized)
+            query_normalized = _re.sub(r"\bhin(?:d(?:h?i|y|ie)|de)\b", "hindi", query_normalized)
+
+
+            if "kannada" in query_normalized:
                 target_lang = "kannada"
-            elif "marathi" in query:
+            elif "marathi" in query_normalized:
                 target_lang = "marathi"
-            elif "hindi" in query:
+            elif "hindi" in query_normalized:
                 target_lang = "hindi"
-            elif "english" in query:
+            elif "english" in query_normalized:
                 target_lang = "english"
-            elif "auto" in query or "default" in query or "automatic" in query:
+            elif "auto" in query_normalized or "default" in query_normalized or "automatic" in query_normalized:
                 target_lang = "auto"
 
             # Update the profile
@@ -551,34 +566,65 @@ class AgentController:
             profile.output_language_preference = target_lang
             self._profile_manager._save()
 
-            confirmation = f"Okay, I will reply in {target_lang} from now on."
-            if target_lang == "auto":
-                confirmation = "Okay, I will automatically match your language from now on."
-
-            # Update session memory history to prevent subsequent turns from acting like it is the first turn
-            self._memory.add_turn(session_id, processed_text, confirmation)
-
-            # Log to DB
-            latency_ms = int((time.perf_counter() - start_time) * 1000)
-            asyncio.create_task(
-                self._db_manager.write_log(
-                    user_id=user_uuid,
-                    session_id=session_uuid,
-                    query_text=original_text,
-                    response_text=confirmation,
-                    intent_category="SETTINGS_UPDATE",
-                    input_flagged=False,
-                    output_flagged=False,
-                    latency_ms=latency_ms,
-                    tokens_in=self._count_tokens(original_text),
-                    tokens_out=self._count_tokens(confirmation),
-                )
+            # ── Detect whether the utterance is a PURE language-switch command
+            # or a MIXED request that also contains a substantive question.
+            # e.g. "reply in Hindi" → pure switch (no question content)
+            # e.g. "give me a roadmap in Hindi" → mixed (has real question)
+            # Strategy: strip the language-request fragment and check what remains.
+            _lang_frag_pat = _re.compile(
+                r"\b(in|switch\s+to|reply\s+in|speak\s+in|use|change\s+language\s+to|respond\s+in|answer\s+in|explain\s+in|tell\s+(?:me\s+)?in|translate\s+(?:it\s+)?(?:to|into)|say\s+(?:it\s+)?in)\s+"
+                r"(hindi|marathi|kannada|english|auto|kanada|kannad|marati|hindhi|canada)\b",
+                _re.IGNORECASE
             )
+            stripped_query = _lang_frag_pat.sub("", processed_text).strip(" .,?!")
 
-            for word in confirmation.split():
-                token = " " + word
-                yield {"raw": token, "planned": token}
-            return
+
+            # A pure switch has little or no content left after removing the lang fragment
+            is_pure_switch = len(stripped_query.split()) < 4
+
+            if is_pure_switch:
+                # Pure language-switch: acknowledge and stop here
+                confirmation = f"Okay, I will reply in {target_lang} from now on."
+                if target_lang == "auto":
+                    confirmation = "Okay, I will automatically match your language from now on."
+
+                self._memory.add_turn(session_id, processed_text, confirmation)
+
+                latency_ms = int((time.perf_counter() - start_time) * 1000)
+                asyncio.create_task(
+                    self._db_manager.write_log(
+                        user_id=user_uuid,
+                        session_id=session_uuid,
+                        query_text=original_query if original_query else original_text,
+                        response_text=confirmation,
+                        intent_category="SETTINGS_UPDATE",
+                        input_flagged=False,
+                        output_flagged=False,
+                        latency_ms=latency_ms,
+                        tokens_in=self._count_tokens(original_text),
+                        tokens_out=self._count_tokens(confirmation),
+                        response_lang=target_lang,
+                    )
+                )
+
+                for word in confirmation.split():
+                    token = " " + word
+                    yield {"raw": token, "planned": token}
+                return
+            else:
+                # Mixed request: language preference updated; fall through to LLM
+                # with the original question so it gets a real answer.
+                # Also update response_lang so the output is translated correctly.
+                response_lang = target_lang if target_lang != "auto" else response_lang
+                logger.info(
+                    "[AGENT] SETTINGS_UPDATE (mixed): lang pref updated to %r. "
+                    "Continuing to LLM with substantive question: %r",
+                    target_lang, stripped_query
+                )
+                # Re-classify intent without the lang fragment so the LLM handler
+                # sees the correct intent for the real question.
+                intent_result = await self._intent_classifier.classify(stripped_query)
+
 
         if non_latin_ratio > 0.4 and intent_result.intent == Intent.OFF_TOPIC:
             from agent.security_logger import log_security_event
@@ -605,7 +651,7 @@ class AgentController:
                 self._db_manager.write_log(
                     user_id=user_uuid,
                     session_id=session_uuid,
-                    query_text=original_text,
+                    query_text=original_query if original_query else original_text,
                     response_text=refusal_message,
                     intent_category="UNSAFE",
                     input_flagged=True,
@@ -614,6 +660,7 @@ class AgentController:
                     latency_ms=latency_ms,
                     tokens_in=self._count_tokens(original_text),
                     tokens_out=self._count_tokens(refusal_message),
+                    response_lang=response_lang,
                 )
             )
             async for token in self._stream_refusal(refusal_message, session_id):
@@ -828,7 +875,7 @@ class AgentController:
                 self._db_manager.write_log(
                     user_id=user_uuid,
                     session_id=session_uuid,
-                    query_text=processed_text,
+                    query_text=original_query if original_query else processed_text,
                     response_text=leak_refusal,
                     intent_category="UNSAFE",
                     input_flagged=False,
@@ -837,6 +884,7 @@ class AgentController:
                     latency_ms=latency_ms,
                     tokens_in=prompt_tokens,
                     tokens_out=completion_tokens,
+                    response_lang=response_lang,
                 )
             )
             return
@@ -912,7 +960,7 @@ class AgentController:
                 self._db_manager.write_log(
                     user_id=user_uuid,
                     session_id=session_uuid,
-                    query_text=processed_text,
+                    query_text=original_query if original_query else processed_text,
                     response_text=post_processed_response,
                     intent_category=intent_result.intent.value,
                     input_flagged=input_flagged,
@@ -921,6 +969,7 @@ class AgentController:
                     latency_ms=latency_ms,
                     tokens_in=prompt_tokens,
                     tokens_out=completion_tokens,
+                    response_lang=response_lang,
                 )
             )
             

@@ -551,12 +551,16 @@ class PromptBuilder:
             resp_lang = context.response_lang
             lang_display = {"kannada": "Kannada", "marathi": "Marathi", "hindi": "Hindi"}.get(resp_lang, resp_lang.capitalize())
             context_hint = (
-                f"[CONTEXT: The student is asking in {lang_display}. This is an engineering education platform. "
-                f"Always respond strictly about engineering, computer science, mathematics, or technology topics. "
-                f"Keep the answer focused on the engineering domain — do not drift to general conversation. "
-                f"Your response will be automatically translated to {lang_display} for the student.]"
+                f"[LANGUAGE OUTPUT INSTRUCTION]\n"
+                f"The student has requested a response in {lang_display}. "
+                f"CRITICAL: You MUST answer the student's actual question fully and completely — do NOT just greet or introduce yourself. "
+                f"If they asked for a roadmap, give the full roadmap. If they asked for an explanation, give the full explanation. "
+                f"Write your ENTIRE response in English. "
+                f"It will be automatically translated to {lang_display} for the student — you do NOT need to write in {lang_display} yourself. "
+                f"Stay strictly on engineering, computer science, mathematics, or technology topics."
             )
             sections.append(context_hint)
+
 
         # Join all sections with double newlines
         full_system = "\n\n".join(sections)
