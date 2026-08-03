@@ -278,3 +278,83 @@ class LanguageRouter:
             "scores": {"kannada": kannada_score, "marathi": marathi_score, "hindi": hindi_score},
             "routing_path": "english-default"
         }
+
+    @staticmethod
+    def detect_requested_output_language(text: str) -> Optional[str]:
+        """
+        Scans the transcript for explicit output-language requests expressed in English.
+        Handles common misspellings (e.g. 'Kanada', 'Marati', 'hindhi').
+
+        Returns one of: 'hindi' | 'marathi' | 'kannada' | None.
+        Returns None if no explicit language request is found.
+        """
+        import re
+        if not text:
+            return None
+
+        t = text.lower().strip()
+
+        # ── Step 1: Normalise common misspellings to canonical names ─────────
+        # Kannada aliases: Canada, Kanada, Kannad, Cannada, Karnada, Kanaada, Kannadiga
+        t = re.sub(r"\bcanada\b",    "kannada", t)
+        t = re.sub(r"\bkarna?da\b",  "kannada", t)
+        t = re.sub(r"\bkanna?d(?:a|e)?\b", "kannada", t)
+        t = re.sub(r"\bcannada\b",   "kannada", t)
+        t = re.sub(r"\bkana+da\b",   "kannada", t)
+        t = re.sub(r"\bkannadiga\b", "kannada", t)
+
+
+        # Marathi aliases: Marati, Marathii, Maratthi, Marathi
+        t = re.sub(r"\bmara?t+h?i\b", "marathi", t)
+        t = re.sub(r"\bmaraathi\b",   "marathi", t)
+
+        # Hindi aliases: Hindhi, Hinde, Hinde, Hindie, Hindy
+        t = re.sub(r"\bhin(?:d(?:h?i|y|ie)|de)\b", "hindi", t)
+
+        # ── Step 2: Broad pattern — any verb/prep + language name ─────────────
+        # Matches: "in hindi", "explain in kannada", "tell me in marathi",
+        # "answer in hindi", "respond in kannada", "translate to marathi",
+        # "hindi mein", "kannada lo", "kannada medium", etc.
+        LANG_NAMES = r"(?:hindi|marathi|kannada)"
+
+        BROAD_PATTERN = re.compile(
+            r"""
+            (?:
+                # "in/into/to <lang>" with optional verb prefix
+                \b(?:explain|answer|respond|reply|speak|say|write|tell\s+(?:me\s+)?|give(?:\s+me)?|describe|translate(?:\s+(?:it\s+)?(?:to|into))?|use|switch\s+to|change\s+(?:language\s+)?to)?\s*
+                \bin\s+""" + LANG_NAMES + r"""\b
+            |
+                # "<lang> mein/medium/lo" (Indic-English hybrid)
+                \b""" + LANG_NAMES + r"""\s+(?:mein|medium|lo|me)\b
+            |
+                # Pure bare language word at the end: "explain ... kannada"
+                \b(?:explain|answer|respond|tell|describe)\b.{0,80}?\b""" + LANG_NAMES + r"""\s*$
+            )
+            """,
+            re.VERBOSE | re.IGNORECASE,
+        )
+
+        match = BROAD_PATTERN.search(t)
+        if match:
+            matched_text = match.group(0).lower()
+            if "kannada" in matched_text:
+                return "kannada"
+            if "marathi" in matched_text:
+                return "marathi"
+            if "hindi" in matched_text:
+                return "hindi"
+
+        # ── Step 3: Fallback — bare language name anywhere in short utterances ─
+        # For very short queries like "in Hindi" or "Kannada lo boliye"
+        words = t.split()
+        if len(words) <= 8:
+            for w in words:
+                if w == "kannada":
+                    return "kannada"
+                if w == "marathi":
+                    return "marathi"
+                if w == "hindi":
+                    return "hindi"
+
+        return None
+
