@@ -55,6 +55,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
 from config import Config
+from request_queue.llm_queue import QueueFullError
 from stt.whisper_engine import WhisperEngine
 from llm.llm_engine import LLMEngine
 from tts.kokoro_engine import KokoroEngine
@@ -95,6 +96,60 @@ logging.basicConfig(
 logger = logging.getLogger("edumentor.main")
 
 
+class QueueingLLMEngine:
+    """Wrap an LLM engine and route generation through Redis request queue."""
+
+    def __init__(self, base_engine, request_queue):
+        self._base_engine = base_engine
+        self._request_queue = request_queue
+        self.last_usage = None
+
+    async def stream_tokens(self, user_text: str):
+        return self._stream_via_queue(user_text, session_id="")
+
+    async def stream_tokens_from_messages(self, messages: list, session_id: str = "", max_tokens=None):
+        prompt_text = self._serialize_messages(messages)
+        return self._stream_via_queue(prompt_text, session_id=session_id)
+
+    def _serialize_messages(self, messages: list) -> str:
+        lines = []
+        for msg in messages:
+            role = msg.get("role", "user").upper()
+            content = msg.get("content", "")
+            lines.append(f"{role}: {content}")
+        return "\n".join(lines)
+
+    async def _stream_via_queue(self, prompt: str, session_id: str):
+        request_id = await self._request_queue.enqueue(session_id, prompt)
+        async for chunk in self._request_queue.stream_response(request_id):
+            if chunk.get("type") == "token":
+                yield chunk.get("data", "")
+            elif chunk.get("type") == "error":
+                raise RuntimeError(chunk.get("error", "LLM queue error"))
+            elif chunk.get("type") == "done":
+                return
+
+    def __getattr__(self, name):
+        return getattr(self._base_engine, name)
+
+
+async def _run_queue_housekeeping(queue):
+    try:
+        while True:
+            await asyncio.sleep(60)
+            try:
+                await queue.trim_acked()
+                logger.debug("Redis queue housekeeping: trimmed acked entries.")
+            except Exception as exc:
+                logger.warning("Redis queue housekeeping failed: %s", exc)
+    except asyncio.CancelledError:
+        logger.info("Redis queue housekeeping task cancelled.")
+
+
+redis_rate_limiter = None
+queue_housekeeping_task = None
+
+
 def _setup_agent_file_logger() -> None:
     """Set up rotating file logger for agent events."""
     log_path = Config.AGENT_LOG_FILE
@@ -130,6 +185,10 @@ db_manager:        Optional[DatabaseManager]      = None
 profile_manager:   Optional[StudentProfileManager] = None
 domain_corrector:  Optional[DomainCorrector]      = None
 memory_manager:    Optional[MemoryManager]         = None
+
+# Redis — only active when REDIS_ENABLED=true
+redis_client       = None   # redis.asyncio.Redis instance
+llm_request_queue  = None   # request_queue.llm_queue.LLMRequestQueue
 
 # Multilingual pipeline — only active when MULTILINGUAL_ENABLED=true
 multilingual_pipeline = None
@@ -200,16 +259,73 @@ async def lifespan(app: FastAPI):
         silero_vad_model = silero_vad_model.to("cuda")
     logger.info("[OK] Silero VAD ready.")
 
+    # ── Initialize Redis (optional) ───────────────────────────────────────────
+    global redis_client, llm_request_queue, redis_rate_limiter, queue_housekeeping_task
+    if Config.REDIS_ENABLED:
+        logger.info("REDIS_ENABLED=true — connecting to Redis at %s ...", Config.REDIS_URL)
+        try:
+            import redis.asyncio as aioredis
+            redis_client = aioredis.from_url(
+                Config.REDIS_URL,
+                decode_responses=True,
+                socket_connect_timeout=3,
+                socket_timeout=3,
+            )
+            await redis_client.ping()
+            logger.info("[OK] Redis connected.")
+
+            from request_queue.llm_queue import LLMRequestQueue, QueueConfig
+            llm_request_queue = LLMRequestQueue(redis_client, QueueConfig())
+            await llm_request_queue.ensure_group()
+            logger.info("[OK] LLM request queue ready (stream=%s).", QueueConfig().stream_key)
+
+            from utils.redis_rate_limiter import RedisRateLimiter
+            redis_rate_limiter = RedisRateLimiter(
+                redis_client,
+                limit=Config.VOICE_RATE_LIMIT_PER_MINUTE,
+                window_seconds=Config.REDIS_RATE_LIMIT_WINDOW_SECONDS,
+                key_prefix="voice_ratelimit",
+            )
+
+            queue_housekeeping_task = asyncio.create_task(_run_queue_housekeeping(llm_request_queue))
+            logger.info("[OK] Redis queue housekeeping task started.")
+        except Exception as redis_exc:
+            logger.warning(
+                "Redis connection failed (%s) — falling back to in-memory backends.", redis_exc
+            )
+            redis_client = None
+            llm_request_queue = None
+            redis_rate_limiter = None
+            queue_housekeeping_task = None
+    else:
+        logger.info("REDIS_ENABLED=false — using in-memory backends.")
+
     # ── Initialize Agent Layer ────────────────────────────────────────────────
     if Config.AGENT_ENABLED:
         logger.info("Initializing Agent Layer...")
 
-        interrupt_manager  = InterruptManager()
-        _memory_backend    = get_backend(Config.MEMORY_BACKEND)
-        memory_manager     = MemoryManager(
+        interrupt_manager = InterruptManager()
+
+        # Choose memory backend based on Redis availability
+        if Config.REDIS_ENABLED and redis_client is not None and Config.MEMORY_BACKEND == "redis":
+            _memory_backend = get_backend(
+                "redis",
+                redis_url=Config.REDIS_URL,
+                ttl_seconds=Config.REDIS_MEMORY_TTL_SECONDS,
+            )
+        elif Config.MEMORY_BACKEND == "redis":
+            logger.warning(
+                "Redis memory backend requested but Redis is unavailable. Falling back to in-memory memory backend."
+            )
+            _memory_backend = get_backend("memory")
+        else:
+            _memory_backend = get_backend(Config.MEMORY_BACKEND)
+
+        memory_manager = MemoryManager(
             max_turns = Config.MEMORY_MAX_TURNS,
             backend   = _memory_backend,
         )
+
         session_summarizer = SessionSummarizer(
             llm_engine  = llm_engine,
             summary_dir = Config.SESSION_SUMMARY_DIR,
@@ -221,6 +337,9 @@ async def lifespan(app: FastAPI):
 
         from speech.domain_corrector import domain_corrector as dc
         domain_corrector = dc
+
+        if llm_request_queue is not None:
+            llm_engine = QueueingLLMEngine(llm_engine, llm_request_queue)
 
         agent_controller = AgentController(
             llm_engine          = llm_engine,
@@ -273,6 +392,12 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down engines ...")
+    if queue_housekeeping_task is not None:
+        queue_housekeeping_task.cancel()
+        try:
+            await queue_housekeeping_task
+        except asyncio.CancelledError:
+            pass
     if llm_engine:
         await llm_engine.aclose()
     if db_manager:
@@ -1383,7 +1508,11 @@ async def _run_pipeline(
         await ws.send_json({"type": "assistant_finished"})
 
     # Voice rate limiting (Part 2)
-    allowed, rate_limit_msg = rate_limiter.check_voice_rate_limit(user_id)
+    if redis_rate_limiter is not None:
+        allowed, rate_limit_msg = await redis_rate_limiter.check_voice_rate_limit(user_id)
+    else:
+        allowed, rate_limit_msg = rate_limiter.check_voice_rate_limit(user_id)
+
     if not allowed:
         # Send the message back as a TTS response, not just an error
         # Student hears "slow down" rather than getting a silent drop
@@ -1391,7 +1520,7 @@ async def _run_pipeline(
         from agent.security_logger import log_security_event
         await log_security_event(
             user_id, client_ip, "rate_limit_hit",
-            f"utterances_in_window={len(rate_limiter.requests_per_student[user_id])}"
+            f"utterances_in_window={user_id}"
         )
         await set_state(ConversationState.IDLE)
         await websocket.send_json({"type": "done"})
@@ -1443,27 +1572,35 @@ async def _run_pipeline(
                     await websocket.send_json({"type": "assistant_finished"})
                     return
 
-        if pre_transcribed_text:
+        # STT — always run the full multilingual transcription to get the accurate final transcript.
+        # The live transcript (pre_transcribed_text) is only a partial mid-utterance capture and
+        # must NOT be used as the definitive input to the LLM or the displayed transcript.
+        # It is kept only as a fallback if the real STT returns empty.
+        t_stt = time.time()
+        logger.info("[ML-STAGE-1] STT: calling multilingual transcribe (no forced language) ...")
+
+        def _transcribe_runner():
+            return multilingual_pipeline.transcribe_multilingual(
+                audio_array_ml,
+                initial_prompt=Config.MULTILINGUAL_WHISPER_PROMPT
+            )
+
+        transcript, whisper_lang, stt_latency = await loop.run_in_executor(None, _transcribe_runner)
+        logger.info(
+            "[ML-STAGE-1] STT done in %.3fs | whisper_lang=%r | transcript repr=%r",
+            stt_latency, whisper_lang, transcript
+        )
+
+        # If full STT returned nothing, fall back to the live transcript as a last resort
+        if not transcript and pre_transcribed_text:
+            logger.info(
+                "[ML-STAGE-1] Full STT empty — falling back to live transcript: %r",
+                pre_transcribed_text,
+            )
             transcript = pre_transcribed_text
             whisper_lang = None
             stt_latency = 0.0
-            logger.info("[ML-STAGE-1] STT: using pre_transcribed_text=%r", transcript)
-        else:
-            # STT (multilingual Whisper) — calls model.transcribe() with NO language= arg (auto-detect)
-            t_stt = time.time()
-            logger.info("[ML-STAGE-1] STT: calling multilingual transcribe (no forced language) ...")
-            
-            def _transcribe_runner():
-                return multilingual_pipeline.transcribe_multilingual(
-                    audio_array_ml,
-                    initial_prompt=Config.MULTILINGUAL_WHISPER_PROMPT
-                )
-                
-            transcript, whisper_lang, stt_latency = await loop.run_in_executor(None, _transcribe_runner)
-            logger.info(
-                "[ML-STAGE-1] STT done in %.3fs | whisper_lang=%r | transcript repr=%r",
-                stt_latency, whisper_lang, transcript
-            )
+
 
         if not transcript:
             logger.info("[ML-STAGE-1] Empty multilingual transcript — responding with clarification prompt.")
@@ -1512,17 +1649,40 @@ async def _run_pipeline(
                 "route_lang": route_lang,
             })
 
+        # ── Explicit output-language request detection ────────────────────────
+        # The user may speak English but explicitly ask for a response in Hindi,
+        # Marathi, or Kannada (e.g. "explain in Hindi", "give me a roadmap in Marathi").
+        # detect_requested_output_language() scans the transcript for such phrases
+        # and, if found, overrides the response language regardless of route_lang.
+        requested_output_lang = multilingual_pipeline.router.detect_requested_output_language(transcript)
+        if requested_output_lang:
+            logger.info(
+                "[ML-STAGE-2] Explicit output-language request detected in English utterance: %r → override response_lang=%r",
+                transcript[:80], requested_output_lang,
+            )
+
         # Determine target output language
-        response_lang = lang_pref if lang_pref != "auto" else route_lang
+        # Priority: explicit request > user profile preference > route_lang
+        if requested_output_lang:
+            response_lang = requested_output_lang
+        elif lang_pref != "auto":
+            response_lang = lang_pref
+        else:
+            response_lang = route_lang
+
+        logger.info("[ML-STAGE-2] response_lang=%r (requested=%r, lang_pref=%r, route_lang=%r)",
+                    response_lang, requested_output_lang, lang_pref, route_lang)
 
         # 3. Input translation (only for kannada / marathi)
+        # Note: if the user spoke English but requested an Indic output, the input is still
+        # English — we pass it directly to the LLM and only translate the *output*.
         llm_input = transcript
-        needs_translation = route_lang in ("hindi", "kannada", "marathi")
+        needs_input_translation = route_lang in ("hindi", "kannada", "marathi")
         logger.info(
-            "[ML-STAGE-3] Translation check: needs_translation=%s | route_lang=%r | response_lang=%r",
-            needs_translation, route_lang, response_lang
+            "[ML-STAGE-3] Translation check: needs_input_translation=%s | route_lang=%r | response_lang=%r",
+            needs_input_translation, route_lang, response_lang
         )
-        if needs_translation and transcript:
+        if needs_input_translation and transcript:
             from i18n.term_glossary import protect_terms, restore_terms
             t_trans_in = time.time()
             protected_transcript, mapping = protect_terms(transcript, route_lang)
@@ -1540,10 +1700,17 @@ async def _run_pipeline(
         use_mms_for_hindi = False
         if response_lang == "hindi":
             has_devanagari = multilingual_pipeline.router.contains_devanagari_script(transcript)
-            use_mms_for_hindi = (lang_pref == "hindi") or (lang_pref == "auto" and route_lang == "hindi" and has_devanagari)
+            # Use MMS-TTS for Hindi when: user explicitly requested Hindi, profile preference is Hindi,
+            # or auto-routed as Hindi with Devanagari script present.
+            use_mms_for_hindi = (
+                requested_output_lang == "hindi"
+                or lang_pref == "hindi"
+                or (lang_pref == "auto" and route_lang == "hindi" and has_devanagari)
+            )
 
         tts_engine = "mms" if (response_lang in ("kannada", "marathi") or use_mms_for_hindi) else "kokoro"
         logger.info("[ML-STAGE-4] TTS engine selected: %r | use_mms_for_hindi=%s", tts_engine, use_mms_for_hindi)
+
 
         # 4. Stream LLM response & TTS
         import base64
@@ -1553,7 +1720,8 @@ async def _run_pipeline(
                 llm_stream = agent_controller.stream(
                     llm_input, session_id, user_id=user_id,
                     audio_array=audio_array_ml, ip_address=client_ip,
-                    voice_style=voice_style, response_lang=response_lang
+                    voice_style=voice_style, response_lang=response_lang,
+                    original_query=transcript
                 )
             else:
                 llm_stream = llm_engine.stream_tokens(llm_input)
@@ -1569,7 +1737,8 @@ async def _run_pipeline(
                 llm_stream = agent_controller.stream(
                     llm_input, session_id, user_id=user_id,
                     audio_array=audio_array_ml, ip_address=client_ip,
-                    voice_style=voice_style, response_lang=response_lang
+                    voice_style=voice_style, response_lang=response_lang,
+                    original_query=transcript
                 )
             else:
                 llm_stream = llm_engine.stream_tokens(llm_input)
@@ -1577,6 +1746,8 @@ async def _run_pipeline(
             translation_queue = asyncio.Queue()
             tts_queue = asyncio.Queue()
             audio_queue = asyncio.Queue()
+            # Accumulates all translated sentences for DB back-fill
+            _translated_sentences: list[str] = []
 
             async def llm_reader():
                 sentence_buffer = ""
@@ -1669,6 +1840,7 @@ async def _run_pipeline(
                     await translation_queue.put(None)
 
             async def translator_worker():
+                nonlocal _translated_sentences
                 from speech.multilingual_pipeline import NLLB_LANG_MAP
                 tgt_code = NLLB_LANG_MAP.get(response_lang, "hin_Deva")
                 from i18n.term_glossary import protect_terms, restore_terms
@@ -1727,6 +1899,7 @@ async def _run_pipeline(
                             logger.warning("Failed to record translate_out stages metrics: %s", exc)
 
                         logger.info("[ML-TRANS-WORKER] Putting sentence[%d] to tts_queue.", sent_idx)
+                        _translated_sentences.append(translated)
                         await websocket.send_json({"type": "assistant_text_delta", "text": translated + " "})
                         
                         from i18n.term_glossary import transliterate_latin_words
@@ -1943,6 +2116,26 @@ async def _run_pipeline(
                     pass
                 raise
 
+            # Back-fill DB with the translated response and confirmed language
+            if _translated_sentences and db_manager is not None and agent_controller is not None:
+                full_translated = " ".join(_translated_sentences)
+                try:
+                    _u_uuid = agent_controller._to_uuid(user_id)
+                    _s_uuid = agent_controller._to_uuid(session_id)
+                    asyncio.create_task(db_manager.update_log_translation(
+                        user_id=_u_uuid,
+                        session_id=_s_uuid,
+                        translated_response=full_translated,
+                        response_lang=response_lang,
+                    ))
+                    logger.info(
+                        "[MULTILINGUAL] Scheduled DB translation back-fill: lang=%s len=%d",
+                        response_lang, len(full_translated)
+                    )
+                except Exception as _bf_exc:
+                    logger.warning("[MULTILINGUAL] DB back-fill failed: %s", _bf_exc)
+
+
         await set_state(ConversationState.IDLE)
         latency_metrics["complete"] = round(time.time() - start_time, 2)
         logger.info(
@@ -1979,26 +2172,31 @@ async def _run_pipeline(
 
     min_avg_logprob = 0.0
     try:
-        if pre_transcribed_text:
-            transcript = pre_transcribed_text
-            logger.info("Using pre-transcribed text from live transcriber: %r", transcript)
-            latency_metrics["whisper_done"] = 0.0
-        else:
-            logger.info("Transcribing %.1f seconds of audio …", len(audio_array) / Config.AUDIO_SAMPLE_RATE)
+        # Always run the full Whisper STT to get the accurate final transcript.
+        # pre_transcribed_text is a partial live capture and must not bypass real STT.
+        logger.info("Transcribing %.1f seconds of audio …", len(audio_array) / Config.AUDIO_SAMPLE_RATE)
 
-            discipline = "cse"
-            if profile_manager:
-                discipline = profile_manager.get_discipline()
-            initial_prompt = whisper_engine.get_prompt_for_discipline(discipline, user_corrections)
+        discipline = "cse"
+        if profile_manager:
+            discipline = profile_manager.get_discipline()
+        initial_prompt = whisper_engine.get_prompt_for_discipline(discipline, user_corrections)
 
-            # Run blocking Whisper in a thread to keep the event loop free
-            transcript, min_avg_logprob = await loop.run_in_executor(
-                None,
-                lambda: whisper_engine.transcribe_with_confidence(
-                    audio_array, initial_prompt=initial_prompt
-                )
+        # Run blocking Whisper in a thread to keep the event loop free
+        transcript, min_avg_logprob = await loop.run_in_executor(
+            None,
+            lambda: whisper_engine.transcribe_with_confidence(
+                audio_array, initial_prompt=initial_prompt
             )
-            latency_metrics["whisper_done"] = round(time.time() - start_time, 2)
+        )
+        latency_metrics["whisper_done"] = round(time.time() - start_time, 2)
+
+        # If full STT returned nothing, fall back to the live transcript as a last resort
+        if not transcript and pre_transcribed_text:
+            logger.info("Full STT empty — falling back to live transcript: %r", pre_transcribed_text)
+            transcript = pre_transcribed_text
+            min_avg_logprob = 0.0
+            latency_metrics["whisper_done"] = 0.0
+
     except Exception as stt_exc:
         logger.exception("STT Transcription failed: %s", stt_exc)
         # Notify the frontend of the user speech transcription error and explain gracefully
