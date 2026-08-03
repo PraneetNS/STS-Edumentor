@@ -199,6 +199,24 @@ class Config:
     MEMORY_BACKEND: str = os.getenv("MEMORY_BACKEND", "memory")
 
     # ─────────────────────────────────────────────
+    # Redis settings
+    # ─────────────────────────────────────────────
+
+    # Master toggle — when false all Redis features degrade gracefully to
+    # their in-process equivalents so the server still works without Redis.
+    REDIS_ENABLED: bool = os.getenv("REDIS_ENABLED", "false").lower() == "true"
+
+    # Connection URL passed to redis.asyncio.from_url() and redis.Redis.from_url()
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
+
+    # How long an idle session's memory list survives in Redis (seconds).
+    # 0 = no expiry (keys live forever — not recommended for production).
+    REDIS_MEMORY_TTL_SECONDS: int = int(os.getenv("REDIS_MEMORY_TTL_SECONDS", "86400"))  # 24 h
+
+    # Sliding-window length for the Redis rate limiter (seconds).
+    REDIS_RATE_LIMIT_WINDOW_SECONDS: int = int(os.getenv("REDIS_RATE_LIMIT_WINDOW_SECONDS", "60"))
+
+    # ─────────────────────────────────────────────
     # Session Summarizer settings
     # ─────────────────────────────────────────────
 

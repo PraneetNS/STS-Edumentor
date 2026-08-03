@@ -2,13 +2,13 @@
 EduMentor Agent Layer — Memory Manager
 
 Session-based multi-turn conversation memory with a pluggable backend
-abstraction layer for future upgrades (SQLite, Redis).
+abstraction layer for different deployment sizes.
 
 Architecture:
   MemoryBackend (abstract protocol)
     └── InMemoryBackend  ← default, dict-based, cleared on restart
-    └── SQLiteBackend    ← stub, ready to implement
-    └── RedisBackend     ← stub, ready to implement
+    └── SQLiteBackend    ← disk-backed, cross-restart persistence
+    └── RedisBackend     ← Redis-backed, distributed / multi-instance
 
   MemoryManager (public API)
     ├── get_session()          → list[MemoryTurn]
@@ -255,7 +255,14 @@ class RedisBackend(MemoryBackend):
     Pruning uses LTRIM to keep only the most recent N items.
     """
 
-    def __init__(self, redis_url: str = "redis://localhost:6379") -> None:
+    def __init__(self, redis_url: str = "redis://localhost:6379", ttl_seconds: int = 86400) -> None:
+        """
+        Args:
+            redis_url:    Redis connection URL (e.g. "redis://localhost:6379").
+            ttl_seconds:  Idle-session TTL in seconds. After this many seconds of
+                          inactivity the session's memory list is automatically
+                          evicted from Redis. 0 disables expiry.
+        """
         try:
             import redis as redis_lib  # type: ignore
         except ImportError as exc:
@@ -265,9 +272,10 @@ class RedisBackend(MemoryBackend):
             ) from exc
 
         self._client = redis_lib.Redis.from_url(redis_url, decode_responses=True)
+        self._ttl = ttl_seconds
         # Ping to validate connection at startup
         self._client.ping()
-        logger.info("[OK] RedisBackend ready (url=%s).", redis_url)
+        logger.info("[OK] RedisBackend ready (url=%s, ttl=%ds).", redis_url, ttl_seconds)
 
     # ── helpers ────────────────────────────────────────────────────────────────
 
@@ -301,8 +309,12 @@ class RedisBackend(MemoryBackend):
         return [self._deserialise(r) for r in raw_list]
 
     def append(self, session_id: str, turn: MemoryTurn) -> None:
-        self._client.rpush(self._mem_key(session_id), self._serialise(turn))
+        key = self._mem_key(session_id)
+        self._client.rpush(key, self._serialise(turn))
         self._client.incr(self._count_key(session_id))
+        # Refresh the TTL on every write so active sessions never expire mid-conversation.
+        if self._ttl > 0:
+            self._client.expire(key, self._ttl)
 
     def prune(self, session_id: str, max_turns: int) -> None:
         """Keep only the most recent max_turns entries (LTRIM from the right)."""
@@ -329,7 +341,7 @@ def get_backend(backend_name: str, **kwargs) -> MemoryBackend:
         backend_name: One of ``"memory"``, ``"sqlite"``, or ``"redis"``.
         **kwargs:     Forwarded to the backend constructor.
                       - SQLiteBackend: ``db_path``
-                      - RedisBackend:  ``redis_url``
+                      - RedisBackend:  ``redis_url``, ``ttl_seconds``
 
     Returns:
         A fully-initialised MemoryBackend instance.
