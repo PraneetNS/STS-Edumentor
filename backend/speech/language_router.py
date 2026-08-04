@@ -337,6 +337,9 @@ class LanguageRouter:
                 \b(?:explain|answer|respond|reply|speak|say|write|tell\s+(?:me\s+)?|give(?:\s+me)?|describe|translate(?:\s+(?:it\s+)?(?:to|into))?|use|switch\s+to|change\s+(?:language\s+)?to)?\s*
                 \bin\s+""" + LANG_NAMES + r"""\b
             |
+                # Translation and switching requests commonly use "to <lang>".
+                \b(?:translate(?:\s+(?:it|this|that))?|switch(?:\s+language)?|change\s+(?:language\s+)?)\s+(?:to|into)\s+""" + LANG_NAMES + r"""\b
+            |
                 # "<lang> mein/medium/lo" (Indic-English hybrid)
                 \b""" + LANG_NAMES + r"""\s+(?:mein|medium|lo|me)\b
             |

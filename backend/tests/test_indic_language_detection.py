@@ -37,3 +37,8 @@ def test_uses_the_highest_romanized_language_score():
 def test_accepts_uppercase_profile_language_codes():
     language, _ = LanguageRouter.route("unrecognized technical phrase", lang_pref="MR")
     assert language == "marathi"
+
+
+def test_detects_explicit_to_language_output_requests():
+    assert LanguageRouter.detect_requested_output_language("translate this to Hindi") == "hindi"
+    assert LanguageRouter.detect_requested_output_language("switch language to Marathi") == "marathi"
