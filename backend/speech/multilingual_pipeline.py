@@ -354,6 +354,8 @@ class MultilingualPipeline:
                 lang_pref = getattr(profile, "output_language_preference", "auto")
                 glossary_mode = getattr(profile, "glossary_mode", "english")
 
+        lang_pref = self.router.normalize_language(lang_pref) or "auto"
+
         # Determine target output language
         response_lang = lang_pref if lang_pref != "auto" else route_lang
 

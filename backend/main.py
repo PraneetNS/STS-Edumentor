@@ -1621,6 +1621,10 @@ async def _run_pipeline(
                 lang_pref = getattr(profile, "output_language_preference", "auto")
                 glossary_mode = getattr(profile, "glossary_mode", "english")
 
+        # Older profiles and manual edits may use codes (``hi``) or title case.
+        # Keep downstream translation and TTS routing on canonical names.
+        lang_pref = multilingual_pipeline.router.normalize_language(lang_pref) or "auto"
+
         stt_text = transcript
 
         # 2. Language Router

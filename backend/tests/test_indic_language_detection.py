@@ -32,3 +32,8 @@ def test_normalizes_whisper_language_codes():
 def test_uses_the_highest_romanized_language_score():
     language, _ = LanguageRouter.route("hege mujhe recursion kaise kaam karta hai batao")
     assert language == "hindi"
+
+
+def test_accepts_uppercase_profile_language_codes():
+    language, _ = LanguageRouter.route("unrecognized technical phrase", lang_pref="MR")
+    assert language == "marathi"
