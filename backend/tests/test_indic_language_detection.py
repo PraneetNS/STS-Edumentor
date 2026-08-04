@@ -44,6 +44,10 @@ def test_detects_explicit_to_language_output_requests():
     assert LanguageRouter.detect_requested_output_language("switch language to Marathi") == "marathi"
 
 
+def test_detects_requested_kannada_output_with_a_stt_spelling_variant():
+    assert LanguageRouter.detect_requested_output_language("explain recursion in Kanada") == "kannada"
+
+
 def test_routes_common_romanized_kannada_to_kannada():
     language, _ = LanguageRouter.route("nanage recursion yavudu anta tilisi")
     assert language == "kannada"
