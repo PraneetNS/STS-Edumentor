@@ -10,6 +10,8 @@ Versioning adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [Unreleased]
 
 ### Added
+- Regression coverage for Kannada, Hindi, and Marathi native-script and Romanized speech routing.
+- Localized acknowledgements when a student switches the response language.
 - `GET /api/sessions` and `GET /api/sessions/heatmap` FastAPI endpoints for historical voice session retrieval and activity heatmap counts.
 - `useProfileStats` React custom hook for centralized profile data fetching, caching, and state management.
 - `HeatmapCalendar` component for 90-day GitHub-style continuous contribution tracking.
@@ -28,6 +30,7 @@ Versioning adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - This `CHANGELOG.md` file.
 
 ### Changed
+- The language router now canonicalizes saved language preferences, recognizes more common Romanized Kannada and Marathi phrases, and honors explicit `translate to <language>` requests.
 - `utils/metrics.reset()` now emits a `WARNING`-level log entry before clearing all metrics.
 - Cloud LLM streaming adapter uses `_MAX_TOKENS` env-derived constant instead of the magic number `250`.
 
