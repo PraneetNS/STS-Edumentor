@@ -584,9 +584,8 @@ class AgentController:
 
             if is_pure_switch:
                 # Pure language-switch: acknowledge and stop here
-                confirmation = f"Okay, I will reply in {target_lang} from now on."
-                if target_lang == "auto":
-                    confirmation = "Okay, I will automatically match your language from now on."
+                from speech.language_messages import language_switch_confirmation
+                confirmation = language_switch_confirmation(target_lang)
 
                 self._memory.add_turn(session_id, processed_text, confirmation)
 
