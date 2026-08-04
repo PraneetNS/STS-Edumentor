@@ -42,3 +42,8 @@ def test_accepts_uppercase_profile_language_codes():
 def test_detects_explicit_to_language_output_requests():
     assert LanguageRouter.detect_requested_output_language("translate this to Hindi") == "hindi"
     assert LanguageRouter.detect_requested_output_language("switch language to Marathi") == "marathi"
+
+
+def test_routes_common_romanized_kannada_to_kannada():
+    language, _ = LanguageRouter.route("nanage recursion yavudu anta tilisi")
+    assert language == "kannada"

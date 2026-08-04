@@ -45,7 +45,8 @@ LATIN_KANNADA_KEYWORDS = {
     "mathu", "mattu", "mathe", "ondu", "wundu", "prakriye", "tanna", "thanu",
     "thanna", "taane", "thane", "karyu", "kare", "karyutade", "karyutadeh",
     "adaralli", "adrali", "avathu", "yavathu", "hoge", "hege", "yaake", "odu",
-    "karnaka", "kannada", "kodthini", "bidi", "nodona", "madthini", "nulli"
+    "karnaka", "kannada", "kodthini", "bidi", "nodona", "madthini", "nulli",
+    "nanage", "nanu", "yavudu", "tilisi", "madutte", "maadutte"
 }
 
 # Romanized Marathi keywords (Latin script)
