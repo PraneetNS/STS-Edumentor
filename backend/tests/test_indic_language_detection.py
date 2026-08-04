@@ -16,3 +16,8 @@ def test_routes_native_hindi_to_hindi():
 def test_routes_native_marathi_to_marathi():
     language, _ = LanguageRouter.route("रिकर्शन काय आहे आणि ते कसे काम करते?")
     assert language == "marathi"
+
+
+def test_routes_common_romanized_marathi_to_marathi():
+    language, _ = LanguageRouter.route("mala recursion kase kaam karte te sanga")
+    assert language == "marathi"

@@ -54,7 +54,8 @@ LATIN_MARATHI_KEYWORDS = {
     "nahi", "naahi", "ani", "aani", "kay", "kaay", "madhye", "madhe", "pan", "tar",
     "hote", "jhale", "zale", "sope", "peksha", "changle", "changli", "swatahlah",
     "swatahla", "swata", "goshta", "karava", "karaycha", "marathi", "sangto",
-    "baghu", "karu", "kartoy", "kartyat", "bolto", "punaravruti"
+    "baghu", "karu", "kartoy", "kartyat", "bolto", "punaravruti", "mala",
+    "kase", "kaam", "sanga", "sangaa", "shikva", "samjha", "tumhi"
 }
 
 # Romanized Hindi/Hinglish keywords (Latin script)
