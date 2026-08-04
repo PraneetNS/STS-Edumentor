@@ -47,3 +47,9 @@ def test_detects_explicit_to_language_output_requests():
 def test_routes_common_romanized_kannada_to_kannada():
     language, _ = LanguageRouter.route("nanage recursion yavudu anta tilisi")
     assert language == "kannada"
+
+
+def test_keeps_technical_english_on_the_english_route():
+    language, metadata = LanguageRouter.route("How do I use an IDE to debug this code?")
+    assert language == "english"
+    assert metadata["routing_path"] == "english-default"
