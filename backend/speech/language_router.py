@@ -86,6 +86,9 @@ ENGLISH_FUNCTION_WORDS = {
     "error", "bugs", "null", "void", "string", "integer", "boolean", "array", "list"
 }
 
+# These terms are more diagnostic than shared grammar such as ``hai`` or ``ka``.
+LATIN_HINDI_STRONG_KEYWORDS = {"mujhe", "kaise", "batao", "samjhao", "mereko", "tereko"}
+
 LANGUAGE_ALIASES = {
     "kn": "kannada", "kannada": "kannada",
     "mr": "marathi", "marathi": "marathi",
@@ -229,14 +232,15 @@ class LanguageRouter:
         kannada_score = len(kannada_latin_matches)
         marathi_score = len(marathi_latin_matches)
         hindi_score = len(hindi_latin_matches)
+        hindi_strong_score = sum(1 for w in hindi_latin_matches if w in LATIN_HINDI_STRONG_KEYWORDS)
 
-        if kannada_score > 0 and kannada_score > marathi_score and kannada_score > hindi_score:
+        if kannada_score > 0 and kannada_score > marathi_score and hindi_strong_score < 3:
             return "kannada", {
                 "reason": f"Latin Kannada keywords found: {kannada_latin_matches}",
                 "scores": {"kannada": kannada_score, "marathi": marathi_score, "hindi": hindi_score},
                 "routing_path": "keyword-match"
             }
-        elif marathi_score > 0 and marathi_score > kannada_score and marathi_score > hindi_score:
+        elif marathi_score > 0 and marathi_score > kannada_score and hindi_strong_score < 3:
             return "marathi", {
                 "reason": f"Latin Marathi keywords found: {marathi_latin_matches}",
                 "scores": {"kannada": kannada_score, "marathi": marathi_score, "hindi": hindi_score},
