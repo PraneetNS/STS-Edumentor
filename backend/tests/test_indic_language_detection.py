@@ -21,3 +21,9 @@ def test_routes_native_marathi_to_marathi():
 def test_routes_common_romanized_marathi_to_marathi():
     language, _ = LanguageRouter.route("mala recursion kase kaam karte te sanga")
     assert language == "marathi"
+
+
+def test_normalizes_whisper_language_codes():
+    assert LanguageRouter.normalize_language("MR") == "marathi"
+    assert LanguageRouter.normalize_language("kn") == "kannada"
+    assert LanguageRouter.normalize_language("unsupported") is None
