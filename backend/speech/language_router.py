@@ -229,13 +229,13 @@ class LanguageRouter:
         marathi_score = len(marathi_latin_matches)
         hindi_score = len(hindi_latin_matches)
 
-        if kannada_score > 0 and kannada_score > marathi_score:
+        if kannada_score > 0 and kannada_score > marathi_score and kannada_score > hindi_score:
             return "kannada", {
                 "reason": f"Latin Kannada keywords found: {kannada_latin_matches}",
                 "scores": {"kannada": kannada_score, "marathi": marathi_score, "hindi": hindi_score},
                 "routing_path": "keyword-match"
             }
-        elif marathi_score > 0 and marathi_score > kannada_score:
+        elif marathi_score > 0 and marathi_score > kannada_score and marathi_score > hindi_score:
             return "marathi", {
                 "reason": f"Latin Marathi keywords found: {marathi_latin_matches}",
                 "scores": {"kannada": kannada_score, "marathi": marathi_score, "hindi": hindi_score},

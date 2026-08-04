@@ -27,3 +27,8 @@ def test_normalizes_whisper_language_codes():
     assert LanguageRouter.normalize_language("MR") == "marathi"
     assert LanguageRouter.normalize_language("kn") == "kannada"
     assert LanguageRouter.normalize_language("unsupported") is None
+
+
+def test_uses_the_highest_romanized_language_score():
+    language, _ = LanguageRouter.route("hege mujhe recursion kaise kaam karta hai batao")
+    assert language == "hindi"
