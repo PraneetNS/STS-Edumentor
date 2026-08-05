@@ -1,0 +1,209 @@
+[
+  {
+    "id": 1,
+    "name": "BST (English)",
+    "text": "What is a binary search tree, and how does it maintain its sorted property?",
+    "lang": "en",
+    "topic": "Binary Search Tree",
+    "is_glossary": true,
+    "gtts_lang": "en"
+  },
+  {
+    "id": 2,
+    "name": "BST (Hindi)",
+    "text": "बाइनरी सर्च ट्री क्या है, और यह अपनी सॉर्टेड प्रॉपर्टी को कैसे बनाए रखता है?",
+    "lang": "hi",
+    "topic": "Binary Search Tree",
+    "is_glossary": true,
+    "gtts_lang": "hi"
+  },
+  {
+    "id": 3,
+    "name": "BST (Kannada)",
+    "text": "ಬೈನರಿ ಸರ್ಚ್ ಟ್ರೀ ಎಂದರೇನು, ಮತ್ತು ಅದು ತನ್ನ ಸಾರ್ಟೆಡ್ ಪ್ರಾಪರ್ಟಿಯನ್ನು ಹೇಗೆ ಕಾಪಾಡಿಕೊಳ್ಳುತ್ತದೆ?",
+    "lang": "kn",
+    "topic": "Binary Search Tree",
+    "is_glossary": true,
+    "gtts_lang": "kn"
+  },
+  {
+    "id": 4,
+    "name": "BST (Marathi)",
+    "text": "बायनरी सर्च ट्री काय आहे, आणि ते आपली सॉर्टेड प्रॉपर्टी कशी टिकवून ठेवते?",
+    "lang": "mr",
+    "topic": "Binary Search Tree",
+    "is_glossary": true,
+    "gtts_lang": "mr"
+  },
+  {
+    "id": 5,
+    "name": "Process vs Thread (English)",
+    "text": "Explain the difference between a process and a thread in operating systems.",
+    "lang": "en",
+    "topic": "Process vs Thread",
+    "is_glossary": false,
+    "gtts_lang": "en"
+  },
+  {
+    "id": 6,
+    "name": "Process vs Thread (Hindi)",
+    "text": "ऑपरेटिंग सिस्टम में एक प्रोसेस और थ्रेड के बीच अंतर स्पष्ट करें।",
+    "lang": "hi",
+    "topic": "Process vs Thread",
+    "is_glossary": false,
+    "gtts_lang": "hi"
+  },
+  {
+    "id": 7,
+    "name": "Process vs Thread (Kannada)",
+    "text": "ಆಪರೇಟಿಂಗ್ ಸಿಸ್ಟಮ್‌ನಲ್ಲಿ ಪ್ರೊಸೆಸ್ ಮತ್ತು ಥ್ರೆಡ್ ನಡುವಿನ ವ್ಯತ್ಯಾಸವನ್ನು ವಿವರಿಸಿ.",
+    "lang": "kn",
+    "topic": "Process vs Thread",
+    "is_glossary": false,
+    "gtts_lang": "kn"
+  },
+  {
+    "id": 8,
+    "name": "Process vs Thread (Marathi)",
+    "text": "ऑपरेटिंग सिस्टममध्ये प्रोसेस आणि थ्रेड मधील फरक स्पष्ट करा.",
+    "lang": "mr",
+    "topic": "Process vs Thread",
+    "is_glossary": false,
+    "gtts_lang": "mr"
+  },
+  {
+    "id": 9,
+    "name": "Quicksort (English)",
+    "text": "How does the quicksort algorithm choose a pivot and partition the array?",
+    "lang": "en",
+    "topic": "Quicksort",
+    "is_glossary": true,
+    "gtts_lang": "en"
+  },
+  {
+    "id": 10,
+    "name": "Quicksort (Hindi)",
+    "text": "क्विकसॉर्ट एल्गोरिदम पिवट कैसे चुनता है और एरे को कैसे विभाजित करता है?",
+    "lang": "hi",
+    "topic": "Quicksort",
+    "is_glossary": true,
+    "gtts_lang": "hi"
+  },
+  {
+    "id": 11,
+    "name": "Quicksort (Kannada)",
+    "text": "ಕ್ವಿಕ್‌ಸಾರ್ಟ್ ಅಲ್ಗಾರಿದಮ್ ಪಿವಟ್ ಅನ್ನು ಹೇಗೆ ಆಯ್ಕೆ ಮಾಡುತ್ತದೆ ಮತ್ತು ಅರೇ ಅನ್ನು ಹೇಗೆ ವಿಭಜಿಸುತ್ತದೆ?",
+    "lang": "kn",
+    "topic": "Quicksort",
+    "is_glossary": true,
+    "gtts_lang": "kn"
+  },
+  {
+    "id": 12,
+    "name": "Quicksort (Marathi)",
+    "text": "क्विकसॉर्ट अल्गोरिदम पिव्हट कसा निवडतो आणि ॲरे कसा विभाजित करतो?",
+    "lang": "mr",
+    "topic": "Quicksort",
+    "is_glossary": true,
+    "gtts_lang": "mr"
+  },
+  {
+    "id": 13,
+    "name": "Recursion (English)",
+    "text": "What is recursion? Explain it with a simple analogy.",
+    "lang": "en",
+    "topic": "Recursion",
+    "is_glossary": true,
+    "gtts_lang": "en"
+  },
+  {
+    "id": 14,
+    "name": "Recursion (Hindi)",
+    "text": "रिकर्सन क्या है? इसे एक सरल सादृश्य के साथ समझाएं।",
+    "lang": "hi",
+    "topic": "Recursion",
+    "is_glossary": true,
+    "gtts_lang": "hi"
+  },
+  {
+    "id": 15,
+    "name": "Recursion (Kannada)",
+    "text": "ರಿಕರ್ಷನ್ ಎಂದರೇನು? ಇದನ್ನು ಒಂದು ಸರಳ ಉದಾಹರಣೆಯೊಂದಿಗೆ ವಿವರಿಸಿ.",
+    "lang": "kn",
+    "topic": "Recursion",
+    "is_glossary": true,
+    "gtts_lang": "kn"
+  },
+  {
+    "id": 16,
+    "name": "Recursion (Marathi)",
+    "text": "रिकर्सन म्हणजे काय? एका सोप्या उदाहरणासह स्पष्ट करा.",
+    "lang": "mr",
+    "topic": "Recursion",
+    "is_glossary": true,
+    "gtts_lang": "mr"
+  },
+  {
+    "id": 17,
+    "name": "Palindrome (English)",
+    "text": "Can you write a Python function to check if a string is a palindrome?",
+    "lang": "en",
+    "topic": "Palindrome",
+    "is_glossary": true,
+    "gtts_lang": "en"
+  },
+  {
+    "id": 18,
+    "name": "Palindrome (Hindi)",
+    "text": "क्या आप यह जांचने के लिए एक पायथन फ़ंक्शन लिख सकते हैं कि कोई स्ट्रिंग पलिंड्रोम है या नहीं?",
+    "lang": "hi",
+    "topic": "Palindrome",
+    "is_glossary": true,
+    "gtts_lang": "hi"
+  },
+  {
+    "id": 19,
+    "name": "Palindrome (Kannada)",
+    "text": "ಒಂದು ಸ್ಟ್ರಿಂಗ್ ಪ್ಯಾಲಿಂಡ್ರೋಮ್ ಆಗಿದೆಯೇ ಎಂದು ಪರಿಶೀಲಿಸಲು ನೀವು ಪೈಥಾನ್ ಫಂಕ್ಷನ್ ಬರೆಯಬಹುದೇ?",
+    "lang": "kn",
+    "topic": "Palindrome",
+    "is_glossary": true,
+    "gtts_lang": "kn"
+  },
+  {
+    "id": 20,
+    "name": "Palindrome (Marathi)",
+    "text": "एखादी स्ट्रिंग पॅलिंड्रोम आहे की नाही हे तपासण्यासाठी तुम्ही पायथन फंक्शन लिहू शकता का?",
+    "lang": "mr",
+    "topic": "Palindrome",
+    "is_glossary": true,
+    "gtts_lang": "mr"
+  },
+  {
+    "id": 21,
+    "name": "Hinglish (Code-Mixed)",
+    "text": "Recursion kya hai aur Python mein kaise use karte hain?",
+    "lang": "hi",
+    "topic": "Recursion",
+    "is_glossary": true,
+    "gtts_lang": "hi"
+  },
+  {
+    "id": 22,
+    "name": "Three-Way Mixed",
+    "text": "Recursion ek logic hai jahan code and function thanna thaanu call karta hai",
+    "lang": "kn",
+    "topic": "Recursion",
+    "is_glossary": true,
+    "gtts_lang": "hi"
+  },
+  {
+    "id": 23,
+    "name": "Kannada Recursion Regression",
+    "text": "ರಿಕರ್ಷನ್ ಎಂದರೇನು ಮತ್ತು ಅದರ ಒಂದು ಉದಾಹರಣೆ ಕೊಡಿ",
+    "lang": "kn",
+    "topic": "Recursion",
+    "is_glossary": true,
+    "gtts_lang": "kn"
+  }
+]
