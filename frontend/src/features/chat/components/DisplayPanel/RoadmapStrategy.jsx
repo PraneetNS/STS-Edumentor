@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, Circle, ArrowRight, BookOpen, Compass } from 'lucide-react';
+import { parseInlineMarkdown } from '../../../../components/MarkdownViewer';
 
 export default function RoadmapStrategy({ block }) {
   const [steps, setSteps] = useState([]);
@@ -18,42 +19,47 @@ export default function RoadmapStrategy({ block }) {
       const trimmed = line.trim();
       if (!trimmed) return;
 
-      // Handle Markdown headings
-      if (trimmed.startsWith('#')) {
-        foundSubheading = trimmed.replace(/^#+\s*/, '');
+      // Extract step numbers or bullet points
+      const checklistMatch = trimmed.match(/^[-*]\s+\[([ xX])\]\s+(?:(\d+)\.\s+)?(.*)/);
+      const stepMatch = trimmed.match(/^(?:(\d+)\.\s+)?(.*)/);
+
+      let itemText = trimmed;
+      let stepNum = (parsedSteps.length + 1).toString();
+      let completed = false;
+      let isStepMarker = false;
+
+      if (checklistMatch) {
+        itemText = checklistMatch[3].trim();
+        stepNum = checklistMatch[2] || stepNum;
+        completed = checklistMatch[1].toLowerCase() === 'x';
+        isStepMarker = true;
+      } else if (trimmed.startsWith('1.') || trimmed.match(/^\d+\./)) {
+        const numMatch = trimmed.match(/^(\d+)\.\s+(.*)/);
+        stepNum = numMatch ? numMatch[1] : stepNum;
+        itemText = (numMatch ? numMatch[2] : trimmed).trim();
+        isStepMarker = true;
+      } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+        itemText = trimmed.replace(/^[-*]\s+/, '').trim();
+      }
+
+      // If the text starts with '#', treat it as subheading/title
+      if (itemText.startsWith('#')) {
+        foundSubheading = itemText.replace(/^#+\s*/, '').trim();
         return;
       }
 
-      // Check if line represents a new step (e.g., "1. Topic" or "- [x] Topic" or "* [ ] Topic")
-      const checklistMatch = trimmed.match(/^[-*]\s+\[([ xX])\]\s+(?:(\d+)\.\s+)?(.*)/);
-      const plainStepMatch = trimmed.match(/^(?:(\d+)\.\s+)?(.*)/);
-
-      if (checklistMatch) {
+      if (isStepMarker) {
         if (currentStep) parsedSteps.push(currentStep);
-        const completed = checklistMatch[1].toLowerCase() === 'x';
-        const num = checklistMatch[2] || (parsedSteps.length + 1).toString();
-        const title = checklistMatch[3];
-        currentStep = { number: num, title, completed, details: [] };
-      } else if (trimmed.startsWith('1.') || trimmed.match(/^\d+\./)) {
-        if (currentStep) parsedSteps.push(currentStep);
-        const numMatch = trimmed.match(/^(\d+)\.\s+(.*)/);
-        const num = numMatch ? numMatch[1] : (parsedSteps.length + 1).toString();
-        const title = numMatch ? numMatch[2] : trimmed;
-        currentStep = { number: num, title, completed: false, details: [] };
-      } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+        currentStep = { number: stepNum, title: itemText, completed, details: [] };
+      } else {
         // Bullet list details under the current step
         if (currentStep) {
-          currentStep.details.push(trimmed.replace(/^[-*]\s+/, ''));
-        }
-      } else {
-        // Plain text details
-        if (currentStep) {
-          currentStep.details.push(trimmed);
+          currentStep.details.push(itemText);
         } else {
           // If no step created yet, create a default first step
           currentStep = {
             number: '1',
-            title: trimmed,
+            title: itemText,
             completed: false,
             details: []
           };
@@ -128,7 +134,7 @@ export default function RoadmapStrategy({ block }) {
                         <h4 className={`text-xs font-semibold tracking-tight transition-colors ${
                           isCompleted ? 'text-zinc-400 line-through' : 'text-zinc-200'
                         } group-hover:text-white`}>
-                          {step.title}
+                          {parseInlineMarkdown(step.title)}
                         </h4>
                       </div>
                       <ArrowRight size={12} className={`text-zinc-500 transition-transform ${isExpanded ? 'rotate-90 text-indigo-400' : ''}`} />
@@ -150,7 +156,7 @@ export default function RoadmapStrategy({ block }) {
                               step.details.map((detail, dIdx) => (
                                 <div key={dIdx} className="flex gap-2 items-start">
                                   <BookOpen size={11} className="text-indigo-400 mt-0.5 shrink-0" />
-                                  <span>{detail}</span>
+                                  <span>{parseInlineMarkdown(detail)}</span>
                                 </div>
                               ))
                             )}
