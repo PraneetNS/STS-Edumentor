@@ -329,11 +329,14 @@ class LanguageRouter:
         # Hindi aliases: Hindhi, Hinde, Hinde, Hindie, Hindy
         t = re.sub(r"\bhin(?:d(?:h?i|y|ie)|de)\b", "hindi", t)
 
+        # English aliases: English, Inglish, Englis
+        t = re.sub(r"\b(?:eng|ing)lish\b", "english", t)
+
         # ── Step 2: Broad pattern — any verb/prep + language name ─────────────
         # Matches: "in hindi", "explain in kannada", "tell me in marathi",
         # "answer in hindi", "respond in kannada", "translate to marathi",
         # "hindi mein", "kannada lo", "kannada medium", etc.
-        LANG_NAMES = r"(?:hindi|marathi|kannada)"
+        LANG_NAMES = r"(?:hindi|marathi|kannada|english)"
 
         BROAD_PATTERN = re.compile(
             r"""
@@ -364,6 +367,8 @@ class LanguageRouter:
                 return "marathi"
             if "hindi" in matched_text:
                 return "hindi"
+            if "english" in matched_text:
+                return "english"
 
         # ── Step 3: Fallback — bare language name anywhere in short utterances ─
         # For very short queries like "in Hindi" or "Kannada lo boliye"
@@ -376,6 +381,8 @@ class LanguageRouter:
                     return "marathi"
                 if w == "hindi":
                     return "hindi"
+                if w == "english":
+                    return "english"
 
         return None
 
