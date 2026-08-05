@@ -824,6 +824,62 @@ async def get_session_heatmap(
         return []
 
 
+@app.get("/api/sessions/{session_id}/messages", tags=["Profile"])
+async def get_session_messages(
+    session_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Return all messages for a specific session_id.
+    Matches standard UI message object structure.
+    Returns: list of messages, sorted chronologically.
+    """
+    user_id_str = user.get("user_id")
+    import uuid as _uuid
+    user_id = _uuid.UUID(user_id_str)
+    
+    try:
+        session_uuid = _uuid.UUID(session_id)
+    except ValueError:
+        # If it is a frontend placeholder ID or not a valid UUID, return empty list
+        return []
+
+    if not db_manager or not db_manager.pool:
+        return []
+
+    query = """
+    SELECT id, query_text, response_text, created_at, intent_category
+    FROM conversation_logs
+    WHERE user_id = $1 AND session_id = $2
+    ORDER BY created_at ASC;
+    """
+    try:
+        async with db_manager.pool.acquire() as conn:
+            rows = await conn.fetch(query, user_id, session_uuid)
+            messages = []
+            for r in rows:
+                q_time = r["created_at"].isoformat() if r["created_at"] else None
+                # Create user message
+                messages.append({
+                    "id": f"u-{r['id']}",
+                    "role": "user",
+                    "text": r["query_text"],
+                    "timestamp": q_time,
+                    "intent": r["intent_category"]
+                })
+                # Create assistant message
+                messages.append({
+                    "id": f"a-{r['id']}",
+                    "role": "assistant",
+                    "text": r["response_text"],
+                    "timestamp": q_time
+                })
+            return messages
+    except Exception as e:
+        logger.error("Failed to fetch session messages for user_id=%s, session_id=%s: %s", user_id, session_id, e)
+        return []
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -1772,8 +1828,8 @@ async def _run_pipeline(
                         planned_token = token_dict.get("planned", "")
                         followup_text = token_dict.get("followup", "")
 
-                        if planned_token:
-                            sentence_buffer += planned_token
+                        if raw_token:
+                            sentence_buffer += raw_token
                             
                             should_flush = False
                             stripped = sentence_buffer.strip()
@@ -1804,10 +1860,9 @@ async def _run_pipeline(
                                         should_flush = True
 
                             if should_flush:
-                                clean_sentence = clean_speak_text(sentence_buffer)
-                                if clean_sentence:
-                                    logger.info("[ML-LLM-READER] Flushing sentence to translation_queue: %r", clean_sentence)
-                                    await translation_queue.put(clean_sentence)
+                                if sentence_buffer.strip():
+                                    logger.info("[ML-LLM-READER] Flushing raw sentence to translation_queue: %r", sentence_buffer)
+                                    await translation_queue.put(sentence_buffer)
                                 sentence_buffer = ""
                                 is_first_chunk = False
 
@@ -1824,10 +1879,8 @@ async def _run_pipeline(
                             await websocket.send_json({"type": "followup", "text": translated_followup})
 
                     if sentence_buffer.strip():
-                        clean_remainder = clean_speak_text(sentence_buffer)
-                        if clean_remainder:
-                            logger.info("[ML-LLM-READER] Flushing final remainder to translation_queue: %r", clean_remainder)
-                            await translation_queue.put(clean_remainder)
+                        logger.info("[ML-LLM-READER] Flushing final raw remainder to translation_queue: %r", sentence_buffer)
+                        await translation_queue.put(sentence_buffer)
                 except Exception as exc:
                     logger.exception("[ML-LLM-READER] ERROR in LLM reader: %s", exc)
                     # Ensure downstream workers are not left waiting forever
@@ -1847,8 +1900,9 @@ async def _run_pipeline(
                 nonlocal _translated_sentences
                 from speech.multilingual_pipeline import NLLB_LANG_MAP
                 tgt_code = NLLB_LANG_MAP.get(response_lang, "hin_Deva")
-                from i18n.term_glossary import protect_terms, restore_terms
+                from i18n.term_glossary import protect_terms, restore_terms, protect_visual_blocks, restore_visual_blocks
                 sent_idx = 0
+                last_sentence = ""
                 try:
                     while True:
                         eng_sentence = await translation_queue.get()
@@ -1862,22 +1916,31 @@ async def _run_pipeline(
 
 
                         def _full_translate(sentence=eng_sentence, tc=tgt_code):
+                            # 1. Protect visual blocks (fences/tags)
+                            sentence_no_vis, vis_mapping = protect_visual_blocks(sentence)
+                            
+                            # 2. Protect glossary terms
                             t_prot = time.time()
-                            _protected, _mapping = protect_terms(sentence)
+                            _protected, _mapping = protect_terms(sentence_no_vis)
                             _prot_lat = time.time() - t_prot
 
+                            # 3. Translate using NLLB
                             t_trans = time.time()
                             _translated_protected, _ = multilingual_pipeline.translator.translate(
                                 _protected, "eng_Latn", tc
                             )
                             _trans_lat = time.time() - t_trans
 
+                            # 4. Restore glossary terms
                             t_rest = time.time()
-                            _translated = restore_terms(
+                            _translated_no_vis = restore_terms(
                                 _translated_protected, _mapping,
                                 mode=gl_mode, target_language=resp_lang
                             )
                             _rest_lat = time.time() - t_rest
+                            
+                            # 5. Restore visual blocks
+                            _translated = restore_visual_blocks(_translated_no_vis, vis_mapping)
 
                             return _translated, _prot_lat, _trans_lat, _rest_lat
 
@@ -1903,11 +1966,31 @@ async def _run_pipeline(
                             logger.warning("Failed to record translate_out stages metrics: %s", exc)
 
                         logger.info("[ML-TRANS-WORKER] Putting sentence[%d] to tts_queue.", sent_idx)
+                        translated = translated.strip()
+                        
+                        # Determine delimiter to prepend (newline before/after code blocks or visual cards)
+                        delim = " "
+                        if last_sentence:
+                            is_curr_block = translated.startswith("```") or translated.startswith("<show") or translated.startswith("<followup")
+                            is_prev_block = last_sentence.endswith("```") or last_sentence.endswith("</show>") or last_sentence.endswith("</followup>")
+                            if is_curr_block or is_prev_block:
+                                delim = "\n\n"
+                        
+                        stream_text = (delim if sent_idx > 0 else "") + translated
+                        await websocket.send_json({"type": "assistant_text_delta", "text": stream_text})
                         _translated_sentences.append(translated)
-                        await websocket.send_json({"type": "assistant_text_delta", "text": translated + " "})
+                        last_sentence = translated
+                        
+                        # Strip show blocks, followup blocks, and tags from translated text to get the clean text for TTS
+                        import re
+                        tts_clean = re.sub(r"<show(?:\s+[^>]*)?>.*?</show>", "", translated, flags=re.DOTALL | re.IGNORECASE)
+                        tts_clean = re.sub(r"<followup>.*?</followup>", "", tts_clean, flags=re.DOTALL | re.IGNORECASE)
+                        tts_clean = re.sub(r"```.*?```", "", tts_clean, flags=re.DOTALL)
+                        tts_clean = re.sub(r"</?(?:speak|show|followup|code)(?:\s+[^>]*)?>", "", tts_clean, flags=re.IGNORECASE)
+                        tts_clean = tts_clean.strip()
                         
                         from i18n.term_glossary import transliterate_latin_words
-                        translated_tts = transliterate_latin_words(translated, response_lang)
+                        translated_tts = transliterate_latin_words(tts_clean, response_lang)
                         
                         # Chunk the translated sentence for TTS to keep audio synthesis chunks small and fast
                         import re
@@ -2122,7 +2205,20 @@ async def _run_pipeline(
 
             # Back-fill DB with the translated response and confirmed language
             if _translated_sentences and db_manager is not None and agent_controller is not None:
-                full_translated = " ".join(_translated_sentences)
+                full_translated = ""
+                for idx, sent in enumerate(_translated_sentences):
+                    sent = sent.strip()
+                    if not sent:
+                        continue
+                    if not full_translated:
+                        full_translated = sent
+                    else:
+                        is_curr_block = sent.startswith("```") or sent.startswith("<show") or sent.startswith("<followup")
+                        is_prev_block = full_translated.endswith("```") or full_translated.endswith("</show>") or full_translated.endswith("</followup>")
+                        if is_curr_block or is_prev_block:
+                            full_translated += "\n\n" + sent
+                        else:
+                            full_translated += " " + sent
                 try:
                     _u_uuid = agent_controller._to_uuid(user_id)
                     _s_uuid = agent_controller._to_uuid(session_id)
