@@ -13,6 +13,7 @@ import { VoiceOrb } from './components/VoiceOrb';
 import { ContextCards } from './components/ContextCards';
 import { MentorCharacter } from './components/MentorCharacter';
 import ErrorBoundary from './components/ErrorBoundary';
+import { DisplayPanel } from './features/chat/components/DisplayPanel';
 
 import './styles/index.css';
 

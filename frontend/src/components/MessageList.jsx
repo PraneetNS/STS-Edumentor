@@ -8,11 +8,11 @@ import { MascotOwl } from './MascotOwl';
 import { MarkdownViewer } from './MarkdownViewer';
 import { UserMessageText } from './UserMessageText';
 import { extractVisualBlocks } from '../utils/visualBlockExtractor';
-import CodeStrategy from '../features/chat/components/DisplayPanel/CodeStrategy';
-import MermaidStrategy from '../features/chat/components/DisplayPanel/MermaidStrategy';
+import { CodeStrategy } from '../features/chat/components/DisplayPanel/CodeStrategy';
+import { MermaidStrategy } from '../features/chat/components/DisplayPanel/MermaidStrategy';
 import RoadmapStrategy from '../features/chat/components/DisplayPanel/RoadmapStrategy';
 import ComparisonTableStrategy from '../features/chat/components/DisplayPanel/ComparisonTableStrategy';
-import ChecklistStrategy from '../features/chat/components/DisplayPanel/ChecklistStrategy';
+import { ChecklistStrategy } from '../features/chat/components/DisplayPanel/ChecklistStrategy';
 
 const strategyMap = {
   code: CodeStrategy,
