@@ -20,7 +20,7 @@ import numpy as np
 from config import Config
 
 logger = logging.getLogger("edumentor.speech.multilingual_pipeline")
-from i18n.term_glossary import protect_terms, restore_terms
+from i18n.term_glossary import protect_terms, restore_terms, protect_visual_blocks, restore_visual_blocks
 
 # ──────────────────────────────────────────────────────────────
 # NLLB language code constants
@@ -452,8 +452,11 @@ class MultilingualPipeline:
         if back_translate_lang:
             t_translate_out = time.time()
             
+            # Protect visual blocks
+            resp_no_vis, vis_mapping = protect_visual_blocks(llm_response_english)
+            
             t_prot = time.time()
-            protected_response, mapping = protect_terms(llm_response_english)
+            protected_response, mapping = protect_terms(resp_no_vis)
             prot_latency = time.time() - t_prot
 
             t_call = time.time()
@@ -461,13 +464,23 @@ class MultilingualPipeline:
             call_latency = time.time() - t_call
 
             t_rest = time.time()
-            translated_response = restore_terms(translated_protected, mapping, mode=glossary_mode, target_language=back_translate_lang)
+            translated_no_vis = restore_terms(translated_protected, mapping, mode=glossary_mode, target_language=back_translate_lang)
             rest_latency = time.time() - t_rest
+            
+            # Restore visual blocks
+            translated_response = restore_visual_blocks(translated_no_vis, vis_mapping)
 
             translate_out_latency = time.time() - t_translate_out
             timings["translate_out"] = round(translate_out_latency, 3)
             result["translated_from_en"] = translated_response
-            tts_text = translated_response
+            
+            # Strip show/visual blocks for TTS
+            import re
+            tts_clean = re.sub(r"<show(?:\s+[^>]*)?>.*?</show>", "", translated_response, flags=re.DOTALL | re.IGNORECASE)
+            tts_clean = re.sub(r"<followup>.*?</followup>", "", tts_clean, flags=re.DOTALL | re.IGNORECASE)
+            tts_clean = re.sub(r"```.*?```", "", tts_clean, flags=re.DOTALL)
+            tts_clean = re.sub(r"</?(?:speak|show|followup|code)(?:\s+[^>]*)?>", "", tts_clean, flags=re.IGNORECASE)
+            tts_text = tts_clean.strip()
 
             try:
                 from observability.metrics import (
@@ -484,8 +497,11 @@ class MultilingualPipeline:
         elif use_mms_for_hindi:
             t_translate_out = time.time()
             
+            # Protect visual blocks
+            resp_no_vis, vis_mapping = protect_visual_blocks(llm_response_english)
+            
             t_prot = time.time()
-            protected_response, mapping = protect_terms(llm_response_english)
+            protected_response, mapping = protect_terms(resp_no_vis)
             prot_latency = time.time() - t_prot
 
             t_call = time.time()
@@ -493,13 +509,23 @@ class MultilingualPipeline:
             call_latency = time.time() - t_call
 
             t_rest = time.time()
-            translated_response = restore_terms(translated_protected, mapping, mode=glossary_mode, target_language="hindi")
+            translated_no_vis = restore_terms(translated_protected, mapping, mode=glossary_mode, target_language="hindi")
             rest_latency = time.time() - t_rest
+            
+            # Restore visual blocks
+            translated_response = restore_visual_blocks(translated_no_vis, vis_mapping)
 
             translate_out_latency = time.time() - t_translate_out
             timings["translate_out"] = round(translate_out_latency, 3)
             result["translated_from_en"] = translated_response
-            tts_text = translated_response
+            
+            # Strip show/visual blocks for TTS
+            import re
+            tts_clean = re.sub(r"<show(?:\s+[^>]*)?>.*?</show>", "", translated_response, flags=re.DOTALL | re.IGNORECASE)
+            tts_clean = re.sub(r"<followup>.*?</followup>", "", tts_clean, flags=re.DOTALL | re.IGNORECASE)
+            tts_clean = re.sub(r"```.*?```", "", tts_clean, flags=re.DOTALL)
+            tts_clean = re.sub(r"</?(?:speak|show|followup|code)(?:\s+[^>]*)?>", "", tts_clean, flags=re.IGNORECASE)
+            tts_text = tts_clean.strip()
 
             try:
                 from observability.metrics import (
