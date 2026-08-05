@@ -13,7 +13,8 @@
     "Databases",
     "Algorithms",
     "Electrical Engineering",
-    "Data Structures"
+    "Data Structures",
+    "Git"
   ],
   "weak_topics": [
     "Machine Learning",
@@ -23,13 +24,11 @@
     "Python"
   ],
   "preferred_style": "examples",
-  "session_count": 80,
+  "session_count": 90,
   "discipline": "cse",
   "active_topics": [
-    "Data Structures",
-    "Algorithms",
-    "Computer Science"
+    "Machine Learning"
   ],
-  "output_language_preference": "auto",
+  "output_language_preference": "english",
   "glossary_mode": "english"
 }
