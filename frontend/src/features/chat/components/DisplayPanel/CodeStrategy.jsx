@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Check, Copy, Code } from 'lucide-react';
 
-export default function CodeStrategy({ block }) {
+export function CodeStrategy({ block }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {

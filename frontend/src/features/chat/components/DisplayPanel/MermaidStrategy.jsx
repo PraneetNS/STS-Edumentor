@@ -12,7 +12,6 @@ function loadMermaid() {
     script.type = 'module';
     script.src = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
     script.onload = () => {
-      // Script is loaded, but because it's an ESM module, window.mermaid might be loaded via import
       import('https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs')
         .then((m) => {
           window.mermaid = m.default;
@@ -33,7 +32,7 @@ function loadMermaid() {
   return mermaidLoadingPromise;
 }
 
-export default function MermaidStrategy({ block }) {
+export function MermaidStrategy({ block }) {
   const containerRef = useRef(null);
   const [svg, setSvg] = useState('');
   const [error, setError] = useState(null);

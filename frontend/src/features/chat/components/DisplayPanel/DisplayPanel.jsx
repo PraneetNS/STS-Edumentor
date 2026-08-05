@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import CodeStrategy from './CodeStrategy';
-import MermaidStrategy from './MermaidStrategy';
+import { CodeStrategy } from './CodeStrategy';
+import { MermaidStrategy } from './MermaidStrategy';
 import RoadmapStrategy from './RoadmapStrategy';
 import ComparisonTableStrategy from './ComparisonTableStrategy';
-import ChecklistStrategy from './ChecklistStrategy';
+import { ChecklistStrategy } from './ChecklistStrategy';
 import { extractVisualBlocks } from '../../../../utils/visualBlockExtractor';
 import { PanelsTopLeft, Compass, ClipboardList, Code, Table, Cpu, HelpCircle } from 'lucide-react';
 
