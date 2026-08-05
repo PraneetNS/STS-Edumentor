@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ClipboardList, CheckCircle } from 'lucide-react';
+import { parseInlineMarkdown } from '../../../../components/MarkdownViewer';
 
-export default function ChecklistStrategy({ block }) {
+export function ChecklistStrategy({ block }) {
   const [items, setItems] = useState([]);
   const [subheading, setSubheading] = useState('');
 
@@ -15,35 +16,30 @@ export default function ChecklistStrategy({ block }) {
       const trimmed = line.trim();
       if (!trimmed) return;
 
-      // Handle Markdown headings
-      if (trimmed.startsWith('#')) {
-        foundSubheading = trimmed.replace(/^#+\s*/, '');
-        return;
-      }
-
       const checkboxMatch = trimmed.match(/^[-*]\s+\[([ xX])\]\s+(.*)/);
       const bulletMatch = trimmed.match(/^[-*]\s+(.*)/);
 
+      let itemText = trimmed;
+      let completed = false;
+
       if (checkboxMatch) {
-        parsedItems.push({
-          id: `item-${parsedItems.length}`,
-          text: checkboxMatch[2],
-          completed: checkboxMatch[1].toLowerCase() === 'x',
-        });
+        itemText = checkboxMatch[2].trim();
+        completed = checkboxMatch[1].toLowerCase() === 'x';
       } else if (bulletMatch) {
-        parsedItems.push({
-          id: `item-${parsedItems.length}`,
-          text: bulletMatch[1],
-          completed: false,
-        });
-      } else {
-        // Plain line
-        parsedItems.push({
-          id: `item-${parsedItems.length}`,
-          text: trimmed,
-          completed: false,
-        });
+        itemText = bulletMatch[1].trim();
       }
+
+      // If the text starts with '#', it's a heading/subheading
+      if (itemText.startsWith('#')) {
+        foundSubheading = itemText.replace(/^#+\s*/, '');
+        return;
+      }
+
+      parsedItems.push({
+        id: `item-${parsedItems.length}`,
+        text: itemText,
+        completed,
+      });
     });
 
     setItems(parsedItems);
@@ -143,7 +139,7 @@ export default function ChecklistStrategy({ block }) {
                     ? 'text-zinc-500 line-through opacity-60'
                     : 'text-zinc-200 font-medium'
                 }`}>
-                  {item.text}
+                  {parseInlineMarkdown(item.text)}
                 </span>
               </div>
             ))}
