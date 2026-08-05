@@ -475,3 +475,56 @@ def transliterate_latin_words(text: str, target_language: str) -> str:
 
 
 # We bypass glossary protection if conversational exclamations are followed by punctuation like commas or exclamations
+
+
+def protect_visual_blocks(text: str) -> tuple[str, dict]:
+    """
+    Finds HTML/XML tags and markdown code blocks and replaces them with
+    __VISUAL_BLOCK_{idx}__ placeholders to protect them from translation.
+    """
+    if not text:
+        return "", {}
+    
+    mapping = {}
+    modified_text = text
+    placeholder_idx = 0
+    
+    # Combined regex to match:
+    # 1. Markdown code fences: ```.*?``` (dotall)
+    # 2. HTML tags: <show>...</show> (dotall)
+    # 3. HTML tags: <followup>...</followup> (dotall)
+    # 4. HTML tags: <speak>...</speak> (dotall)
+    # 5. General show, speak, followup, or code tags
+    combined_pattern = re.compile(
+        r"(```.*?```|<show(?:\s+[^>]*)?>.*?</show>|<followup>.*?</followup>|<speak>.*?</speak>|<\/?(?:speak|show|followup|code)(?:\s+[^>]*)?>)",
+        re.DOTALL | re.IGNORECASE
+    )
+    
+    def replace_fn(match):
+        nonlocal placeholder_idx
+        placeholder = f"__VISUAL_BLOCK_{placeholder_idx}__"
+        mapping[placeholder] = match.group(0)
+        placeholder_idx += 1
+        return placeholder
+        
+    modified_text = combined_pattern.sub(replace_fn, modified_text)
+    return modified_text, mapping
+
+
+def restore_visual_blocks(text: str, mapping: dict) -> str:
+    """
+    Replaces __VISUAL_BLOCK_{idx}__ placeholders back with their original blocks.
+    """
+    if not text or not mapping:
+        return text
+    
+    restored_text = text
+    for placeholder, original_block in mapping.items():
+        match_idx = re.search(r"\d+", placeholder)
+        if match_idx:
+            idx = match_idx.group(0)
+            # Match variations with potential spaces/case modifications from NLLB
+            pattern = re.compile(rf"_*VISUAL_*BLOCK_*\s*{idx}\s*_*(?![0-9])", re.IGNORECASE)
+            restored_text = pattern.sub(lambda m: original_block, restored_text)
+            
+    return restored_text
