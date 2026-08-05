@@ -1,10 +1,16 @@
 import { createStore } from './createStore';
 import { isJailbreakAttempt } from '../utils/isJailbreakAttempt';
+import { authStore } from './authStore';
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 const STORAGE_KEY = 'edumentor_v3_conversations';
 
 function generateId() {
-  return 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 }
 
 function loadFromStorage() {
@@ -59,8 +65,81 @@ export const chatStore = createStore((set, get) => ({
     return newConv.id;
   },
 
-  selectConversation: (id) => {
+  selectConversation: async (id) => {
     set({ activeId: id });
+
+    const token = authStore.getState().token;
+    if (!token) return;
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    if (!isUuid) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/sessions/${id}/messages`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const fetchedMessages = await res.json();
+        set((state) => {
+          const updated = state.conversations.map((conv) => {
+            if (conv.id !== id) return conv;
+            return { ...conv, messages: fetchedMessages };
+          });
+          saveToStorage(updated);
+          return { conversations: updated };
+        });
+      }
+    } catch (e) {
+      console.error(`Failed to fetch messages for session ${id}:`, e);
+    }
+  },
+
+  fetchSessionsFromDb: async () => {
+    const token = authStore.getState().token;
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/sessions?limit=50`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const sessions = await res.json();
+        set((state) => {
+          const dbConvs = sessions.map(s => {
+            const existing = state.conversations.find(c => c.id === s.session_id);
+            return {
+              id: s.session_id,
+              title: s.title || 'Voice Session',
+              createdAt: s.created_at || new Date().toISOString(),
+              messages: existing ? existing.messages : []
+            };
+          });
+
+          const merged = [...dbConvs];
+          for (const local of state.conversations) {
+            if (!merged.some(c => c.id === local.id)) {
+              merged.push(local);
+            }
+          }
+
+          merged.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+          let nextActiveId = state.activeId;
+          if (merged.length > 0) {
+            const currentActive = state.conversations.find(c => c.id === nextActiveId);
+            const hasNoRealMessages = !nextActiveId || !currentActive || currentActive.messages?.length === 0;
+            const activeSessionExists = merged.some(c => c.id === nextActiveId);
+            if (hasNoRealMessages || !activeSessionExists) {
+              nextActiveId = merged[0].id;
+            }
+          }
+
+          saveToStorage(merged);
+          return { conversations: merged, activeId: nextActiveId };
+        });
+      }
+    } catch (e) {
+      console.error('Failed to fetch sessions from db:', e);
+    }
   },
 
   deleteConversation: (id, e) => {
