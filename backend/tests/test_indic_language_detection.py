@@ -57,3 +57,9 @@ def test_keeps_technical_english_on_the_english_route():
     language, metadata = LanguageRouter.route("How do I use an IDE to debug this code?")
     assert language == "english"
     assert metadata["routing_path"] == "english-default"
+
+
+def test_detects_explicit_english_output_requests():
+    assert LanguageRouter.detect_requested_output_language("explain this in English") == "english"
+    assert LanguageRouter.detect_requested_output_language("switch to English") == "english"
+

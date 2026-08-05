@@ -36,6 +36,7 @@ def test_transcribe_multilingual_auto_detects_supported_indic_language():
     mock_model.transcribe.return_value = (mock_segments, mock_info)
     whisper_engine = MagicMock()
     whisper_engine.model = mock_model
+    whisper_engine._is_hallucination.return_value = False
 
     pipeline = MultilingualPipeline.__new__(MultilingualPipeline)
     pipeline.whisper_engine = whisper_engine
