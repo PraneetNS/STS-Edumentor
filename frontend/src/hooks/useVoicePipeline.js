@@ -369,6 +369,9 @@ export function useVoicePipeline({
       setStatus('connected');
       reconnectAttemptsRef.current = 0;
       ws.onmessage = (event) => handleMessageRef.current(event);
+      if (conversationId) {
+        chatStore.getState().fetchPausedThreads(conversationId);
+      }
       return;
     }
 
@@ -381,6 +384,9 @@ export function useVoicePipeline({
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = null;
+      }
+      if (conversationId) {
+        chatStore.getState().fetchPausedThreads(conversationId);
       }
       // Keep-alive ping every 25s
       ws._pingInterval = setInterval(() => {
@@ -660,6 +666,9 @@ export function useVoicePipeline({
 
         case 'state':
           setConversationState(msg.state);
+          if (msg.state === 'RESUMING' && msg.thread_id) {
+            chatStore.getState().removePausedThread(msg.thread_id);
+          }
           if (msg.state === 'LISTENING' || msg.state === 'THINKING') {
             hasSpeechRef.current = true;
             clearClientInactivityTimer();
@@ -781,6 +790,11 @@ export function useVoicePipeline({
           setAssistantText('');
           currentAssistantTextRef.current = '';
           if (onInterruptRef.current) onInterruptRef.current();
+          if (conversationId) {
+            setTimeout(() => {
+              chatStore.getState().fetchPausedThreads(conversationId);
+            }, 200);
+          }
           break;
 
         case 'followup':

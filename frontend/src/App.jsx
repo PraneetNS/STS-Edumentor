@@ -203,6 +203,8 @@ export default function App() {
     setStreamingMessageFollowup,
     finishStreamingMessage,
     saveMessageSnapshot,
+    pausedThreads,
+    removeMessage,
   } = useConversationStore();
 
   useEffect(() => {
@@ -214,6 +216,20 @@ export default function App() {
       document.title = 'EduMentor - AI Tutor';
     }
   }, [isAuthenticated, view, activeConversation, activeConversation?.title]);
+
+  useEffect(() => {
+    if (activeConversation?.messages) {
+      activeConversation.messages.forEach((msg) => {
+        if (msg.isStreaming) {
+          if (!msg.text) {
+            removeMessage(msg.id);
+          } else {
+            finishStreamingMessage(msg.id);
+          }
+        }
+      });
+    }
+  }, [activeId]);
 
   const messages = activeConversation?.messages ?? [];
 
@@ -254,6 +270,7 @@ export default function App() {
     micPermission,
     // FIX 4 — duplicate tab
     isDuplicateTab,
+    sendWebSocketMessage,
   } = useVoicePipeline({
     conversationId: activeId,
     onTranscript: (text) => {
@@ -270,6 +287,9 @@ export default function App() {
     onTextUpdate: (fullText) => {
       if (activeMsgIdRef.current) {
         setStreamingMessageText(activeMsgIdRef.current, fullText);
+      } else {
+        const msgId = addMessage('assistant', fullText, { isStreaming: true });
+        activeMsgIdRef.current = msgId;
       }
     },
     onFinished: () => {
@@ -294,6 +314,13 @@ export default function App() {
       }
     }
   });
+
+  const handleResumeThread = useCallback((topic) => {
+    sendWebSocketMessage({
+      type: 'end_of_speech',
+      text: `continue ${topic}`
+    });
+  }, [sendWebSocketMessage]);
 
   // README loaded statically at build time.
 
@@ -834,6 +861,27 @@ export default function App() {
                 {/* Fixed bottom controls */}
                 <footer className="voice-zone shrink-0">
                   <div className="w-full max-w-2xl mx-auto flex flex-col gap-3">
+                    {pausedThreads && pausedThreads.length > 0 && (
+                      <div className="flex flex-wrap gap-2 justify-center mb-1">
+                        {pausedThreads.map((thread) => (
+                          <button
+                            key={thread.thread_id}
+                            onClick={() => handleResumeThread(thread.topic)}
+                            className="px-3 py-1.5 bg-[#fbeb5b] text-black border-2 border-black font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-1.5 text-xs rounded-none"
+                            title="Tap to resume this paused topic"
+                          >
+                            <span className="animate-pulse">⏸</span>
+                            <span>Paused: {thread.topic}</span>
+                            <span className="text-[10px] opacity-70 font-mono">⚡ Tap to Resume</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <LiveTranscript
+                      transcript={transcript}
+                      liveWords={liveWords}
+                      isRecording={isRecording}
+                    />
                     <div className="flex justify-center pb-1">
                       <VoiceOrb
                         isRecording={isRecording}
