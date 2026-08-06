@@ -2,24 +2,6 @@
 EduMentor Agent Layer — Student Profile Manager
 
 Loads, saves, and automatically updates the persistent student profile.
-
-The profile personalizes every response — the tutor knows the student's name,
-skill level, preferred learning style, and weak topics without the student
-having to repeat themselves each session.
-
-Storage: backend/data/student_profile.json (created automatically on first run)
-Format:  JSON flat object matching StudentProfile dataclass fields
-
-Features:
-  - Auto-inference of topics from conversation (keyword detection)
-  - Auto-marking of weak topics when frustration/confusion is detected
-  - Level progression detection
-  - Style preference detection
-  - Thread-safe disk writes
-
-Pipeline position:
-  AgentController → StudentProfileManager.get_profile() → StudentProfile
-  AgentController → StudentProfileManager.update_from_turn() (post-turn)
 """
 
 from __future__ import annotations
@@ -28,10 +10,12 @@ import json
 import logging
 import os
 import re
+import asyncio
 import threading
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Dict, Any
 
 from agent.models import Emotion, StudentProfile
+from config import Config
 
 logger = logging.getLogger("edumentor.agent.student_profile")
 
@@ -44,7 +28,6 @@ _DEFAULT_PROFILE_PATH = os.path.join(
 # Topic keyword map — detect learning topics from conversation
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Maps canonical topic names to lists of keywords that imply that topic
 _TOPIC_KEYWORDS: dict = {
     "Python":              ["python", "py", "def ", "import ", "list comprehension"],
     "JavaScript":          ["javascript", "js", "node.js", "react", "typescript"],
@@ -68,7 +51,6 @@ _TOPIC_KEYWORDS: dict = {
     "Aerospace Engineering": ["aerospace", "aerodynamics", "thrust", "propulsion", "wing", "stall", "lift coefficient"],
 }
 
-# Maps canonical topic names to discipline keys in engineering_vocab.json
 TOPIC_TO_DISCIPLINE: dict = {
     "Python": "cse",
     "JavaScript": "cse",
@@ -94,20 +76,10 @@ TOPIC_TO_DISCIPLINE: dict = {
 
 
 def _detect_topics(text: str) -> List[str]:
-    """
-    Detect programming/CS topics mentioned in a text string.
-
-    Args:
-        text: User or assistant text.
-
-    Returns:
-        List of canonical topic names detected.
-    """
     text_lower = text.lower()
     detected = []
     for topic, keywords in _TOPIC_KEYWORDS.items():
         for kw in keywords:
-            # Match whole words using word boundaries
             pattern = r'\b' + re.escape(kw.strip()) + r'\b'
             if kw.endswith(" "):
                 pattern = r'\b' + re.escape(kw.strip()) + r'\s'
@@ -118,11 +90,6 @@ def _detect_topics(text: str) -> List[str]:
 
 
 def _detect_level(text: str) -> Optional[str]:
-    """
-    Attempt to detect student self-described level from text.
-
-    Returns 'beginner', 'intermediate', or 'advanced' if detected, else None.
-    """
     text_lower = text.lower()
     if any(k in text_lower for k in ["i'm a beginner", "im a beginner", "just starting", "new to programming", "never coded"]):
         return "beginner"
@@ -134,11 +101,6 @@ def _detect_level(text: str) -> Optional[str]:
 
 
 def _detect_style_preference(text: str) -> Optional[str]:
-    """
-    Detect preferred teaching style from explicit student statements.
-
-    Returns 'examples', 'theory', or 'mixed' if detected, else None.
-    """
     text_lower = text.lower()
     if any(k in text_lower for k in ["show me an example", "give me an example", "examples please", "use examples"]):
         return "examples"
@@ -149,11 +111,6 @@ def _detect_style_preference(text: str) -> Optional[str]:
     return None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Profile Manager
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Default profile data used when no file exists yet
 _DEFAULT_PROFILE = {
     "name": "Student",
     "level": "beginner",
@@ -169,165 +126,193 @@ _DEFAULT_PROFILE = {
 
 
 class StudentProfileManager:
-    """
-    Manages the persistent student profile.
-
-    Loads from disk on startup and saves back after each update.
-    In-memory cache is the primary read path (fast).
-    Disk writes are serialized via a threading.Lock for safety.
-
-    Args:
-        profile_path: Path to the student_profile.json file.
-    """
-
-    def __init__(self, profile_path: str = _DEFAULT_PROFILE_PATH) -> None:
+    def __init__(self, profile_path: str = _DEFAULT_PROFILE_PATH, db_manager=None) -> None:
         self._path = profile_path
         self._lock = threading.Lock()
+        self.db_manager = db_manager
         self._profile: StudentProfile = self._load()
         logger.info(
-            "[OK] StudentProfileManager ready. Profile: name=%s level=%s",
+            "[OK] StudentProfileManager ready. Default Profile: name=%s level=%s",
             self._profile.name, self._profile.level
         )
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # Public API
-    # ─────────────────────────────────────────────────────────────────────────
+    async def get_profile(self, session_id: Optional[str] = None) -> StudentProfile:
+        if not session_id:
+            return self._profile
 
-    def get_profile(self) -> StudentProfile:
-        """
-        Return the current student profile (in-memory, fast).
+        from agent.state_store import get_state_store
+        store = get_state_store()
+        key = f"student_profile:{session_id}"
 
-        Returns:
-            StudentProfile dataclass instance.
-        """
+        fields = await store.hgetall(key)
+        if fields:
+            try:
+                profile_dict = {
+                    "name": fields.get("name", "Student"),
+                    "level": fields.get("level", "beginner"),
+                    "learning_topics": json.loads(fields.get("learning_topics", "[]")),
+                    "weak_topics": json.loads(fields.get("weak_topics", "[]")),
+                    "preferred_style": fields.get("preferred_style", "examples"),
+                    "session_count": int(fields.get("session_count", "0")),
+                    "discipline": fields.get("discipline", "cse"),
+                    "active_topics": json.loads(fields.get("active_topics", "[]")),
+                    "output_language_preference": fields.get("output_language_preference", "auto"),
+                    "glossary_mode": fields.get("glossary_mode", "english"),
+                }
+                return StudentProfile.from_dict(profile_dict)
+            except Exception as e:
+                logger.error("Failed to parse student profile from state store: %s", e)
+
+        # Fallback database load
+        if self.db_manager:
+            db_profile = await self.db_manager.load_student_profile(session_id)
+            if db_profile:
+                await self.save_to_state_store(session_id, db_profile)
+                return StudentProfile.from_dict(db_profile)
+
+        # Fallback to local default profile
         return self._profile
 
-    def get_active_topic(self, student_id: Optional[str] = None) -> str:
-        """
-        Return the currently active topic or last learning topic, defaulting to 'general'.
-        """
-        profile = self.get_profile()
+    async def save_to_state_store(self, session_id: str, profile_dict: dict) -> None:
+        from agent.state_store import get_state_store
+        store = get_state_store()
+        key = f"student_profile:{session_id}"
+        
+        mapping = {
+            "name": str(profile_dict.get("name", "Student")),
+            "level": str(profile_dict.get("level", "beginner")),
+            "learning_topics": json.dumps(profile_dict.get("learning_topics", [])),
+            "weak_topics": json.dumps(profile_dict.get("weak_topics", [])),
+            "preferred_style": str(profile_dict.get("preferred_style", "examples")),
+            "session_count": str(profile_dict.get("session_count", 0)),
+            "discipline": str(profile_dict.get("discipline", "cse")),
+            "active_topics": json.dumps(profile_dict.get("active_topics", [])),
+            "output_language_preference": str(profile_dict.get("output_language_preference", "auto")),
+            "glossary_mode": str(profile_dict.get("glossary_mode", "english")),
+        }
+        for f_name, val in mapping.items():
+            await store.hset(key, f_name, val)
+        await store.expire(key, Config.REDIS_SESSION_TTL_SECONDS)
+
+    async def get_active_topic(self, session_id: Optional[str] = None) -> str:
+        profile = await self.get_profile(session_id)
         if profile.active_topics:
             return profile.active_topics[0]
         elif profile.learning_topics:
             return profile.learning_topics[-1]
         return "general"
 
-    def get_discipline(self, student_id: Optional[str] = None) -> str:
-        """
-        Return the active engineering discipline (e.g. 'cse', 'eee', etc.), defaulting to 'cse'.
-        """
-        profile = self.get_profile()
+    async def get_discipline(self, session_id: Optional[str] = None) -> str:
+        profile = await self.get_profile(session_id)
         return profile.discipline or "cse"
 
-    def update_from_turn(
+    async def update_from_turn(
         self,
         user_text: str,
         assistant_text: str,
         emotion: Optional[Emotion] = None,
+        session_id: Optional[str] = None,
     ) -> None:
-        """
-        Automatically update the profile based on a completed turn.
-
-        Infers topics, level, and style preferences from the conversation.
-        Also marks weak topics when frustration/confusion is detected.
-
-        Args:
-            user_text:      Student's transcribed speech.
-            assistant_text: Tutor's response (for topic detection).
-            emotion:        Detected emotion (marks weak topics if frustrated/confused).
-        """
+        profile = await self.get_profile(session_id)
         changed = False
         combined = f"{user_text} {assistant_text}"
 
-        # ── Topic detection ───────────────────────────────────────────────────
         new_topics = _detect_topics(combined)
-        existing = set(self._profile.learning_topics)
+        existing = set(profile.learning_topics)
         for topic in new_topics:
             if topic not in existing:
-                self._profile.learning_topics.append(topic)
+                profile.learning_topics.append(topic)
                 existing.add(topic)
                 changed = True
                 logger.info("[PROFILE] New topic detected: %s", topic)
 
         if new_topics:
-            self._profile.active_topics = new_topics
+            profile.active_topics = new_topics
             for t in new_topics:
                 disc = TOPIC_TO_DISCIPLINE.get(t)
                 if disc:
-                    if self._profile.discipline != disc:
-                        self._profile.discipline = disc
+                    if profile.discipline != disc:
+                        profile.discipline = disc
                         logger.info("[PROFILE] Discipline updated: %s", disc)
                     break
             changed = True
 
-        # ── Weak topic detection (frustrated/confused emotion) ────────────────
         if emotion in (Emotion.FRUSTRATED, Emotion.CONFUSED):
-            # Mark currently discussed topics as weak
-            weak_set: Set[str] = set(self._profile.weak_topics)
+            weak_set: Set[str] = set(profile.weak_topics)
             for topic in new_topics:
                 if topic not in weak_set:
-                    self._profile.weak_topics.append(topic)
+                    profile.weak_topics.append(topic)
                     weak_set.add(topic)
                     changed = True
-                    logger.info(
-                        "[PROFILE] Weak topic marked (emotion=%s): %s",
-                        emotion.value, topic
-                    )
+                    logger.info("[PROFILE] Weak topic marked: %s", topic)
 
-        # ── Level detection ───────────────────────────────────────────────────
         detected_level = _detect_level(user_text)
-        if detected_level and detected_level != self._profile.level:
-            self._profile.level = detected_level
+        if detected_level and detected_level != profile.level:
+            profile.level = detected_level
             changed = True
             logger.info("[PROFILE] Level updated: %s", detected_level)
 
-        # ── Style preference detection ────────────────────────────────────────
         detected_style = _detect_style_preference(user_text)
-        if detected_style and detected_style != self._profile.preferred_style:
-            self._profile.preferred_style = detected_style
+        if detected_style and detected_style != profile.preferred_style:
+            profile.preferred_style = detected_style
             changed = True
             logger.info("[PROFILE] Style preference updated: %s", detected_style)
 
-        # Save to disk only if something changed (avoid unnecessary writes)
-        if changed:
-            self._save()
+        if changed or not session_id:
+            if not session_id:
+                self._profile = profile
+                self._save()
+            else:
+                profile_dict = profile.to_dict()
+                await self.save_to_state_store(session_id, profile_dict)
+                if self.db_manager:
+                    import asyncio
+                    asyncio.create_task(self.db_manager.save_student_profile(session_id, profile_dict))
 
-    def update_name(self, name: str) -> None:
-        """
-        Update the student's name.
-
-        Args:
-            name: New name to set.
-        """
-        if name and name != self._profile.name:
-            self._profile.name = name
-            self._save()
+    async def update_name(self, name: str, session_id: Optional[str] = None) -> None:
+        profile = await self.get_profile(session_id)
+        if name and name != profile.name:
+            profile.name = name
+            if not session_id:
+                self._profile = profile
+                self._save()
+            else:
+                profile_dict = profile.to_dict()
+                await self.save_to_state_store(session_id, profile_dict)
+                if self.db_manager:
+                    import asyncio
+                    asyncio.create_task(self.db_manager.save_student_profile(session_id, profile_dict))
             logger.info("[PROFILE] Name updated: %s", name)
 
-    def increment_session_count(self) -> None:
-        """Increment the total session counter (call at session start)."""
-        self._profile.session_count += 1
-        self._save()
-
-    def set_level(self, level: str) -> None:
-        """
-        Manually set the student's skill level.
-
-        Args:
-            level: 'beginner' | 'intermediate' | 'advanced'
-        """
-        if level in ("beginner", "intermediate", "advanced"):
-            self._profile.level = level
+    async def increment_session_count(self, session_id: Optional[str] = None) -> None:
+        profile = await self.get_profile(session_id)
+        profile.session_count += 1
+        if not session_id:
+            self._profile = profile
             self._save()
+        else:
+            profile_dict = profile.to_dict()
+            await self.save_to_state_store(session_id, profile_dict)
+            if self.db_manager:
+                import asyncio
+                asyncio.create_task(self.db_manager.save_student_profile(session_id, profile_dict))
+
+    async def set_level(self, level: str, session_id: Optional[str] = None) -> None:
+        if level in ("beginner", "intermediate", "advanced"):
+            profile = await self.get_profile(session_id)
+            profile.level = level
+            if not session_id:
+                self._profile = profile
+                self._save()
+            else:
+                profile_dict = profile.to_dict()
+                await self.save_to_state_store(session_id, profile_dict)
+                if self.db_manager:
+                    import asyncio
+                    asyncio.create_task(self.db_manager.save_student_profile(session_id, profile_dict))
             logger.info("[PROFILE] Level manually set: %s", level)
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # Disk I/O
-    # ─────────────────────────────────────────────────────────────────────────
-
     def _load(self) -> StudentProfile:
-        """Load profile from disk or create default if not found."""
         try:
             if os.path.exists(self._path):
                 with open(self._path, "r", encoding="utf-8") as f:
@@ -336,8 +321,6 @@ class StudentProfileManager:
                 return StudentProfile.from_dict(data)
         except Exception as exc:
             logger.warning("[PROFILE] Load failed (%s), using defaults.", exc)
-
-        # Create default profile and persist it
         profile = StudentProfile.from_dict(_DEFAULT_PROFILE)
         self._profile = profile
         self._save()
@@ -345,7 +328,6 @@ class StudentProfileManager:
         return profile
 
     def _save(self) -> None:
-        """Write current profile to disk. Errors are logged, not raised."""
         with self._lock:
             try:
                 os.makedirs(os.path.dirname(self._path), exist_ok=True)

@@ -129,6 +129,7 @@ async def test_boredom_triggers_recall():
         yield "response "
         yield "token"
     mock_llm.stream_tokens_from_messages = mock_stream
+    mock_llm.get_completion = mock.AsyncMock(return_value="easy")
     mock_llm.last_usage = {"prompt_tokens": 10, "prompt_tokens_details": {"cached_tokens": 5}}
     mock_memory = mock.MagicMock()
     mock_summarizer = mock.MagicMock()
