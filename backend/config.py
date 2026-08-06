@@ -13,6 +13,7 @@ load_dotenv(override=True)
 
 class Config:
     MULTILINGUAL_ENABLED: bool = os.getenv("MULTILINGUAL_ENABLED", "true").lower() == "true"
+    HESITATION_DETECTION_ENABLED: bool = os.getenv("HESITATION_DETECTION_ENABLED", "false").lower() == "true"
     _lang_support_line: str = (
         "  - For any multilingual/language support question: say clearly that you support English, Hindi, Kannada, and Marathi.\n"
         if MULTILINGUAL_ENABLED else
@@ -73,6 +74,12 @@ class Config:
 
     # ── TTS Chunker settings ──────────────────────────────────────────────────
     TTS_CHUNK_CHARS: int = int(os.getenv("TTS_CHUNK_CHARS", "120"))
+    RESUME_TTL_HOURS: int = int(os.getenv("RESUME_TTL_HOURS", "6"))
+
+    # ── Redis settings ────────────────────────────────────────────────────────
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    REDIS_SESSION_TTL_SECONDS: int = int(os.getenv("REDIS_SESSION_TTL_SECONDS", "21600"))
+    REDIS_ENABLED: bool = os.getenv("REDIS_ENABLED", "true").lower() == "true"
 
     # ─────────────────────────────────────────────
     # LLM settings (llama.cpp OpenAI-compat server)
