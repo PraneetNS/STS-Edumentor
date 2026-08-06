@@ -1,64 +1,147 @@
-"""
-EduMentor Agent Layer — Voice Interruption Manager
-
-Handles smart voice interruption — saving context before cancellation
-and restoring it for the next turn so the tutor responds naturally.
-
-Pipeline position (on interruption):
-  1. User interrupts mid-speech
-  2. main.py receives { type: "interrupt" }
-  3. InterruptManager.save_state() is called BEFORE asyncio task cancellation
-  4. Pipeline is cancelled (existing mechanism)
-  5. Next turn: DialogueManager calls was_interrupted() and get_state()
-  6. A bridge instruction is injected into the system prompt
-  7. Tutor responds naturally, acknowledging the interruption
-
-This transforms a jarring hard stop into a smooth, human-like transition.
-
-Design notes:
-  - In-memory store (dict). Zero persistence cost.
-  - States are auto-cleared after use (one-shot pattern).
-  - Thread-safe by construction (asyncio single-threaded event loop).
-  - All methods are synchronous — no await needed, no blocking.
-"""
-
 from __future__ import annotations
 
 import logging
 import time
-from typing import Dict, Optional
+from typing import Dict, Optional, List, Any
 
 from agent.models import InterruptState
+from agent.interrupt_state import ConversationThread, InterruptStack, ThreadStatus
 
 logger = logging.getLogger("edumentor.agent.interrupt")
 
+RESUME_BRIDGE_SYSTEM_PROMPT = """You are Edi, resuming a paused explanation. You are NOT restarting the explanation and NOT repeating what was already said verbatim.
+
+Write exactly ONE short spoken sentence that:
+- naturally references what was being discussed before
+- acknowledges time has passed / a question was answered in between
+- transitions cleanly into continuing
+
+Do not summarize the whole prior explanation. Do not apologize. Do not say "as I was saying" more than once ever, vary the phrasing.
+
+Context:
+- Topic: {topic}
+- Last fully spoken sentence before interruption: "{last_sentence}"
+- What interrupted it (if anything): {interruption_summary}
+
+Output ONLY the bridge sentence, nothing else."""
 
 class InterruptManager:
     """
-    Manages interruption state across conversation turns.
-
-    One instance lives for the lifetime of the FastAPI application.
-    State is keyed by session_id (one entry per active WebSocket connection).
-
-    Thread safety:
-        asyncio is single-threaded by design. All WebSocket events are
-        processed on the same event loop, so no locking is needed.
+    Manages conversation interruption stacks and active thread states.
     """
 
-    def __init__(self) -> None:
-        # session_id → InterruptState
-        self._states: Dict[str, InterruptState] = {}
+    def __init__(self, db_manager=None) -> None:
+        self.db_manager = db_manager
+        # session_id → list of ConversationThread (the stack)
+        self._store = {}
+        # session_id → active ConversationThread
+        self._active_threads: Dict[str, ConversationThread] = {}
 
-        # Per-session tracking of total chars generated (for fraction calc)
-        # session_id → chars delivered to TTS so far in the current turn
+        # Legacy backward compatibility fields
+        self._states: Dict[str, InterruptState] = {}
         self._chars_sent: Dict[str, int] = {}
 
         logger.info("[OK] InterruptManager ready.")
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # State save / restore
-    # ─────────────────────────────────────────────────────────────────────────
+    def get_stack(self, session_id: str) -> InterruptStack:
+        return InterruptStack(session_id, self._store, self.db_manager)
 
+    async def set_stack(self, session_id: str, threads: List[ConversationThread]) -> None:
+        """Sets/overwrites the stack for a session (used on reconnect loading)."""
+        stack = self.get_stack(session_id)
+        await stack.clear()
+        for t in threads:
+            await stack.push(t)
+
+    def set_active_thread(self, session_id: str, thread: ConversationThread) -> None:
+        self._active_threads[session_id] = thread
+
+    def get_active_thread(self, session_id: str) -> Optional[ConversationThread]:
+        return self._active_threads.get(session_id)
+
+    def clear_active_thread(self, session_id: str) -> None:
+        self._active_threads.pop(session_id, None)
+
+    async def pop_thread(self, session_id: str) -> Optional[ConversationThread]:
+        return await self.get_stack(session_id).pop()
+
+    async def on_barge_in(self, session_id: str, partial_tts_state=None) -> None:
+        thread = self._active_threads.get(session_id)
+        if not thread:
+            # Create a placeholder thread if there wasn't one active
+            thread = ConversationThread(
+                topic="general",
+                original_question=""
+            )
+
+        if partial_tts_state:
+            thread.spoken_sentences = getattr(partial_tts_state, "completed_sentences", thread.spoken_sentences)
+            thread.cut_sentence = getattr(partial_tts_state, "in_flight_sentence", thread.cut_sentence)
+            thread.cut_char_offset = getattr(partial_tts_state, "char_offset", thread.cut_char_offset)
+            thread.remaining_plan = getattr(partial_tts_state, "unflushed_sentences", thread.remaining_plan)
+        else:
+            # Estimate character offset in the cut sentence
+            if thread.cut_sentence and getattr(thread, "last_sent_time", None):
+                elapsed = time.time() - thread.last_sent_time
+                thread.cut_char_offset = min(len(thread.cut_sentence), int(elapsed * 15))
+
+        # Push to stack
+        await self.get_stack(session_id).push(thread)
+        self._active_threads.pop(session_id, None)
+
+        logger.info(
+            "[INTERRUPT] on_barge_in completed. Thread pushed to stack for session %s (topic=%r).",
+            session_id, thread.topic
+        )
+
+    async def generate_resume_bridge(self, thread: ConversationThread) -> str:
+        last_sentence = thread.spoken_sentences[-1] if thread.spoken_sentences else thread.original_question
+        
+        # Clean any HTML/Markdown tags from the last sentence for a cleaner prompt
+        import re
+        last_sentence_clean = re.sub(r"<[^>]+>", "", last_sentence).strip()
+        
+        prompt = RESUME_BRIDGE_SYSTEM_PROMPT.format(
+            topic=thread.topic,
+            last_sentence=last_sentence_clean,
+            interruption_summary=thread.interruption_summary or "a quick side question",
+        )
+        
+        try:
+            import httpx
+            from config import Config
+            
+            payload = {
+                "model": Config.LLM_MODEL_NAME,
+                "messages": [
+                    {"role": "system", "content": prompt}
+                ],
+                "stream":      False,
+                "max_tokens":  40,
+                "temperature": 0.6,
+            }
+            
+            async with httpx.AsyncClient(
+                base_url=Config.LLM_BASE_URL,
+                timeout=httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0),
+                headers={"Content-Type": "application/json"},
+            ) as client:
+                response = await client.post("/v1/chat/completions", json=payload)
+                response.raise_for_status()
+                data = response.json()
+                choices = data.get("choices", [])
+                if choices:
+                    bridge = choices[0].get("message", {}).get("content", "").strip()
+                    # Clean up quotes if returned
+                    bridge = bridge.strip('"\'')
+                    return bridge
+        except Exception as e:
+            logger.error("Failed to generate resume bridge via LLM: %s", e)
+            
+        # Fallback if LLM call fails
+        return f"Alright, let's get back to {thread.topic}."
+
+    # Legacy compatibility methods
     def save_state(
         self,
         session_id: str,
@@ -66,156 +149,33 @@ class InterruptManager:
         topic: str,
         total_response_chars: int = 0,
     ) -> None:
-        """
-        Save the current pipeline state before cancellation.
-
-        Called from main.py's interrupt handler, BEFORE the asyncio task is
-        cancelled. Captures what the tutor was saying so the next turn can
-        produce a natural bridge.
-
-        Args:
-            session_id:           The WebSocket session identifier.
-            partial_response:     Accumulated LLM text that was being generated.
-            topic:                The topic being discussed at interrupt time.
-            total_response_chars: Total chars in the response so far (for fraction calc).
-        """
-        chars_sent = self._chars_sent.get(session_id, 0)
-        total = max(total_response_chars, chars_sent, 1)
-        fraction = min(chars_sent / total, 1.0)
-
-        state = InterruptState(
-            session_id=session_id,
-            interrupted_response=partial_response[:500],  # Cap length for prompt
-            interrupted_at_fraction=fraction,
-            topic=topic,
-            was_mid_explanation=len(partial_response.strip()) > 20,
-            timestamp=time.time(),
-        )
-        self._states[session_id] = state
-
-        logger.info(
-            "[INTERRUPT] state saved session=%s topic=%r fraction=%.2f partial=%r",
-            session_id, topic, fraction, partial_response[:60]
-        )
+        # Keep legacy compatibility by executing on_barge_in synchronously
+        import asyncio
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self.on_barge_in(session_id))
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self.on_barge_in(session_id))
 
     def get_state(self, session_id: str) -> Optional[InterruptState]:
-        """
-        Retrieve the saved interrupt state for a session (non-destructive).
-
-        Returns None if no interruption was recorded.
-        """
-        return self._states.get(session_id)
+        return None
 
     def clear_state(self, session_id: str) -> None:
-        """
-        Clear the interrupt state after it has been used by the DialogueManager.
-
-        Called after the bridge instruction has been built to prevent it from
-        appearing in every subsequent turn.
-        """
-        if session_id in self._states:
-            del self._states[session_id]
-            logger.debug("[INTERRUPT] state cleared for session=%s", session_id)
+        pass
 
     def was_interrupted(self, session_id: str) -> bool:
-        """
-        Check whether the previous turn was interrupted.
-
-        Args:
-            session_id: The WebSocket session identifier.
-
-        Returns:
-            True if there is a pending interrupt state for this session.
-        """
-        return session_id in self._states
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # Chars-sent tracking (called from main.py as tokens stream)
-    # ─────────────────────────────────────────────────────────────────────────
+        return False
 
     def track_chars_sent(self, session_id: str, chars: int) -> None:
-        """
-        Accumulate the number of characters delivered to TTS for this turn.
-
-        Called from _stream_llm_and_tts as each sentence is dispatched.
-        Used to calculate interrupted_at_fraction when save_state() is called.
-
-        Args:
-            session_id: The session identifier.
-            chars:      Number of characters in the sentence just dispatched.
-        """
-        self._chars_sent[session_id] = self._chars_sent.get(session_id, 0) + chars
+        pass
 
     def reset_turn(self, session_id: str) -> None:
-        """
-        Reset per-turn tracking counters at the start of a new pipeline run.
-
-        Called from main.py at the beginning of each _run_pipeline() call.
-        """
-        self._chars_sent[session_id] = 0
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # Bridge instruction builder
-    # ─────────────────────────────────────────────────────────────────────────
-
-    def build_bridge_instruction(
-        self,
-        session_id: str,
-        new_user_text: str,
-    ) -> Optional[str]:
-        """
-        Build a natural-language bridge instruction for the system prompt.
-
-        This is injected by PromptBuilder when was_interrupted() is True.
-        After calling this, the state is automatically cleared (one-shot).
-
-        Args:
-            session_id:    The session identifier.
-            new_user_text: The new question/statement from the student.
-
-        Returns:
-            A string instruction to append to the system prompt, or None if
-            no interruption was recorded.
-        """
-        state = self._states.get(session_id)
-        if state is None:
-            return None
-
-        # Build context-aware bridge text
-        if state.was_mid_explanation and state.topic:
-            bridge = (
-                f"[INTERRUPTION CONTEXT] You were in the middle of explaining '{state.topic}' "
-                f"when the student interrupted. "
-                f"You had said: \"{state.interrupted_response[:150]}...\" "
-                f"The student now asks: \"{new_user_text}\". "
-                f"Briefly and naturally acknowledge the interruption "
-                f"(one short sentence), then answer their new question. "
-                f"Offer to continue your earlier explanation afterwards if relevant."
-            )
-        else:
-            bridge = (
-                f"[INTERRUPTION CONTEXT] The student interrupted your previous response. "
-                f"They now ask: \"{new_user_text}\". "
-                f"Respond naturally and helpfully."
-            )
-
-        # Clear state — it's been consumed
-        self.clear_state(session_id)
-
-        logger.debug("[INTERRUPT] bridge instruction built for session=%s", session_id)
-        return bridge
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # Cleanup
-    # ─────────────────────────────────────────────────────────────────────────
+        pass
 
     def clear_session(self, session_id: str) -> None:
-        """
-        Fully remove all data for a session (called on WebSocket disconnect).
-
-        Args:
-            session_id: The disconnecting session's identifier.
-        """
-        self._states.pop(session_id, None)
-        self._chars_sent.pop(session_id, None)
-        logger.debug("[INTERRUPT] session %s fully cleared.", session_id)
+        self._active_threads.pop(session_id, None)
+        # Clear stack
+        key = f"interrupt_stack:{session_id}"
+        self._store.pop(key, None)
