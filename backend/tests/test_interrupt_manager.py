@@ -1,119 +1,105 @@
 """
 Tests — Interrupt Manager
 
-Tests state save/restore/clear lifecycle and bridge instruction generation.
+Tests conversation stack push/pop, active thread tracking, and LLM bridge generation.
 """
 
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import time
 import pytest
+import asyncio
+from unittest.mock import AsyncMock, MagicMock
 from agent.interrupt_manager import InterruptManager
-from agent.models import InterruptState
+from agent.interrupt_state import ConversationThread, ThreadStatus
 
 
 @pytest.fixture
-def manager():
-    return InterruptManager()
+def mock_db():
+    db = MagicMock()
+    db.enabled = True
+    db.save_thread = AsyncMock()
+    db.load_threads = AsyncMock(return_value=[])
+    db.update_thread_status = AsyncMock()
+    return db
 
 
-def test_initial_state_is_empty(manager):
-    assert not manager.was_interrupted("session-1")
-    assert manager.get_state("session-1") is None
+@pytest.fixture
+def manager(mock_db):
+    return InterruptManager(db_manager=mock_db)
 
 
-def test_save_and_retrieve_state(manager):
-    manager.save_state(
-        session_id="session-1",
-        partial_response="Recursion is when a function calls itself",
+@pytest.mark.asyncio
+async def test_active_thread_tracking(manager):
+    session_id = "session-1"
+    assert manager.get_active_thread(session_id) is None
+
+    thread = ConversationThread(
         topic="recursion",
-        total_response_chars=100,
+        original_question="what is recursion"
     )
-    assert manager.was_interrupted("session-1")
-    state = manager.get_state("session-1")
-    assert state is not None
-    assert state.topic == "recursion"
-    assert "Recursion" in state.interrupted_response
-    assert state.was_mid_explanation is True
+    manager.set_active_thread(session_id, thread)
+
+    assert manager.get_active_thread(session_id) == thread
+    manager.clear_active_thread(session_id)
+    assert manager.get_active_thread(session_id) is None
 
 
-def test_save_short_response_not_mid_explanation(manager):
-    manager.save_state("session-2", partial_response="Hi", topic="greeting")
-    state = manager.get_state("session-2")
-    assert state.was_mid_explanation is False
+@pytest.mark.asyncio
+async def test_barge_in_pushes_to_stack(manager, mock_db):
+    session_id = "session-2"
+    thread = ConversationThread(
+        topic="stack depth",
+        original_question="explain stack depth"
+    )
+    manager.set_active_thread(session_id, thread)
+
+    await manager.on_barge_in(session_id)
+
+    # Active thread is cleared after barge-in
+    assert manager.get_active_thread(session_id) is None
+
+    # Stack depth should be 1
+    stack = manager.get_stack(session_id)
+    assert await stack.depth() == 1
+    assert await stack.peek_topic() == "stack depth"
+    assert mock_db.save_thread.called
 
 
-def test_clear_state(manager):
-    manager.save_state("session-3", "Some partial text", "topic", 200)
-    assert manager.was_interrupted("session-3")
-    manager.clear_state("session-3")
-    assert not manager.was_interrupted("session-3")
+@pytest.mark.asyncio
+async def test_pop_thread_restores_from_stack(manager, mock_db):
+    session_id = "session-3"
+    thread1 = ConversationThread(
+        topic="topic-1",
+        original_question="explain topic-1"
+    )
+    thread2 = ConversationThread(
+        topic="topic-2",
+        original_question="explain topic-2"
+    )
+
+    stack = manager.get_stack(session_id)
+    await stack.push(thread1)
+    await stack.push(thread2)
+
+    assert await stack.depth() == 2
+    
+    popped = await manager.pop_thread(session_id)
+    assert popped.topic == "topic-2"
+    assert await stack.depth() == 1
+
+    popped2 = await manager.pop_thread(session_id)
+    assert popped2.topic == "topic-1"
+    assert await stack.depth() == 0
 
 
-def test_build_bridge_instruction_with_explanation(manager):
-    manager.save_state("session-4", "Recursion is the process of calling...", "recursion", 200)
-    bridge = manager.build_bridge_instruction("session-4", "Wait, what is a base case?")
-    assert bridge is not None
-    assert "recursion" in bridge.lower()
-    assert "base case" in bridge.lower() or "interrupted" in bridge.lower()
 
-
-def test_build_bridge_clears_state(manager):
-    manager.save_state("session-5", "Explaining binary search...", "binary search", 300)
-    manager.build_bridge_instruction("session-5", "New question")
-    # State should be cleared after bridge is built
-    assert not manager.was_interrupted("session-5")
-
-
-def test_build_bridge_returns_none_when_no_state(manager):
-    result = manager.build_bridge_instruction("no-session", "some question")
-    assert result is None
-
-
-def test_chars_tracking(manager):
-    manager.reset_turn("session-6")
-    manager.track_chars_sent("session-6", 50)
-    manager.track_chars_sent("session-6", 100)
-    # After 150 chars sent, total 300 chars, fraction = 0.5
-    manager.save_state("session-6", "x" * 50, "topic", total_response_chars=300)
-    state = manager.get_state("session-6")
-    assert state.interrupted_at_fraction > 0.0
-
-
-def test_session_isolation(manager):
-    manager.save_state("session-A", "text A", "topic A", 100)
-    assert not manager.was_interrupted("session-B")
-    assert manager.was_interrupted("session-A")
-
-
-def test_clear_session_removes_all_data(manager):
-    manager.save_state("session-7", "text", "topic", 100)
-    manager.track_chars_sent("session-7", 50)
-    manager.clear_session("session-7")
-    assert not manager.was_interrupted("session-7")
-
-
-def test_timestamp_is_recent(manager):
-    manager.save_state("session-8", "text", "topic")
-    state = manager.get_state("session-8")
-    assert abs(state.timestamp - time.time()) < 2.0  # Within 2 seconds
-
-
-def test_long_response_is_truncated(manager):
-    long_response = "x" * 1000
-    manager.save_state("session-9", long_response, "topic", 1000)
-    state = manager.get_state("session-9")
-    # Should be capped at 500 chars
-    assert len(state.interrupted_response) <= 500
-
-
-def test_clear_non_existent_session(manager):
-    """
-    Ensure clearing/resetting non-existent session IDs does not raise exceptions.
-    """
-    # Should complete without error
-    manager.clear_session("non-existent-session-id-1234")
-    manager.clear_state("non-existent-session-id-5678")
-    assert not manager.was_interrupted("non-existent-session-id-1234")
-
+@pytest.mark.asyncio
+async def test_generate_resume_bridge_fallback(manager):
+    thread = ConversationThread(
+        topic="binary search",
+        original_question="how does binary search work"
+    )
+    bridge = await manager.generate_resume_bridge(thread)
+    # Since HTTP mock isn't configured, it should fallback safely
+    assert "binary search" in bridge
