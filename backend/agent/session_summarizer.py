@@ -3,26 +3,6 @@ EduMentor Agent Layer — Session Summarizer
 
 Compresses conversation history every 10 turns into a structured JSON summary
 that persists for the entire session, regardless of turn count.
-
-This solves the critical "long conversation amnesia" problem:
-  - Without summarizer: context window = last 10 turns only
-  - With summarizer:    project, goals, struggles, topics = ALWAYS available
-
-Design:
-  - Uses the existing GGUF LLM (via LLMEngine) for summarization
-  - Runs in a background ThreadPoolExecutor — ZERO added latency to current turn
-  - Summaries saved to disk (data/session_summaries/<session_id>.json)
-  - Robust JSON parsing with regex fallback
-  - Graceful degradation — if summarizer fails, main pipeline is unaffected
-
-Pipeline position:
-  MemoryManager.add_turn() → [every 10 turns] → SessionSummarizer.schedule_summarize()
-                                                    ↓ (background thread)
-                              LLMEngine (compressed prompt ~100 tokens)
-                                                    ↓
-                              SessionSummary saved to disk + cached in memory
-                                                    ↓
-  PromptBuilder.build_system_prompt() → get_summary() → injected into every prompt
 """
 
 from __future__ import annotations
@@ -38,6 +18,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from agent.models import MemoryTurn, SessionSummary
+from config import Config
 
 logger = logging.getLogger("edumentor.agent.summarizer")
 
@@ -101,25 +82,17 @@ def _build_previous_summary_block(summary: Optional[SessionSummary]) -> str:
 def _parse_summary_json(raw: str, session_id: str) -> Optional[dict]:
     """
     Extract a JSON object from the LLM response.
-
-    Handles:
-      - Clean JSON response
-      - JSON embedded in markdown code blocks
-      - JSON embedded in other text (regex extraction)
     """
     if not raw:
         return None
 
-    # Strip markdown code fences if present
     raw = re.sub(r"```(?:json)?\s*", "", raw).strip()
 
-    # Try direct parse first
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
         pass
 
-    # Try to extract first JSON object via regex
     match = re.search(r"\{[^{}]*\}", raw, re.DOTALL)
     if match:
         try:
@@ -134,46 +107,33 @@ def _parse_summary_json(raw: str, session_id: str) -> Optional[dict]:
     return None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SessionSummarizer
-# ─────────────────────────────────────────────────────────────────────────────
-
 class SessionSummarizer:
     """
     Generates and maintains a rolling structured summary of each conversation.
-
-    One instance lives for the lifetime of the FastAPI application.
-    The LLMEngine is injected at construction time.
-
-    Summarization is triggered by MemoryManager every 10 turns and runs
-    in a background daemon thread — completely transparent to the main pipeline.
-
-    Args:
-        llm_engine:   The existing LLMEngine instance (reused, no new model loaded).
-        summary_dir:  Directory to persist summary JSON files.
     """
 
     def __init__(self, llm_engine, summary_dir: str = _SUMMARY_DIR) -> None:
         self._llm = llm_engine
         self._summary_dir = summary_dir
-
-        # In-memory cache: session_id → SessionSummary
         self._cache: Dict[str, SessionSummary] = {}
-
-        # Threading lock for cache writes (background thread + main thread)
         self._lock = threading.Lock()
-
-        # Background worker thread pool (daemon=True so it doesn't block shutdown)
-        self._executor = None  # Lazy init to avoid event loop issues at startup
-
-        # Ensure summary directory exists
         os.makedirs(self._summary_dir, exist_ok=True)
-
         logger.info("[OK] SessionSummarizer ready. Summary dir: %s", self._summary_dir)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Public API
     # ─────────────────────────────────────────────────────────────────────────
+
+    async def save_turn_to_buffer(self, session_id: str, turn: MemoryTurn) -> None:
+        """Save a raw turn to Redis turn_buffer:session_id."""
+        from agent.state_store import get_state_store
+        store = get_state_store()
+        key = f"turn_buffer:{session_id}"
+        
+        turn_dict = turn.to_dict() if hasattr(turn, 'to_dict') else turn
+        await store.rpush(key, json.dumps(turn_dict))
+        await store.ltrim(key, -10, -1)  # Keep last 10 turns
+        await store.expire(key, Config.REDIS_SESSION_TTL_SECONDS)
 
     def schedule_summarize(
         self,
@@ -183,76 +143,70 @@ class SessionSummarizer:
     ) -> None:
         """
         Schedule a background summarization run.
-
-        This returns IMMEDIATELY — the LLM call happens in a background thread.
-        Called by MemoryManager after every 10th turn.
-
-        Args:
-            session_id:  The session to summarize.
-            history:     Current conversation turns (window before pruning).
-            turn_count:  Total turns processed (for the summary's turn_count field).
         """
-        # Snapshot the history to avoid mutation in the background thread
-        history_snapshot = list(history)
-        previous = self.get_summary(session_id)
+        asyncio.create_task(self._run_summarize_async(session_id, history, turn_count))
 
-        thread = threading.Thread(
-            target=self._run_summarize,
-            args=(session_id, history_snapshot, previous, turn_count),
-            daemon=True,
-            name=f"summarizer-{session_id[:8]}",
-        )
-        thread.start()
-        logger.info(
-            "[SUMMARIZER] Background summarization scheduled for session=%s turn=%d",
-            session_id, turn_count
-        )
-
-    def get_summary(self, session_id: str) -> Optional[SessionSummary]:
+    async def get_summary(self, session_id: str) -> Optional[SessionSummary]:
         """
         Retrieve the latest summary for a session.
-
-        Checks in-memory cache first, then disk.
-
-        Args:
-            session_id: The session identifier.
-
-        Returns:
-            SessionSummary if available, None if no summary yet.
         """
+        from agent.state_store import get_state_store
+        store = get_state_store()
+        key = f"session_summary:{session_id}"
+
+        # 1. Try loading from Redis/state_store
+        data = await store.get(key)
+        if data:
+            try:
+                return SessionSummary.from_dict(json.loads(data))
+            except Exception as e:
+                logger.error("Failed to parse session summary from state store: %s", e)
+
+        # 2. Try cache
         with self._lock:
             if session_id in self._cache:
                 return self._cache[session_id]
 
-        # Try loading from disk (covers restart scenarios if using a persistent filesystem)
-        return self._load_from_disk(session_id)
+        # 3. Try disk
+        summary = self._load_from_disk(session_id)
+        if summary:
+            await store.set(key, json.dumps(summary.to_dict()), ex=Config.REDIS_SESSION_TTL_SECONDS)
+            return summary
 
-    def update_field(self, session_id: str, key: str, value) -> None:
+        return None
+
+    async def update_field(self, session_id: str, key: str, value) -> None:
         """
         Manually update a single field in the session summary.
-
-        Useful for profile updates that happen outside the summarization cycle
-        (e.g. student mentions their project name mid-turn).
-
-        Args:
-            session_id: The session identifier.
-            key:        Field name (must match SessionSummary attributes).
-            value:      New value.
         """
-        with self._lock:
-            summary = self._cache.get(session_id)
-            if summary and hasattr(summary, key):
-                setattr(summary, key, value)
-                self._save_to_disk(summary)
-                logger.debug(
-                    "[SUMMARIZER] Field updated: session=%s %s=%r",
-                    session_id, key, value
-                )
+        from agent.state_store import get_state_store
+        store = get_state_store()
 
-    def clear_summary(self, session_id: str) -> None:
+        summary = await self.get_summary(session_id)
+        if summary and hasattr(summary, key):
+            setattr(summary, key, value)
+            
+            # Save to Redis
+            skey = f"session_summary:{session_id}"
+            await store.set(skey, json.dumps(summary.to_dict()), ex=Config.REDIS_SESSION_TTL_SECONDS)
+
+            with self._lock:
+                self._cache[session_id] = summary
+            self._save_to_disk(summary)
+            logger.debug(
+                "[SUMMARIZER] Field updated: session=%s %s=%r",
+                session_id, key, value
+            )
+
+    async def clear_summary(self, session_id: str) -> None:
         """
         Remove the summary for a session (called on session reset/disconnect).
         """
+        from agent.state_store import get_state_store
+        store = get_state_store()
+        await store.delete(f"session_summary:{session_id}")
+        await store.delete(f"turn_buffer:{session_id}")
+
         with self._lock:
             self._cache.pop(session_id, None)
 
@@ -262,47 +216,49 @@ class SessionSummarizer:
         logger.debug("[SUMMARIZER] Summary cleared for session=%s", session_id)
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Internal: LLM summarization (runs in background thread)
+    # Internal: LLM summarization (runs in background async task)
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _run_summarize(
+    async def _run_summarize_async(
         self,
         session_id: str,
         history: List[MemoryTurn],
-        previous: Optional[SessionSummary],
         turn_count: int,
     ) -> None:
         """
-        Perform the actual LLM summarization call.
-
-        This runs in a daemon background thread. All errors are caught and
-        logged — a summarization failure never crashes the main pipeline.
+        Perform the actual LLM summarization call asynchronously.
         """
         start = time.perf_counter()
         logger.info("[SUMMARIZER] Starting summarization for session=%s", session_id)
 
         try:
             history_text = _build_history_text(history)
+            previous = await self.get_summary(session_id)
             prev_block = _build_previous_summary_block(previous)
             user_content = _SUMMARIZE_USER_TEMPLATE.format(
                 history=history_text,
                 previous_summary=prev_block,
             )
 
-            # Build the payload for LLMEngine's HTTP client
             payload = {
                 "model":       "local",
                 "messages": [
                     {"role": "system",  "content": _SUMMARIZE_SYSTEM},
                     {"role": "user",    "content": user_content},
                 ],
-                "stream":      False,        # We need the full response
-                "max_tokens":  300,          # Summary should be concise
-                "temperature": 0.1,          # Deterministic extraction
+                "stream":      False,
+                "max_tokens":  300,
+                "temperature": 0.1,
             }
 
-            # Run sync HTTP call via a new event loop in this background thread
-            raw_response = self._call_llm_sync(payload)
+            import httpx
+            base_url = self._llm.base_url if hasattr(self._llm, 'base_url') else Config.LLM_BASE_URL
+            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=60.0, write=5.0, pool=5.0)) as client:
+                response = await client.post(f"{base_url}/v1/chat/completions", json=payload)
+                response.raise_for_status()
+                data = response.json()
+                choices = data.get("choices", [])
+                raw_response = choices[0].get("message", {}).get("content", "") if choices else ""
 
             if not raw_response:
                 logger.warning(
@@ -314,7 +270,6 @@ class SessionSummarizer:
             if parsed is None:
                 return
 
-            # Build and cache the new summary
             summary = SessionSummary(
                 session_id        = session_id,
                 last_updated      = datetime.now(timezone.utc).isoformat(),
@@ -328,9 +283,13 @@ class SessionSummarizer:
                 agreements        = parsed.get("agreements", []),
             )
 
+            from agent.state_store import get_state_store
+            store = get_state_store()
+            key = f"session_summary:{session_id}"
+            await store.set(key, json.dumps(summary.to_dict()), ex=Config.REDIS_SESSION_TTL_SECONDS)
+
             with self._lock:
                 self._cache[session_id] = summary
-
             self._save_to_disk(summary)
 
             elapsed = (time.perf_counter() - start) * 1000
@@ -345,53 +304,15 @@ class SessionSummarizer:
                 "[SUMMARIZER] Failed for session=%s: %s", session_id, exc
             )
 
-    def _call_llm_sync(self, payload: dict) -> Optional[str]:
-        """
-        Make a synchronous (non-streaming) HTTP call to the LLM server.
-
-        Creates a new event loop in the background thread since asyncio
-        loops are not shareable across threads.
-        """
-        import asyncio
-        import httpx
-
-        async def _fetch() -> Optional[str]:
-            try:
-                async with httpx.AsyncClient(
-                    base_url=self._llm.base_url,
-                    timeout=httpx.Timeout(connect=5.0, read=60.0, write=5.0, pool=5.0),
-                    headers={"Content-Type": "application/json"},
-                ) as client:
-                    response = await client.post(
-                        "/v1/chat/completions", json=payload
-                    )
-                    response.raise_for_status()
-                    data = response.json()
-                    choices = data.get("choices", [])
-                    if choices:
-                        return choices[0].get("message", {}).get("content", "")
-            except Exception as exc:
-                logger.exception("[SUMMARIZER] LLM HTTP error: %s", exc)
-            return None
-
-        # Run in a fresh event loop for this thread
-        loop = asyncio.new_event_loop()
-        try:
-            return loop.run_until_complete(_fetch())
-        finally:
-            loop.close()
-
     # ─────────────────────────────────────────────────────────────────────────
     # Disk persistence helpers
     # ─────────────────────────────────────────────────────────────────────────
 
     def _summary_path(self, session_id: str) -> str:
-        # Sanitise session_id for use as a filename
         safe_id = re.sub(r"[^\w\-.]", "_", session_id)
         return os.path.join(self._summary_dir, f"{safe_id}.json")
 
     def _save_to_disk(self, summary: SessionSummary) -> None:
-        """Persist summary to disk. Errors are logged but not raised."""
         try:
             path = self._summary_path(summary.session_id)
             with open(path, "w", encoding="utf-8") as f:
@@ -401,7 +322,6 @@ class SessionSummarizer:
             logger.warning("[SUMMARIZER] Disk save failed: %s", exc)
 
     def _load_from_disk(self, session_id: str) -> Optional[SessionSummary]:
-        """Load summary from disk (restart recovery). Returns None if not found."""
         try:
             path = self._summary_path(session_id)
             if not os.path.exists(path):

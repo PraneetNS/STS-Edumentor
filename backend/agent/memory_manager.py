@@ -460,6 +460,10 @@ class MemoryManager:
             session_id, total, intent, emotion
         )
 
+        if self._summarizer:
+            import asyncio
+            asyncio.create_task(self._summarizer.save_turn_to_buffer(session_id, turn))
+
         # Trigger summarization every 10 turns (background, non-blocking)
         if self._summarizer and total > 0 and total % 10 == 0:
             logger.info(
