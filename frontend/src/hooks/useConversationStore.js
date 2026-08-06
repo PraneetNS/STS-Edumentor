@@ -26,6 +26,7 @@ function groupByDate(conversations) {
 export function useConversationStore() {
   const conversations = chatStore.useStore((s) => s.conversations);
   const activeId = chatStore.useStore((s) => s.activeId);
+  const pausedThreads = chatStore.useStore((s) => s.pausedThreads);
 
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === activeId) || null,
@@ -39,6 +40,7 @@ export function useConversationStore() {
     activeId,
     activeConversation,
     grouped,
+    pausedThreads,
     createConversation: chatStore.getState().createConversation,
     selectConversation: chatStore.getState().selectConversation,
     deleteConversation: chatStore.getState().deleteConversation,
@@ -48,5 +50,9 @@ export function useConversationStore() {
     setStreamingMessageFollowup: chatStore.getState().setStreamingMessageFollowup,
     finishStreamingMessage: chatStore.getState().finishStreamingMessage,
     saveMessageSnapshot: chatStore.getState().saveMessageSnapshot,
+    fetchPausedThreads: chatStore.getState().fetchPausedThreads,
+    addPausedThread: chatStore.getState().addPausedThread,
+    removePausedThread: chatStore.getState().removePausedThread,
+    removeMessage: chatStore.getState().removeMessage,
   };
 }

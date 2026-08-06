@@ -54,6 +54,7 @@ const initialConversations = getInitialConversations();
 export const chatStore = createStore((set, get) => ({
   conversations: initialConversations,
   activeId: initialConversations[0].id,
+  pausedThreads: [],
 
   createConversation: () => {
     const newConv = createNewConversation();
@@ -261,6 +262,16 @@ export const chatStore = createStore((set, get) => ({
         });
         return { ...conv, messages: msgs };
       });
+    });
+  },
+
+  removeMessage: (msgId) => {
+    set((state) => {
+      const updated = state.conversations.map((conv) => {
+        if (conv.id !== state.activeId) return conv;
+        const msgs = conv.messages.filter((m) => m.id !== msgId);
+        return { ...conv, messages: msgs };
+      });
       saveToStorage(updated);
       return { conversations: updated };
     });
@@ -281,5 +292,39 @@ export const chatStore = createStore((set, get) => ({
       saveToStorage(updated);
       return { conversations: updated };
     });
+  },
+
+  fetchPausedThreads: async (sessionId) => {
+    const token = authStore.getState().token;
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/paused_threads`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const threads = await res.json();
+        set({ pausedThreads: threads });
+      }
+    } catch (e) {
+      console.error(`Failed to fetch paused threads for session ${sessionId}:`, e);
+    }
+  },
+
+  addPausedThread: (thread) => {
+    set((state) => {
+      const exists = state.pausedThreads.some(t => t.thread_id === thread.thread_id);
+      if (exists) {
+        return {
+          pausedThreads: state.pausedThreads.map(t => t.thread_id === thread.thread_id ? { ...t, ...thread } : t)
+        };
+      }
+      return { pausedThreads: [...state.pausedThreads, thread] };
+    });
+  },
+
+  removePausedThread: (threadId) => {
+    set((state) => ({
+      pausedThreads: state.pausedThreads.filter(t => t.thread_id !== threadId)
+    }));
   },
 }));
