@@ -47,9 +47,9 @@ _SYSTEM_PROMPT = (
 )
 
 # User prompt template: lists all valid intents and the message to classify
-_USER_TEMPLATE = """Intents: CONCEPT_EXPLANATION, CODE_HELP, DEBUGGING, QUIZ_REQUEST, REPEAT_LAST, SIMPLIFY, FOLLOW_UP, OFF_TOPIC, GREETING, THANKS, PDF_QUESTION, PROJECT_HELP, CAREER_GUIDANCE, UNSAFE, SETTINGS_UPDATE
+_USER_TEMPLATE = """Intents: CONCEPT_EXPLANATION, CODE_HELP, DEBUGGING, QUIZ_REQUEST, REPEAT_LAST, SIMPLIFY, FOLLOW_UP, OFF_TOPIC, GREETING, THANKS, PDF_QUESTION, PROJECT_HELP, CAREER_GUIDANCE, UNSAFE, SETTINGS_UPDATE, RESUME
 
-needs_history=true when the message refers to previous conversation (it, that, again, simpler, explain more, continue).
+needs_history=true when the message refers to previous conversation (it, that, again, simpler, explain more, continue, resume).
 
 Message: "{user_text}"
 
@@ -75,6 +75,7 @@ _NEEDS_HISTORY_DEFAULTS: dict = {
     Intent.CAREER_GUIDANCE:     False,
     Intent.UNSAFE:              False,
     Intent.SETTINGS_UPDATE:     False,
+    Intent.RESUME:              True,
 }
 
 
@@ -163,7 +164,8 @@ class IntentClassifier:
         (r"\b(pdf|document|my notes|my file|page \d+)\b", Intent.PDF_QUESTION, False, 0.90),
         (r"\b(debug|error|bug|fix|not working|broken|exception|traceback)\b", Intent.DEBUGGING, True, 0.88),
         (r"\b(code|write|function|class|implement|script|program)\b", Intent.CODE_HELP, False, 0.80),
-        (r"\b(more|tell me more|elaborate|continue|go on|and then)\b", Intent.FOLLOW_UP, True, 0.85),
+        (r"\b(continue|go on|keep going|where were we|back to that|resume)\b", Intent.RESUME, True, 1.0),
+        (r"\b(more|tell me more|elaborate|and then)\b", Intent.FOLLOW_UP, True, 0.85),
         (r"\b(switch to|reply in|change language to|speak in|use language|use)\b\s*(kannada|marathi|hindi|english|auto|canada|kanada|kannad|marati|hindhi)\b", Intent.SETTINGS_UPDATE, False, 1.0),
         (r"\b(reply|speak|write)\s*(only\s*)?in\s*(kannada|marathi|hindi|english|canada|kanada|kannad|marati|hindhi)\b", Intent.SETTINGS_UPDATE, False, 1.0),
         (r"\b(kannada|marathi|hindi|english|canada|kanada|kannad|marati|hindhi)\s*preference\b", Intent.SETTINGS_UPDATE, False, 1.0),
