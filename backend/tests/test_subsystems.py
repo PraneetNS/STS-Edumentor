@@ -146,11 +146,22 @@ def controller(mock_db, mock_llm) -> AgentController:
     # Build dependencies
     memory_manager = MagicMock()
     memory_manager.get_session.return_value = []
+    
     session_summarizer = MagicMock()
-    session_summarizer.get_summary.return_value = None
+    session_summarizer.get_summary = AsyncMock(return_value=None)
+    
     profile_manager = MagicMock()
-    profile_manager.get_profile.return_value = StudentProfile(level="beginner", preferred_style="examples")
+    profile_manager.get_profile = AsyncMock(return_value=StudentProfile(level="beginner", preferred_style="examples"))
+    profile_manager.get_active_topic = AsyncMock(return_value="general")
+    profile_manager.update_from_turn = AsyncMock()
+    
+    stack = MagicMock()
+    stack.depth = AsyncMock(return_value=0)
+    stack.peek_topic = AsyncMock(return_value="recursion")
+    
     interrupt_manager = MagicMock()
+    interrupt_manager.get_stack.return_value = stack
+    interrupt_manager.pop_thread = AsyncMock(return_value=None)
     interrupt_manager.was_interrupted.return_value = False
 
     # Instantiate AgentController

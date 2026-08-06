@@ -193,12 +193,16 @@ llm_request_queue  = None   # request_queue.llm_queue.LLMRequestQueue
 # Multilingual pipeline — only active when MULTILINGUAL_ENABLED=true
 multilingual_pipeline = None
 
+hesitation_detector = None
+hesitation_composer = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load all ML models and agent components once at startup; release on shutdown."""
     global whisper_engine, llm_engine, kokoro_engine, silero_vad_model
     global agent_controller, interrupt_manager, db_manager, profile_manager, domain_corrector, memory_manager
+    global hesitation_detector, hesitation_composer
 
     logger.info("=" * 60)
     logger.info("  EduMentor Voice -- Starting up")
@@ -333,7 +337,7 @@ async def lifespan(app: FastAPI):
         profile_manager    = StudentProfileManager(
             profile_path = Config.STUDENT_PROFILE_PATH,
         )
-        profile_manager.increment_session_count()
+        await profile_manager.increment_session_count()
 
         from speech.domain_corrector import domain_corrector as dc
         domain_corrector = dc
@@ -354,6 +358,15 @@ async def lifespan(app: FastAPI):
         logger.info("[OK] Agent Layer ready.")
     else:
         logger.info("Agent Layer disabled (AGENT_ENABLED=false). Using direct LLM calls.")
+
+    # ── Initialize Hesitation Detection Layer ─────────────────────────────────
+    from agent.hesitation_detector import HesitationDetector
+    from agent.hesitation_composer import HesitationComposer, HesitationConfig
+    
+    hesitation_detector = HesitationDetector()
+    hesitation_composer = HesitationComposer(
+        HesitationConfig(enabled=Config.HESITATION_DETECTION_ENABLED)
+    )
 
     # ── Multilingual Pipeline (optional) ─────────────────────────────────────
     global multilingual_pipeline
@@ -385,13 +398,17 @@ async def lifespan(app: FastAPI):
     logger.info("[RUNTIME CONFIG] NLLB_DEVICE          = %s", nllb_device)
     logger.info("[RUNTIME CONFIG] MMS_TTS_DEVICE       = %s", mms_tts_device)
     logger.info("=" * 60)
-    logger.info("  All engines ready -- accepting connections")
-    logger.info("=" * 60)
+    if Config.REDIS_ENABLED and redis_client is not None:
+        from agent.analytics_aggregator import start_analytics_aggregator
+        asyncio.create_task(start_analytics_aggregator(redis_client, db_manager))
 
     yield  # Server is running
 
     # Shutdown
     logger.info("Shutting down engines ...")
+    from agent.analytics_aggregator import stop_analytics_aggregator
+    await stop_analytics_aggregator()
+
     if queue_housekeeping_task is not None:
         queue_housekeeping_task.cancel()
         try:
@@ -1421,6 +1438,16 @@ async def voice_endpoint(websocket: WebSocket):
             except Exception as e:
                 logger.warning("Failed to save disconnect interrupt state: %s", e)
 
+        # Trigger analytics session end flush
+        if Config.REDIS_ENABLED:
+            try:
+                from agent.analytics_aggregator import get_analytics_aggregator
+                agg = get_analytics_aggregator()
+                if agg:
+                    asyncio.create_task(agg.on_session_end(session_id, user_id))
+            except Exception as e:
+                logger.error("Failed to trigger analytics session end flush: %s", e)
+
         # Clean up session states to prevent memory leaks (Finding #2)
         if agent_controller:
             agent_controller.remove_session(session_id)
@@ -1672,7 +1699,12 @@ async def _run_pipeline(
         lang_pref = "auto"
         glossary_mode = "english"
         if agent_controller is not None:
-            profile = agent_controller._profile_manager.get_profile()
+            profile_fut = agent_controller._profile_manager.get_profile(session_id)
+            if asyncio.iscoroutine(profile_fut) or hasattr(profile_fut, "__await__"):
+                profile = await profile_fut
+            else:
+                profile = profile_fut
+
             if profile:
                 lang_pref = getattr(profile, "output_language_preference", "auto")
                 glossary_mode = getattr(profile, "glossary_mode", "english")
@@ -1787,10 +1819,21 @@ async def _run_pipeline(
                 llm_stream = llm_engine.stream_tokens(llm_input)
 
             await set_state(ConversationState.THINKING)
-            await _stream_llm_and_tts(
-                websocket, llm_stream, loop, set_state,
-                speed, voice, latency_metrics, start_time, student_id=user_id
-            )
+            try:
+                await _stream_llm_and_tts(
+                    websocket, llm_stream, loop, set_state,
+                    speed, voice, latency_metrics, start_time, student_id=user_id, session_id=session_id
+                )
+                if agent_controller:
+                    await agent_controller.emit_turn_event(
+                        session_id, user_id, was_interrupted=False, start_time=start_time, response_lang=response_lang
+                    )
+            except asyncio.CancelledError:
+                if agent_controller:
+                    await agent_controller.emit_turn_event(
+                        session_id, user_id, was_interrupted=True, start_time=start_time, response_lang=response_lang
+                    )
+                raise
         else:
             # Indic response — stream, translate, synthesize sentence-by-sentence
             if agent_controller is not None:
@@ -2187,20 +2230,33 @@ async def _run_pipeline(
             # Task supervisor wrapper to monitor workers. If any task raises an exception (crashes),
             # we catch it, cancel sibling tasks immediately, notify client, and fail cleanly.
             try:
-                await asyncio.gather(reader_task, trans_task, tts_task, sender_task)
+                try:
+                    await asyncio.gather(reader_task, trans_task, tts_task, sender_task)
+                    if agent_controller:
+                        await agent_controller.emit_turn_event(
+                            session_id, user_id, was_interrupted=False, start_time=start_time, response_lang=response_lang
+                        )
+                except asyncio.CancelledError:
+                    if agent_controller:
+                        await agent_controller.emit_turn_event(
+                            session_id, user_id, was_interrupted=True, start_time=start_time, response_lang=response_lang
+                        )
+                    raise
             except Exception as pipeline_exc:
-                logger.error("[MULTILINGUAL] Supervisor detected pipeline worker crash: %s", pipeline_exc)
+                if not isinstance(pipeline_exc, asyncio.CancelledError):
+                    logger.error("[MULTILINGUAL] Supervisor detected pipeline worker crash: %s", pipeline_exc)
                 # Cancel remaining tasks
                 for t in [reader_task, trans_task, tts_task, sender_task]:
                     if not t.done():
                         t.cancel()
-                try:
-                    await websocket.send_json({
-                        "type": "error",
-                        "text": f"Pipeline failure: {str(pipeline_exc)}"
-                    })
-                except Exception:
-                    pass
+                if not isinstance(pipeline_exc, asyncio.CancelledError):
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "text": f"Pipeline failure: {str(pipeline_exc)}"
+                        })
+                    except Exception:
+                        pass
                 raise
 
             # Back-fill DB with the translated response and confirmed language
@@ -2462,25 +2518,53 @@ async def _run_pipeline(
     # Transition to THINKING state
     await set_state(ConversationState.THINKING)
 
+    # ── Hesitation Detection ──────────────────────────────────────────────────
+    is_hesitation = False
+    hesitation_text = ""
+    if Config.HESITATION_DETECTION_ENABLED:
+        overall_rms = float(np.sqrt(np.mean(audio_array ** 2))) if (audio_array is not None and len(audio_array) > 0) else 0.0
+        signal = hesitation_detector.detect(normalized_transcript, audio_energy_signal=overall_rms)
+        if signal.detected:
+            current_topic = None
+            if agent_controller and agent_controller._profile_manager:
+                current_topic = await agent_controller._profile_manager.get_active_topic(session_id)
+            hesitation_response = hesitation_composer.compose(session_id, signal, current_topic=current_topic)
+            if hesitation_response:
+                is_hesitation = True
+                hesitation_text = hesitation_response
+
     # ── 3. LLM streaming + TTS ────────────────────────────────────────────────
     client_ip = websocket.client.host if websocket.client else "unknown"
-    if agent_controller is not None:
-        # ── Agent path: full pipeline with intent, memory, safety, emotion ────
-        token_stream = agent_controller.stream(
-            normalized_transcript, session_id, user_id=user_id, audio_array=audio_array, ip_address=client_ip,
-            voice_style=voice_style
-        )
-        await _stream_llm_and_tts(
-            websocket, token_stream, loop, set_state, speed, voice, latency_metrics, start_time,
-            student_id=user_id, emotion_state=emotion_state
-        )
+    if is_hesitation:
+        async def _hesitation_stream():
+            yield {"raw": hesitation_text, "planned": hesitation_text}
+        token_stream = _hesitation_stream()
     else:
-        # ── Legacy path: direct LLM call (AGENT_ENABLED=false) ───────────────
-        token_stream = llm_engine.stream_tokens(normalized_transcript)
+        if agent_controller is not None:
+            # ── Agent path: full pipeline with intent, memory, safety, emotion ────
+            token_stream = agent_controller.stream(
+                normalized_transcript, session_id, user_id=user_id, audio_array=audio_array, ip_address=client_ip,
+                voice_style=voice_style
+            )
+        else:
+            # ── Legacy path: direct LLM call (AGENT_ENABLED=false) ───────────────
+            token_stream = llm_engine.stream_tokens(normalized_transcript)
+
+    try:
         await _stream_llm_and_tts(
             websocket, token_stream, loop, set_state, speed, voice, latency_metrics, start_time,
-            student_id=user_id, emotion_state=emotion_state
+            student_id=user_id, emotion_state=emotion_state, session_id=session_id
         )
+        if agent_controller and not is_hesitation:
+            await agent_controller.emit_turn_event(
+                session_id, user_id, was_interrupted=False, start_time=start_time, response_lang="english"
+            )
+    except asyncio.CancelledError:
+        if agent_controller and not is_hesitation:
+            await agent_controller.emit_turn_event(
+                session_id, user_id, was_interrupted=True, start_time=start_time, response_lang="english"
+            )
+        raise
 
     # ── 4. Signal turn complete ───────────────────────────────────────────────
     await set_state(ConversationState.IDLE)
@@ -2503,6 +2587,8 @@ async def _stream_llm_and_tts(
     start_time: float,
     student_id: Optional[str] = None,
     emotion_state: Optional[Emotion] = None,
+    session_id: Optional[str] = None,
+    **kwargs
 ) -> None:
     """
     Simultaneously stream LLM tokens to the frontend AND generate TTS audio
@@ -2653,38 +2739,81 @@ async def _stream_llm_and_tts(
                 from agent.output_sanitiser import sanitise
                 sanitized_sentence = sanitise(sentence)
                 logger.debug("TTS worker synthesizing: %r", sanitized_sentence[:60])
-                # Synthesize sentence using dynamic speed and voice with fail-safe logic
                 try:
-                    wav_bytes = await loop.run_in_executor(None, lambda: kokoro_engine.synthesize(sanitized_sentence, speed, voice, student_id))
+                    q = asyncio.Queue()
                     
-                    if wav_bytes is None:
-                        # Fallback to text-only (Part 7)
-                        wav_bytes = b""
-                        if not quota_exhausted_sent:
-                            quota_exhausted_sent = True
-                            notice = "You've used up today's voice budget — I'll keep responding in text for now."
-                            await websocket.send_json({"type": "assistant_text_delta", "text": "\n\n" + notice})
-                    
-                    # Estimate word timestamps using the alignment engine
-                    from speech.alignment import estimate_word_timestamps
-                    try:
-                        if wav_bytes:
-                            timestamps = estimate_word_timestamps(sanitized_sentence, wav_bytes)
-                        else:
-                            timestamps = []
-                    except Exception as align_exc:
-                        logger.warning("Alignment engine failed: %s", align_exc)
-                        timestamps = []
-                except Exception as tts_exc:
-                    logger.error("TTS synthesis failed for sentence %r: %s", sanitized_sentence, tts_exc)
-                    wav_bytes = b""
-                    timestamps = []
+                    def run_synthesis_thread(loop_inst, q_inst):
+                        try:
+                            generator = kokoro_engine.synthesize_stream(sanitized_sentence, speed, voice, student_id)
+                            if generator is None:
+                                loop_inst.call_soon_threadsafe(q_inst.put_nowait, "QUOTA_EXCEEDED")
+                                return
+                            
+                            has_yielded = False
+                            for gs, wav_bytes in generator:
+                                has_yielded = True
+                                loop_inst.call_soon_threadsafe(q_inst.put_nowait, (gs, wav_bytes))
+                            
+                            if not has_yielded:
+                                loop_inst.call_soon_threadsafe(q_inst.put_nowait, (sanitized_sentence, b""))
+                            
+                            loop_inst.call_soon_threadsafe(q_inst.put_nowait, None)
+                        except Exception as e:
+                            logger.error("Error in synthesis thread: %s", e)
+                            loop_inst.call_soon_threadsafe(q_inst.put_nowait, e)
 
-                await audio_queue.put({
-                    "wav": wav_bytes,
-                    "timestamps": timestamps,
-                    "text": sanitized_sentence
-                })
+                    import threading
+                    threading.Thread(
+                        target=run_synthesis_thread,
+                        args=(loop, q),
+                        daemon=True
+                    ).start()
+                    
+                    while True:
+                        item = await q.get()
+                        if item is None:
+                            q.task_done()
+                            break
+                        if item == "QUOTA_EXCEEDED":
+                            q.task_done()
+                            if not quota_exhausted_sent:
+                                quota_exhausted_sent = True
+                                notice = "You've used up today's voice budget — I'll keep responding in text for now."
+                                await websocket.send_json({"type": "assistant_text_delta", "text": "\n\n" + notice})
+                            await audio_queue.put({
+                                "wav": b"",
+                                "timestamps": [],
+                                "text": sanitized_sentence
+                            })
+                            break
+                        if isinstance(item, Exception):
+                            q.task_done()
+                            raise item
+                        
+                        gs, wav_bytes = item
+                        from speech.alignment import estimate_word_timestamps
+                        try:
+                            if wav_bytes and gs:
+                                timestamps = estimate_word_timestamps(gs, wav_bytes)
+                            else:
+                                timestamps = []
+                        except Exception as align_exc:
+                            logger.warning("Alignment engine failed: %s", align_exc)
+                            timestamps = []
+
+                        await audio_queue.put({
+                            "wav": wav_bytes,
+                            "timestamps": timestamps,
+                            "text": gs
+                        })
+                        q.task_done()
+                except Exception as tts_exc:
+                    logger.error("TTS synthesis stream failed for sentence %r: %s", sanitized_sentence, tts_exc)
+                    await audio_queue.put({
+                        "wav": b"",
+                        "timestamps": [],
+                        "text": sanitized_sentence
+                    })
                 tts_queue.task_done()
         except asyncio.CancelledError:
             logger.info("TTS worker cancelled.")

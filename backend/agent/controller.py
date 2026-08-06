@@ -43,6 +43,7 @@ from agent.dialogue_manager import DialogueManager
 from agent.emotion_detector import detect as detect_emotion
 from agent.intent_classifier import IntentClassifier
 from agent.interrupt_manager import InterruptManager
+from agent.interrupt_state import ConversationThread, ThreadStatus
 from agent.knowledge_router import KnowledgeRouter
 from agent.memory_manager import MemoryManager
 from agent.models import (
@@ -51,6 +52,7 @@ from agent.models import (
     Emotion,
     Intent,
     IntentResult,
+    TurnEvent,
 )
 from agent.prompt_builder import PromptBuilder
 from agent.response_planner import ResponsePlanner
@@ -533,6 +535,62 @@ class AgentController:
         non_latin_ratio = get_non_latin_ratio(processed_text)
         intent_result = await self._intent_classifier.classify(processed_text)
 
+        # Check if this is a resume request
+        if intent_result.intent == Intent.RESUME:
+            thread = await self._interrupt.pop_thread(session_id)
+            if thread is not None:
+                # 1. Generate the bridge sentence
+                bridge = await self._interrupt.generate_resume_bridge(thread)
+                
+                # 2. Re-activate the thread
+                thread.status = ThreadStatus.ACTIVE
+                # The bridge is spoken first, followed by the remaining plan.
+                thread.remaining_plan = [bridge] + thread.remaining_plan
+                thread.cut_sentence = None
+                thread.cut_char_offset = 0
+                self._interrupt.set_active_thread(session_id, thread)
+
+                # Send RESUMING state update via stream
+                yield {
+                    "state_update": {
+                        "type": "state",
+                        "state": "RESUMING",
+                        "thread_id": thread.thread_id
+                    }
+                }
+
+                # 3. Stream the bridge + remaining plan
+                full_text = bridge + " " + thread.remaining_plan_as_text()
+                
+                # Yield tokens to simulate streaming
+                words = full_text.split()
+                for idx, word in enumerate(words):
+                    token = (" " if idx > 0 else "") + word
+                    yield {"raw": token, "planned": token}
+                    await asyncio.sleep(0.02) # natural streaming pace
+                
+                # Save to database logs
+                latency_ms = int((time.perf_counter() - start_time) * 1000)
+                if self._db_manager:
+                    asyncio.create_task(
+                        self._db_manager.write_log(
+                            user_id=user_uuid,
+                            session_id=session_uuid,
+                            query_text=original_query if original_query else original_text,
+                            response_text=full_text,
+                            intent_category="RESUME",
+                            input_flagged=False,
+                            output_flagged=False,
+                            latency_ms=latency_ms,
+                            tokens_in=self._count_tokens(original_text),
+                            tokens_out=self._count_tokens(full_text),
+                            response_lang=response_lang,
+                        )
+                    )
+                # Keep dialogue history updated
+                self._memory.add_turn(session_id, processed_text, full_text)
+                return
+
         if intent_result.intent == Intent.SETTINGS_UPDATE:
             target_lang = "auto"
             query = processed_text.lower()
@@ -562,9 +620,11 @@ class AgentController:
                 target_lang = "auto"
 
             # Update the profile
-            profile = self._profile_manager.get_profile()
+            profile = await self._profile_manager.get_profile(session_id)
             profile.output_language_preference = target_lang
-            self._profile_manager._save()
+            await self._profile_manager.save_to_state_store(session_id, profile.to_dict())
+            if self._profile_manager.db_manager:
+                asyncio.create_task(self._profile_manager.db_manager.save_student_profile(session_id, profile.to_dict()))
 
             # ── Detect whether the utterance is a PURE language-switch command
             # or a MIXED request that also contains a substantive question.
@@ -679,8 +739,18 @@ class AgentController:
             history_messages.append({"role": "assistant", "content": r["response_text"]})
 
         # Assemble dialogue context and prompt
-        profile = self._profile_manager.get_profile()
-        session_summary = self._summarizer.get_summary(session_id)
+        profile_fut = self._profile_manager.get_profile(session_id)
+        if asyncio.iscoroutine(profile_fut) or hasattr(profile_fut, "__await__"):
+            profile = await profile_fut
+        else:
+            profile = profile_fut
+
+        summary_fut = self._summarizer.get_summary(session_id)
+        if asyncio.iscoroutine(summary_fut) or hasattr(summary_fut, "__await__"):
+            session_summary = await summary_fut
+        else:
+            session_summary = summary_fut
+
         knowledge_route = self._knowledge_router.route(intent_result.intent, processed_text)
 
         retrieved_docs = None
@@ -739,6 +809,42 @@ class AgentController:
         emotion_result = context_obj.emotion
         topic = self._dialogue_manager.get_topic_from_history(self._memory.get_session(session_id)) or processed_text[:50]
         self._turn_state[session_id]["last_topic"] = topic
+
+
+        # Populate analytics metrics in turn state
+        self._turn_state[session_id]["intent"] = intent_result.intent.value
+        self._turn_state[session_id]["grounding_used"] = retrieved_docs is not None and len(retrieved_docs.strip()) > 0
+        self._turn_state[session_id]["topic"] = topic
+
+        # Check repeat question
+        was_repeat = False
+        if self._memory:
+            history = self._memory.get_session(session_id)
+            if history:
+                from rapidfuzz import fuzz
+                for t in history:
+                    if t.user and fuzz.ratio(processed_text.lower(), t.user.lower()) > 85.0:
+                        was_repeat = True
+                        break
+        self._turn_state[session_id]["was_repeat_question"] = was_repeat
+
+        # Determine discipline/branch
+        from agent.student_profile import TOPIC_TO_DISCIPLINE
+        discipline = TOPIC_TO_DISCIPLINE.get(topic, "cse")
+        if discipline == "ece":
+            discipline = "eee"
+        self._turn_state[session_id]["discipline"] = discipline
+
+        # Emotion
+        self._turn_state[session_id]["emotion"] = emotion_result.emotion.value if emotion_result else "neutral"
+
+
+        active_thread = ConversationThread(
+            topic=topic,
+            original_question=processed_text,
+            status=ThreadStatus.ACTIVE
+        )
+        self._interrupt.set_active_thread(session_id, active_thread)
 
         latency_ms = (time.perf_counter() - start_time) * 1000
         agent_logger.info(
@@ -812,6 +918,33 @@ class AgentController:
                 self._interrupt.track_chars_sent(session_id, len(raw_chunk))
                 cleaned_planned = self._response_planner._clean_token(planned_chunk) if planned_chunk else ""
                 yield {"raw": raw_chunk, "planned": cleaned_planned, "followup": followup_chunk}
+
+        # Check if we should append a digression continue prompt followup
+        stack = self._interrupt.get_stack(session_id)
+        depth_fut = stack.depth()
+        if asyncio.iscoroutine(depth_fut) or hasattr(depth_fut, "__await__"):
+            depth = await depth_fut
+        elif isinstance(depth_fut, int):
+            depth = depth_fut
+        elif "Mock" in type(depth_fut).__name__:
+            depth = 0
+        else:
+            try:
+                depth = int(depth_fut)
+            except Exception:
+                depth = 0
+
+        if depth > 0:
+            peek_fut = stack.peek_topic()
+            if asyncio.iscoroutine(peek_fut) or hasattr(peek_fut, "__await__"):
+                paused_topic = await peek_fut
+            elif "Mock" in type(peek_fut).__name__:
+                paused_topic = "previous topic"
+            else:
+                paused_topic = peek_fut
+            followup_text = f"Continue with {paused_topic}?"
+            yield {"raw": "", "planned": "", "followup": followup_text}
+
 
         full_raw_response = "".join(full_raw_response_list)
         post_processed_response = full_raw_response
@@ -931,11 +1064,15 @@ class AgentController:
                 emotion        = emotion_result.emotion.value,
             )
 
-            self._profile_manager.update_from_turn(
+            update_fut = self._profile_manager.update_from_turn(
                 user_text       = processed_text,
                 assistant_text  = post_processed_response,
                 emotion         = emotion_result.emotion,
+                session_id      = session_id,
             )
+            if asyncio.iscoroutine(update_fut) or hasattr(update_fut, "__await__"):
+                await update_fut
+
 
             if self._mastery:
                 # TODO(mastery): _detect_topics is used directly (not profile_manager.get_active_topic)
@@ -975,7 +1112,13 @@ class AgentController:
             # Increment session stats asynchronously (Part 2)
             active_topic = "General"
             if self._profile_manager:
-                active_topic = self._profile_manager.get_active_topic(str(user_uuid))
+                topic_fut = self._profile_manager.get_active_topic(session_id)
+                if asyncio.iscoroutine(topic_fut) or hasattr(topic_fut, "__await__"):
+                    active_topic = await topic_fut
+                elif "Mock" in type(topic_fut).__name__:
+                    active_topic = "General"
+                else:
+                    active_topic = topic_fut
             
             # Heuristic to detect if turn is self-initiated
             is_self_initiated = True
@@ -1074,4 +1217,45 @@ class AgentController:
         rating = await self._recall_grader.grade(question_ctx, response_text)
         await self._mastery.record_review(user_uuid, concept_slug, rating)
 
+    async def emit_turn_event(self, session_id: str, student_id: str, was_interrupted: bool, start_time: float, response_lang: str) -> None:
+        state = self._turn_state.get(session_id)
+        if not state:
+            return
+        
+        # Unique turn id
+        turn_id = str(uuid.uuid4())
+        total_ms = (time.perf_counter() - start_time) * 1000
+        
+        from datetime import datetime
+        import json
+        from agent.models import TurnEvent
+        
+        event = TurnEvent(
+            student_id=student_id,
+            session_id=session_id,
+            turn_id=turn_id,
+            timestamp=datetime.utcnow().isoformat(),
+            intent=state.get("intent", "UNKNOWN"),
+            topic=state.get("topic", "general"),
+            subject_branch=state.get("discipline", "cse"),
+            language=response_lang,
+            emotion_signal=state.get("emotion", "neutral"),
+            grounding_used=state.get("grounding_used", False),
+            was_repeat_question=state.get("was_repeat_question", False),
+            was_interrupted=was_interrupted,
+            turn_duration_ms=int(total_ms),
+        )
+        
+        from agent.state_store import get_state_store, RedisStateStore
+        store = get_state_store()
+        if isinstance(store, RedisStateStore):
+            await store.client.xadd("turn_events", {"student_id": student_id, "event": json.dumps(event.to_dict())})
+        else:
+            if not hasattr(self, "_test_events"):
+                self._test_events = []
+            self._test_events.append(event)
+        
+        logger.info("[ANALYTICS] Emitted TurnEvent: %s (interrupted=%s)", event.turn_id, was_interrupted)
+
 # Added response_lang support for language-specific dynamic context prompt routing
+
