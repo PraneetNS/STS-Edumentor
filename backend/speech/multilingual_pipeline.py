@@ -152,7 +152,7 @@ class MultilingualPipeline:
         # ── Step 2: Force transcription into the best allowed language if needed ─────
         if not transcript:
             try:
-                _, all_lang_probs = self.whisper_engine.model.detect_language(audio_array)
+                _, _, all_lang_probs = self.whisper_engine.model.detect_language(audio_array)
             except Exception as exc:
                 logger.warning("[MULTILINGUAL STT] detect_language() failed (%s). Defaulting to 'en'.", exc)
                 all_lang_probs = []
@@ -349,7 +349,7 @@ class MultilingualPipeline:
         lang_pref = "auto"
         glossary_mode = "english"
         if self.agent_controller is not None:
-            profile = self.agent_controller._profile_manager.get_profile()
+            profile = await self.agent_controller._profile_manager.get_profile(session_id)
             if profile:
                 lang_pref = getattr(profile, "output_language_preference", "auto")
                 glossary_mode = getattr(profile, "glossary_mode", "english")
