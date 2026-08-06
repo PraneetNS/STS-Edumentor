@@ -206,6 +206,79 @@ class DatabaseManager:
         query_index_mastery_due = """
         CREATE INDEX IF NOT EXISTS idx_mastery_due ON concept_mastery (user_id, due);
         """
+        query_threads_table = """
+        CREATE TABLE IF NOT EXISTS conversation_threads (
+            thread_id            UUID PRIMARY KEY,
+            session_id           UUID NOT NULL,
+            parent_thread_id     UUID,
+            topic                TEXT NOT NULL,
+            original_question    TEXT NOT NULL,
+            spoken_sentences     JSONB NOT NULL DEFAULT '[]'::jsonb,
+            cut_sentence         TEXT,
+            cut_char_offset      INTEGER NOT NULL DEFAULT 0,
+            remaining_plan       JSONB NOT NULL DEFAULT '[]'::jsonb,
+            status               VARCHAR(16) NOT NULL DEFAULT 'active',
+            interruption_summary TEXT,
+            created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+            paused_at            TIMESTAMPTZ
+        );
+        """
+        query_index_threads = """
+        CREATE INDEX IF NOT EXISTS idx_conv_threads_session ON conversation_threads (session_id, status);
+        """
+        query_student_profiles_table = """
+        CREATE TABLE IF NOT EXISTS student_profiles (
+            session_id                   VARCHAR(128) PRIMARY KEY,
+            name                         TEXT NOT NULL DEFAULT 'Student',
+            level                        VARCHAR(32) NOT NULL DEFAULT 'beginner',
+            learning_topics              JSONB NOT NULL DEFAULT '[]'::jsonb,
+            weak_topics                  JSONB NOT NULL DEFAULT '[]'::jsonb,
+            preferred_style              VARCHAR(32) NOT NULL DEFAULT 'examples',
+            session_count                INTEGER NOT NULL DEFAULT 0,
+            discipline                   VARCHAR(32) NOT NULL DEFAULT 'cse',
+            active_topics                JSONB NOT NULL DEFAULT '[]'::jsonb,
+            output_language_preference   VARCHAR(32) NOT NULL DEFAULT 'auto',
+            glossary_mode                VARCHAR(32) NOT NULL DEFAULT 'english',
+            updated_at                   TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        """
+
+        query_topic_mastery = """
+        CREATE TABLE IF NOT EXISTS topic_mastery (
+            student_id UUID NOT NULL,
+            subject_branch TEXT NOT NULL,
+            topic TEXT NOT NULL,
+            attempts INT DEFAULT 0,
+            confused_count INT DEFAULT 0,
+            resolved_count INT DEFAULT 0,
+            repeat_question_count INT DEFAULT 0,
+            confidence_score FLOAT DEFAULT 0.5,
+            last_seen TIMESTAMPTZ,
+            PRIMARY KEY (student_id, subject_branch, topic)
+        );
+        """
+        query_session_summary = """
+        CREATE TABLE IF NOT EXISTS session_summary (
+            session_id UUID PRIMARY KEY,
+            student_id UUID NOT NULL,
+            started_at TIMESTAMPTZ,
+            ended_at TIMESTAMPTZ,
+            turn_count INT,
+            topics_covered TEXT[],
+            interruption_count INT,
+            avg_confidence FLOAT,
+            languages_used TEXT[]
+        );
+        """
+        query_daily_activity = """
+        CREATE TABLE IF NOT EXISTS daily_activity (
+            student_id UUID NOT NULL,
+            activity_date DATE NOT NULL,
+            minutes_active INT DEFAULT 0,
+            turn_count INT DEFAULT 0,
+            PRIMARY KEY (student_id, activity_date)
+        );
+        """
 
         try:
             async with self.pool.acquire() as conn:
@@ -226,6 +299,12 @@ class DatabaseManager:
                 await conn.execute(query_low_conf_table)
                 await conn.execute(query_mastery_table)
                 await conn.execute(query_index_mastery_due)
+                await conn.execute(query_threads_table)
+                await conn.execute(query_index_threads)
+                await conn.execute(query_student_profiles_table)
+                await conn.execute(query_topic_mastery)
+                await conn.execute(query_session_summary)
+                await conn.execute(query_daily_activity)
                 logger.info("[OK] PostgreSQL database schema and indexes verified.")
         except Exception as e:
             logger.error("Failed to verify database schema: %s", e)
@@ -1208,3 +1287,180 @@ class DatabaseManager:
             },
             "lifetime_sessions": lifetime_sessions
         }
+
+    async def save_thread(self, thread, session_id: str) -> None:
+        if not self.enabled or not self.pool:
+            return
+        query = """
+        INSERT INTO conversation_threads (
+            thread_id, session_id, parent_thread_id, topic, original_question,
+            spoken_sentences, cut_sentence, cut_char_offset, remaining_plan,
+            status, interruption_summary, created_at, paused_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        ON CONFLICT (thread_id) DO UPDATE SET
+            status = EXCLUDED.status,
+            paused_at = EXCLUDED.paused_at,
+            spoken_sentences = EXCLUDED.spoken_sentences,
+            cut_sentence = EXCLUDED.cut_sentence,
+            cut_char_offset = EXCLUDED.cut_char_offset,
+            remaining_plan = EXCLUDED.remaining_plan,
+            interruption_summary = EXCLUDED.interruption_summary;
+        """
+        try:
+            import json
+            from uuid import UUID
+            async with self.pool.acquire() as conn:
+                await conn.execute(
+                    query,
+                    UUID(thread.thread_id),
+                    UUID(session_id),
+                    UUID(thread.parent_thread_id) if thread.parent_thread_id else None,
+                    thread.topic,
+                    thread.original_question,
+                    json.dumps(thread.spoken_sentences),
+                    thread.cut_sentence,
+                    thread.cut_char_offset,
+                    json.dumps(thread.remaining_plan),
+                    thread.status.value if hasattr(thread.status, 'value') else thread.status,
+                    thread.interruption_summary,
+                    thread.created_at,
+                    thread.paused_at,
+                )
+        except Exception as e:
+            logger.error("Failed to save thread %s: %s", thread.thread_id, e)
+
+    async def load_threads(self, session_id: str) -> List[Any]:
+        if not self.enabled or not self.pool:
+            return []
+        query = """
+        SELECT thread_id, parent_thread_id, topic, original_question,
+               spoken_sentences, cut_sentence, cut_char_offset, remaining_plan,
+               status, interruption_summary, created_at, paused_at
+        FROM conversation_threads
+        WHERE session_id = $1 AND status = 'paused'
+        ORDER BY created_at ASC;
+        """
+        try:
+            import json
+            from uuid import UUID
+            from agent.interrupt_state import ConversationThread, ThreadStatus
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, UUID(session_id))
+                threads = []
+                for r in rows:
+                    threads.append(ConversationThread(
+                        thread_id=str(r['thread_id']),
+                        parent_thread_id=str(r['parent_thread_id']) if r['parent_thread_id'] else None,
+                        topic=r['topic'] or "",
+                        original_question=r['original_question'] or "",
+                        spoken_sentences=json.loads(r['spoken_sentences']) if r['spoken_sentences'] else [],
+                        cut_sentence=r['cut_sentence'],
+                        cut_char_offset=r['cut_char_offset'] or 0,
+                        remaining_plan=json.loads(r['remaining_plan']) if r['remaining_plan'] else [],
+                        status=ThreadStatus(r['status']) if r['status'] else ThreadStatus.PAUSED,
+                        interruption_summary=r['interruption_summary'],
+                        created_at=r['created_at'],
+                        paused_at=r['paused_at']
+                    ))
+                return threads
+        except Exception as e:
+            logger.error("Failed to load threads for session %s: %s", session_id, e)
+            return []
+
+    async def update_thread_status(self, thread_id: str, status: str) -> None:
+        if not self.enabled or not self.pool:
+            return
+        query = """
+        UPDATE conversation_threads
+        SET status = $2
+        WHERE thread_id = $1;
+        """
+        try:
+            from uuid import UUID
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, UUID(thread_id), status)
+        except Exception as e:
+            logger.error("Failed to update thread status for %s: %s", thread_id, e)
+
+    async def expire_old_threads(self, ttl_hours: int) -> None:
+        if not self.enabled or not self.pool:
+            return
+        query = """
+        DELETE FROM conversation_threads
+        WHERE status = 'paused' AND paused_at < now() - $1 * INTERVAL '1 hour';
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, float(ttl_hours))
+        except Exception as e:
+            logger.error("Failed to expire old threads: %s", e)
+
+    async def save_student_profile(self, session_id: str, profile_dict: dict) -> None:
+        """Upsert the student profile for a given session into student_profiles table."""
+        if not self.enabled or not self.pool:
+            return
+        query = """
+        INSERT INTO student_profiles (
+            session_id, name, level, learning_topics, weak_topics, preferred_style,
+            session_count, discipline, active_topics, output_language_preference, glossary_mode, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+        ON CONFLICT (session_id) DO UPDATE SET
+            name = EXCLUDED.name,
+            level = EXCLUDED.level,
+            learning_topics = EXCLUDED.learning_topics,
+            weak_topics = EXCLUDED.weak_topics,
+            preferred_style = EXCLUDED.preferred_style,
+            session_count = EXCLUDED.session_count,
+            discipline = EXCLUDED.discipline,
+            active_topics = EXCLUDED.active_topics,
+            output_language_preference = EXCLUDED.output_language_preference,
+            glossary_mode = EXCLUDED.glossary_mode,
+            updated_at = now();
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(
+                    query,
+                    session_id,
+                    profile_dict.get("name", "Student"),
+                    profile_dict.get("level", "beginner"),
+                    json.dumps(profile_dict.get("learning_topics", [])),
+                    json.dumps(profile_dict.get("weak_topics", [])),
+                    profile_dict.get("preferred_style", "examples"),
+                    profile_dict.get("session_count", 0),
+                    profile_dict.get("discipline", "cse"),
+                    json.dumps(profile_dict.get("active_topics", [])),
+                    profile_dict.get("output_language_preference", "auto"),
+                    profile_dict.get("glossary_mode", "english")
+                )
+        except Exception as e:
+            logger.error("Failed to save student profile for session %s: %s", session_id, e)
+
+    async def load_student_profile(self, session_id: str) -> Optional[dict]:
+        """Load student profile from database for a given session."""
+        if not self.enabled or not self.pool:
+            return None
+        query = """
+        SELECT name, level, learning_topics, weak_topics, preferred_style, session_count,
+               discipline, active_topics, output_language_preference, glossary_mode
+        FROM student_profiles WHERE session_id = $1;
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(query, session_id)
+                if row:
+                    return {
+                        "name": row["name"],
+                        "level": row["level"],
+                        "learning_topics": json.loads(row["learning_topics"]),
+                        "weak_topics": json.loads(row["weak_topics"]),
+                        "preferred_style": row["preferred_style"],
+                        "session_count": row["session_count"],
+                        "discipline": row["discipline"],
+                        "active_topics": json.loads(row["active_topics"]),
+                        "output_language_preference": row["output_language_preference"],
+                        "glossary_mode": row["glossary_mode"],
+                    }
+        except Exception as e:
+            logger.error("Failed to load student profile for session %s: %s", session_id, e)
+        return None

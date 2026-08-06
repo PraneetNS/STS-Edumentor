@@ -15,7 +15,8 @@ Design principles:
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from datetime import datetime
+from dataclasses import dataclass, field, asdict
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -46,6 +47,8 @@ class Intent(str, Enum):
     CAREER_GUIDANCE     = "CAREER_GUIDANCE"       # "How do I get a job?"
     UNSAFE              = "UNSAFE"                # Caught by safety guard
     SETTINGS_UPDATE     = "SETTINGS_UPDATE"       # "switch to Kannada"
+    RESUME              = "RESUME"                # "continue", "go on"
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -499,3 +502,31 @@ class AgentResponse:
     full_text:       str             = ""
     used_rag:        bool            = False
     was_interrupted: bool            = False
+
+
+@dataclass
+class TurnEvent:
+    """
+    Structured event emitted on every completed or interrupted dialogue turn
+    for real-time student analytics.
+    """
+    student_id: str
+    session_id: str
+    turn_id: str
+    timestamp: str  # ISO 8601 string format: YYYY-MM-DDTHH:MM:SS.ffffff
+
+    intent: str
+    topic: Optional[str]
+    subject_branch: Optional[str]
+    language: str
+
+    emotion_signal: Optional[str]
+    grounding_used: bool
+    was_repeat_question: bool
+    was_interrupted: bool
+    turn_duration_ms: int
+    resolved: Optional[bool] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
