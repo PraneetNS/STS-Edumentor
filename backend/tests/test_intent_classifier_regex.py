@@ -40,7 +40,8 @@ def test_intent_classifier_quick_rules():
         "what is page 5 of pdf": Intent.PDF_QUESTION,
         "fix my error": Intent.DEBUGGING,
         "write a class": Intent.CODE_HELP,
-        "continue explaining": Intent.FOLLOW_UP,
+        "tell me more": Intent.FOLLOW_UP,
+        "continue explaining": Intent.RESUME,
     }
 
     for query, expected_intent in non_greeting_queries.items():
