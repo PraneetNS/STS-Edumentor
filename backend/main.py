@@ -2317,11 +2317,44 @@ async def _run_pipeline(
                 pool = _ML_FILLER_PHRASES.get(lang, _ML_FILLER_PHRASES["english"])
                 return random.choice(pool)
 
+            async def filler_watchdog():
+                try:
+                    await asyncio.sleep(_FILLER_DELAY_SECONDS)
+                    if real_content_started["flag"]:
+                        return  # real content already started queuing — don't add a filler
+                    
+                    filler_text = _pick_ml_filler_text(response_lang)
+                    logger.info("[ML-FILLER-WATCHDOG] Fired! Synthesizing filler: %r in %r", filler_text, response_lang)
+                    
+                    from speech.multilingual_pipeline import MMS_TTS_LANG_MAP
+                    if tts_engine == "kokoro":
+                        wav_bytes = await loop.run_in_executor(
+                            None, lambda: kokoro_engine.synthesize(filler_text, speed, voice, user_id)
+                        )
+                    else:
+                        mms_lang = MMS_TTS_LANG_MAP.get(response_lang, "hin")
+                        wav_bytes = await loop.run_in_executor(
+                            None, lambda: multilingual_pipeline.mms_tts.synthesize(filler_text, mms_lang)
+                        )
+                    
+                    if real_content_started["flag"]:
+                        return  # real content started while we were synthesizing — drop the filler
+                    
+                    if wav_bytes:
+                        logger.info("[ML-FILLER-WATCHDOG] Enqueuing filler audio to audio_queue.")
+                        await audio_queue.put(wav_bytes)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    logger.warning("Multilingual filler watchdog failed (non-fatal): %s", exc)
+
             await set_state(ConversationState.THINKING)
+            real_content_started = {"flag": False}
             reader_task = asyncio.create_task(llm_reader())
             trans_task = asyncio.create_task(translator_worker())
             tts_task = asyncio.create_task(tts_worker())
             sender_task = asyncio.create_task(audio_sender())
+            filler_task = asyncio.create_task(filler_watchdog())
 
             # Task supervisor wrapper to monitor workers. If any task raises an exception (crashes),
             # we catch it, cancel sibling tasks immediately, notify client, and fail cleanly.
