@@ -2330,32 +2330,47 @@ async def _run_pipeline(
             await websocket.send_json({"type": "assistant_finished"})
             return
 
+    total_samples = len(audio_array)
+    can_bypass_stt = (
+        pre_transcribed_text
+        and live_transcribed_len is not None
+        and (total_samples - live_transcribed_len) <= 4800
+    )
     min_avg_logprob = 0.0
     try:
-        # Always run the full Whisper STT to get the accurate final transcript.
-        # pre_transcribed_text is a partial live capture and must not bypass real STT.
-        logger.info("Transcribing %.1f seconds of audio …", len(audio_array) / Config.AUDIO_SAMPLE_RATE)
-
-        discipline = "cse"
-        if profile_manager:
-            discipline = profile_manager.get_discipline()
-        initial_prompt = whisper_engine.get_prompt_for_discipline(discipline, user_corrections)
-
-        # Run blocking Whisper in a thread to keep the event loop free
-        transcript, min_avg_logprob = await loop.run_in_executor(
-            None,
-            lambda: whisper_engine.transcribe_with_confidence(
-                audio_array, initial_prompt=initial_prompt
+        if can_bypass_stt:
+            logger.info(
+                "[STAGE-1-BYPASS] Bypassing final STT: reusing live transcript %r (audio length delta: %.3fs)",
+                pre_transcribed_text, (total_samples - live_transcribed_len) / 16000
             )
-        )
-        latency_metrics["whisper_done"] = round(time.time() - start_time, 2)
-
-        # If full STT returned nothing, fall back to the live transcript as a last resort
-        if not transcript and pre_transcribed_text:
-            logger.info("Full STT empty — falling back to live transcript: %r", pre_transcribed_text)
             transcript = pre_transcribed_text
             min_avg_logprob = 0.0
             latency_metrics["whisper_done"] = 0.0
+        else:
+            # Always run the full Whisper STT to get the accurate final transcript.
+            # pre_transcribed_text is a partial live capture and must not bypass real STT.
+            logger.info("Transcribing %.1f seconds of audio …", len(audio_array) / Config.AUDIO_SAMPLE_RATE)
+
+            discipline = "cse"
+            if profile_manager:
+                discipline = profile_manager.get_discipline()
+            initial_prompt = whisper_engine.get_prompt_for_discipline(discipline, user_corrections)
+
+            # Run blocking Whisper in a thread to keep the event loop free
+            transcript, min_avg_logprob = await loop.run_in_executor(
+                None,
+                lambda: whisper_engine.transcribe_with_confidence(
+                    audio_array, initial_prompt=initial_prompt
+                )
+            )
+            latency_metrics["whisper_done"] = round(time.time() - start_time, 2)
+
+            # If full STT returned nothing, fall back to the live transcript as a last resort
+            if not transcript and pre_transcribed_text:
+                logger.info("Full STT empty — falling back to live transcript: %r", pre_transcribed_text)
+                transcript = pre_transcribed_text
+                min_avg_logprob = 0.0
+                latency_metrics["whisper_done"] = 0.0
 
     except Exception as stt_exc:
         logger.exception("STT Transcription failed: %s", stt_exc)
