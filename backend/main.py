@@ -1092,7 +1092,7 @@ async def voice_endpoint(websocket: WebSocket):
     await set_state(ConversationState.IDLE)
 
     async def live_transcription_loop():
-        nonlocal final_transcript, latest_live_transcript
+        nonlocal final_transcript, latest_live_transcript, live_transcribed_len_samples
         try:
             from speech.normalizer import speech_normalizer
             while True:
@@ -1114,6 +1114,7 @@ async def voice_endpoint(websocket: WebSocket):
                             language=None,  # Allow auto-detection during live feedback
                         )
                     )
+                    live_transcribed_len_samples = len(audio_array)
                     if live_text:
                         # Apply speech correction normalization
                         normalized_text = speech_normalizer.normalize(live_text, session_id=session_id)
