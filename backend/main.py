@@ -1911,6 +1911,9 @@ async def _run_pipeline(
                                         should_flush = True
                                     elif len(stripped) >= 8 and re.search(r"(?<=\S{2})[,;:—\n\r]+['\"`’”\]\)]*(?:\s|$)", stripped):
                                         should_flush = True
+                                    # Flush on word boundary at 10+ chars - faster Time-to-First-Audio
+                                    elif len(stripped) >= 10 and (raw_token and (raw_token.isspace() or any(char in raw_token for char in ".,!?;:-—"))):
+                                        should_flush = True
                                     elif len(stripped) >= Config.TTS_CHUNK_CHARS:
                                         should_flush = True
                                 else:
