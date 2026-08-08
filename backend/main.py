@@ -2113,10 +2113,9 @@ async def _run_pipeline(
                     nonlocal is_first_sentence, tts_idx
                     t_tts = time.time()
                     if use_kokoro:
-                        logger.info("[ML-TTS-WORKER] Synthesizing[%d] with Kokoro fallback: %r ...", tts_idx, text)
-                        wav_bytes = await loop.run_in_executor(
-                            None, lambda: kokoro_engine.synthesize(text, voice="af_heart")
-                        )
+                        logger.info("[ML-TTS-WORKER] Synthesizing[%d] with Kokoro fallback stream: %r ...", tts_idx, text)
+                        q = asyncio.Queue()
+                        quota_exhausted_sent = False
                     else:
                         logger.info("[ML-TTS-WORKER] Synthesizing[%d] with mms_lang=%r: %r ...", tts_idx, mms_lang, text)
                         wav_bytes = await loop.run_in_executor(
