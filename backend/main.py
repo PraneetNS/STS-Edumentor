@@ -2303,6 +2303,20 @@ async def _run_pipeline(
                     logger.exception("[ML-AUDIO-SENDER] ERROR: %s", exc)
                     raise
 
+            _FILLER_DELAY_SECONDS = 0.6  # fires if translation/LLM hasn't started streaming within 600ms
+            
+            _ML_FILLER_PHRASES = {
+                "hindi": ["ठीक है, देखते हैं।", "अरे, एक सेकंड दीजिए।"],
+                "kannada": ["ಸರಿ, ನೋಡೋಣ.", "ಒಂದು ಕ್ಷಣ ತಡೆಯಿರಿ."],
+                "marathi": ["ठीक आहे, पाहूया.", "एक क्षण द्या."],
+                "english": ["Okay, let's see.", "Alright, one moment."]
+            }
+
+            def _pick_ml_filler_text(lang) -> str:
+                import random
+                pool = _ML_FILLER_PHRASES.get(lang, _ML_FILLER_PHRASES["english"])
+                return random.choice(pool)
+
             await set_state(ConversationState.THINKING)
             reader_task = asyncio.create_task(llm_reader())
             trans_task = asyncio.create_task(translator_worker())
