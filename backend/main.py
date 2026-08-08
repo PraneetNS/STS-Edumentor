@@ -2142,38 +2142,74 @@ async def _run_pipeline(
                             target=run_synthesis_thread,
                             args=(loop, q),
                             daemon=True
-                        ).start()
+                        while True:
+                            item = await q.get()
+                            if item is None:
+                                q.task_done()
+                                break
+                            if item == "QUOTA_EXCEEDED":
+                                q.task_done()
+                                if not quota_exhausted_sent:
+                                    quota_exhausted_sent = True
+                                    notice = "You've used up today's voice budget — I'll keep responding in text for now."
+                                    await websocket.send_json({"type": "assistant_text_delta", "text": "\n\n" + notice})
+                                await audio_queue.put(b"")
+                                break
+                            if isinstance(item, Exception):
+                                q.task_done()
+                                raise item
+                            
+                            gs, wav_bytes = item
+                            if wav_bytes:
+                                logger.info("[ML-TTS-WORKER] Putting streamed Kokoro chunk (%d bytes) to audio_queue.", len(wav_bytes))
+                                await audio_queue.put(wav_bytes)
+                            q.task_done()
+                        
+                        tts_latency = time.time() - t_tts
+                        logger.info("[ML-TTS-WORKER] Synth[%d] streaming done in %.3fs", tts_idx, tts_latency)
+                        
+                        try:
+                            from observability.metrics import (
+                                multilingual_tts_ttf_seconds,
+                                multilingual_tts_completion_seconds
+                            )
+                            if is_first_sentence:
+                                is_first_sentence = False
+                                multilingual_tts_ttf_seconds.labels(language=response_lang).observe(tts_latency)
+                            multilingual_tts_completion_seconds.labels(language=response_lang).observe(tts_latency)
+                        except Exception as exc:
+                            logger.warning("Failed to record TTS metrics in main: %s", exc)
                     else:
                         logger.info("[ML-TTS-WORKER] Synthesizing[%d] with mms_lang=%r: %r ...", tts_idx, mms_lang, text)
                         wav_bytes = await loop.run_in_executor(
                             None, lambda: multilingual_pipeline.mms_tts.synthesize(text, mms_lang)
                         )
-                    tts_latency = time.time() - t_tts
-                    logger.info(
-                        "[ML-TTS-WORKER] Synth[%d] done in %.3fs | wav_bytes len=%d (empty=%s)",
-                        tts_idx, tts_latency, len(wav_bytes), len(wav_bytes) == 0
-                    )
-
-                    if len(wav_bytes) == 0:
-                        logger.error(
-                            "[ML-TTS-WORKER] MMS-TTS returned EMPTY bytes for sentence[%d]=%r lang=%r",
-                            tts_idx, text, mms_lang
+                        tts_latency = time.time() - t_tts
+                        logger.info(
+                            "[ML-TTS-WORKER] Synth[%d] done in %.3fs | wav_bytes len=%d (empty=%s)",
+                            tts_idx, tts_latency, len(wav_bytes), len(wav_bytes) == 0
                         )
 
-                    try:
-                        from observability.metrics import (
-                            multilingual_tts_ttf_seconds,
-                            multilingual_tts_completion_seconds
-                        )
-                        if is_first_sentence:
-                            is_first_sentence = False
-                            multilingual_tts_ttf_seconds.labels(language=response_lang).observe(tts_latency)
-                        multilingual_tts_completion_seconds.labels(language=response_lang).observe(tts_latency)
-                    except Exception as exc:
-                        logger.warning("Failed to record TTS metrics in main: %s", exc)
+                        if len(wav_bytes) == 0:
+                            logger.error(
+                                "[ML-TTS-WORKER] MMS-TTS returned EMPTY bytes for sentence[%d]=%r lang=%r",
+                                tts_idx, text, mms_lang
+                            )
 
-                    logger.info("[ML-TTS-WORKER] Putting audio[%d] (%d bytes) to audio_queue.", tts_idx, len(wav_bytes))
-                    await audio_queue.put(wav_bytes)
+                        try:
+                            from observability.metrics import (
+                                multilingual_tts_ttf_seconds,
+                                multilingual_tts_completion_seconds
+                            )
+                            if is_first_sentence:
+                                is_first_sentence = False
+                                multilingual_tts_ttf_seconds.labels(language=response_lang).observe(tts_latency)
+                            multilingual_tts_completion_seconds.labels(language=response_lang).observe(tts_latency)
+                        except Exception as exc:
+                            logger.warning("Failed to record TTS metrics in main: %s", exc)
+
+                        logger.info("[ML-TTS-WORKER] Putting audio[%d] (%d bytes) to audio_queue.", tts_idx, len(wav_bytes))
+                        await audio_queue.put(wav_bytes)
                     tts_idx += 1
 
                 try:
