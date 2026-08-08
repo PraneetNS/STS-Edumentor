@@ -2361,6 +2361,11 @@ async def _run_pipeline(
             try:
                 try:
                     await asyncio.gather(reader_task, trans_task, tts_task, sender_task)
+                    filler_task.cancel()
+                    try:
+                        await filler_task
+                    except asyncio.CancelledError:
+                        pass
                     if agent_controller:
                         await agent_controller.emit_turn_event(
                             session_id, user_id, was_interrupted=False, start_time=start_time, response_lang=response_lang
@@ -2375,9 +2380,10 @@ async def _run_pipeline(
                 if not isinstance(pipeline_exc, asyncio.CancelledError):
                     logger.error("[MULTILINGUAL] Supervisor detected pipeline worker crash: %s", pipeline_exc)
                 # Cancel remaining tasks
-                for t in [reader_task, trans_task, tts_task, sender_task]:
+                for t in [reader_task, trans_task, tts_task, sender_task, filler_task]:
                     if not t.done():
                         t.cancel()
+                await asyncio.gather(reader_task, trans_task, tts_task, sender_task, filler_task, return_exceptions=True)
                 if not isinstance(pipeline_exc, asyncio.CancelledError):
                     try:
                         await websocket.send_json({
