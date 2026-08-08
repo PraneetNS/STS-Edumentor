@@ -1065,6 +1065,7 @@ async def voice_endpoint(websocket: WebSocket):
     live_transcribe_task: Optional[asyncio.Task] = None
     final_transcript = ""
     latest_live_transcript = ""
+    live_transcribed_len_samples = 0
 
     # Initialize TranscriptStabilizer
     stabilizer = TranscriptStabilizer()
