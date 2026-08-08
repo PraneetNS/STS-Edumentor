@@ -1482,6 +1482,7 @@ async def _run_pipeline(
     voice_style: Optional[str] = None,
     accent: Optional[str] = None,
     speech_speed: Optional[float] = None,
+    live_transcribed_len: Optional[int] = None,
 ) -> None:
     """
     Execute the full STT → LLM → TTS pipeline for one user utterance.
