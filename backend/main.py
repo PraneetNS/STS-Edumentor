@@ -2116,6 +2116,33 @@ async def _run_pipeline(
                         logger.info("[ML-TTS-WORKER] Synthesizing[%d] with Kokoro fallback stream: %r ...", tts_idx, text)
                         q = asyncio.Queue()
                         quota_exhausted_sent = False
+                        
+                        def run_synthesis_thread(loop_inst, q_inst):
+                            try:
+                                generator = kokoro_engine.synthesize_stream(text, speed, "af_heart", user_id)
+                                if generator is None:
+                                    loop_inst.call_soon_threadsafe(q_inst.put_nowait, "QUOTA_EXCEEDED")
+                                    return
+                                
+                                has_yielded = False
+                                for gs, wav_bytes in generator:
+                                    has_yielded = True
+                                    loop_inst.call_soon_threadsafe(q_inst.put_nowait, (gs, wav_bytes))
+                                
+                                if not has_yielded:
+                                    loop_inst.call_soon_threadsafe(q_inst.put_nowait, (text, b""))
+                                
+                                loop_inst.call_soon_threadsafe(q_inst.put_nowait, None)
+                            except Exception as e:
+                                logger.error("Error in synthesis thread: %s", e)
+                                loop_inst.call_soon_threadsafe(q_inst.put_nowait, e)
+
+                        import threading
+                        threading.Thread(
+                            target=run_synthesis_thread,
+                            args=(loop, q),
+                            daemon=True
+                        ).start()
                     else:
                         logger.info("[ML-TTS-WORKER] Synthesizing[%d] with mms_lang=%r: %r ...", tts_idx, mms_lang, text)
                         wav_bytes = await loop.run_in_executor(
