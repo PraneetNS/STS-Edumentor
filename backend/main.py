@@ -2215,6 +2215,8 @@ async def _run_pipeline(
                 try:
                     while True:
                         sentence = await tts_queue.get()
+                        if sentence is not None:
+                            real_content_started["flag"] = True
                         logger.info("[ML-TTS-WORKER] Got from tts_queue: %r", sentence)
                         
                         if sentence is None:
