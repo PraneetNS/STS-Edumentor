@@ -1178,7 +1178,8 @@ async def voice_endpoint(websocket: WebSocket):
                 user_corrections,
                 voice_style=session_voice_style,
                 accent=session_accent,
-                speech_speed=session_speech_speed
+                speech_speed=session_speech_speed,
+                live_transcribed_len=live_transcribed_len_samples
             )
         except asyncio.CancelledError:
             logger.info("Pipeline execution cancelled.")
