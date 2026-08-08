@@ -1659,34 +1659,45 @@ async def _run_pipeline(
                     await websocket.send_json({"type": "assistant_finished"})
                     return
 
-        # STT — always run the full multilingual transcription to get the accurate final transcript.
-        # The live transcript (pre_transcribed_text) is only a partial mid-utterance capture and
-        # must NOT be used as the definitive input to the LLM or the displayed transcript.
-        # It is kept only as a fallback if the real STT returns empty.
-        t_stt = time.time()
-        logger.info("[ML-STAGE-1] STT: calling multilingual transcribe (no forced language) ...")
-
-        def _transcribe_runner():
-            return multilingual_pipeline.transcribe_multilingual(
-                audio_array_ml,
-                initial_prompt=Config.MULTILINGUAL_WHISPER_PROMPT
-            )
-
-        transcript, whisper_lang, stt_latency = await loop.run_in_executor(None, _transcribe_runner)
-        logger.info(
-            "[ML-STAGE-1] STT done in %.3fs | whisper_lang=%r | transcript repr=%r",
-            stt_latency, whisper_lang, transcript
+        total_samples = len(audio_array_ml)
+        can_bypass_stt = (
+            pre_transcribed_text
+            and live_transcribed_len is not None
+            and (total_samples - live_transcribed_len) <= 4800
         )
-
-        # If full STT returned nothing, fall back to the live transcript as a last resort
-        if not transcript and pre_transcribed_text:
+        if can_bypass_stt:
             logger.info(
-                "[ML-STAGE-1] Full STT empty — falling back to live transcript: %r",
-                pre_transcribed_text,
+                "[ML-STAGE-1-BYPASS] Bypassing final STT: reusing live transcript %r (audio length delta: %.3fs)",
+                pre_transcribed_text, (total_samples - live_transcribed_len) / 16000
             )
             transcript = pre_transcribed_text
             whisper_lang = None
             stt_latency = 0.0
+        else:
+            t_stt = time.time()
+            logger.info("[ML-STAGE-1] STT: calling multilingual transcribe (no forced language) ...")
+
+            def _transcribe_runner():
+                return multilingual_pipeline.transcribe_multilingual(
+                    audio_array_ml,
+                    initial_prompt=Config.MULTILINGUAL_WHISPER_PROMPT
+                )
+
+            transcript, whisper_lang, stt_latency = await loop.run_in_executor(None, _transcribe_runner)
+            logger.info(
+                "[ML-STAGE-1] STT done in %.3fs | whisper_lang=%r | transcript repr=%r",
+                stt_latency, whisper_lang, transcript
+            )
+
+            # If full STT returned nothing, fall back to the live transcript as a last resort
+            if not transcript and pre_transcribed_text:
+                logger.info(
+                    "[ML-STAGE-1] Full STT empty — falling back to live transcript: %r",
+                    pre_transcribed_text,
+                )
+                transcript = pre_transcribed_text
+                whisper_lang = None
+                stt_latency = 0.0
 
 
         if not transcript:
