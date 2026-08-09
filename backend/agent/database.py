@@ -1466,3 +1466,21 @@ class DatabaseManager:
         except Exception as e:
             logger.error("Failed to load student profile for session %s: %s", session_id, e)
         return None
+
+    async def purge_old_conversation_logs(self, retention_days: int) -> int:
+        """Purge conversation logs older than the specified retention window."""
+        if not self.pool:
+            return 0
+        query = """
+        DELETE FROM conversation_logs
+        WHERE created_at < now() - ($1 * INTERVAL '1 day');
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                res = await conn.execute(query, float(retention_days))
+                if res.startswith("DELETE "):
+                    return int(res.split(" ")[1])
+                return 0
+        except Exception as e:
+            logger.error("Failed to purge old conversation logs: %s", e)
+            return 0
