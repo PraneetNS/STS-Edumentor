@@ -1162,6 +1162,22 @@ async def voice_endpoint(websocket: WebSocket):
     client_ip = websocket.client.host if websocket.client else "unknown"
     registered_connection = False
 
+    # 1. Frequency connection attempt rate limit check per IP
+    if not rate_limiter.check_connection_attempt_rate(client_ip):
+        logger.warning("Rejected WebSocket connection: connection attempt rate limit exceeded for IP %s", client_ip)
+        await websocket.accept()
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="connection attempt rate limit exceeded")
+        return
+
+    # 2. Origin Header Validation in production environment
+    if Config.ENVIRONMENT == "production":
+        origin = websocket.headers.get("origin")
+        if not origin or (origin not in cors_origins and origin != websocket.url.netloc):
+            logger.warning("Rejected WebSocket connection: origin %r is not allowed.", origin)
+            await websocket.accept()
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="invalid connection origin")
+            return
+
     # ── Token Authentication Check ──
     token = websocket.query_params.get("token")
     if not token:
@@ -1180,6 +1196,22 @@ async def voice_endpoint(websocket: WebSocket):
         logger.warning("Rejected WebSocket connection: invalid auth token. Error: %s", e)
         await websocket.accept()
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="invalid auth token")
+        return
+
+    # 3. Session ID validation (UUID/alphanumeric path format) and ownership checks
+    session_id = websocket.query_params.get("session_id") or f"{websocket.client.host}:{websocket.client.port}"
+    import re
+    if not re.match(r"^[a-zA-Z0-9_\-.:]+$", session_id):
+        logger.warning("Rejected WebSocket connection: invalid session_id format %r", session_id)
+        await websocket.accept()
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="invalid session id format")
+        return
+
+    # Verify session ownership to resolve IDOR security risk
+    if not await AccessControl.verify_session_ownership(session_id, str(user_uuid), db_manager.pool if db_manager else None):
+        logger.warning("Rejected WebSocket connection: user %s does not own session %s", user_uuid, session_id)
+        await websocket.accept()
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="session ownership violation")
         return
 
     if not rate_limiter.check_connection_limit(client_ip):
