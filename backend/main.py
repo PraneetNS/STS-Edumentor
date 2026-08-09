@@ -456,6 +456,8 @@ async def lifespan(app: FastAPI):
 # FastAPI application
 # ─────────────────────────────────────────────────────────────────────────────
 
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, WebSocketException, status, Response, Cookie, Depends, HTTPException, Header, Request
+
 app = FastAPI(
     title="EduMentor Voice API",
     description="Real-time AI voice tutor — STT → LLM → TTS pipeline",
@@ -463,13 +465,42 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Adjust CORS allowed origins to prevent wildcard '*' with credentials enabled.
+cors_origins = Config.CORS_ORIGINS
+if "*" in cors_origins:
+    if Config.ENVIRONMENT == "production":
+        logger.warning("[CORS] Wildcard '*' allowed origin is not allowed in production with credentials. Disabling wildcard origin.")
+        cors_origins = []
+    else:
+        # Standard Vite ports for local development
+        cors_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=Config.CORS_ORIGINS,
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    # Set standard security headers
+    csp = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data: https://images.unsplash.com; "
+        "connect-src 'self' ws://localhost:8000 wss://localhost:8000 http://localhost:8000 http://127.0.0.1:8000 ws://127.0.0.1:8000 wss://127.0.0.1:8000 https://oauth2.googleapis.com https://www.googleapis.com;"
+    )
+    response.headers["Content-Security-Policy"] = csp
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 
 # ─────────────────────────────────────────────────────────────────────────────
