@@ -168,6 +168,7 @@ class DatabaseManager:
             provider      TEXT NOT NULL DEFAULT 'email',
             password_hash TEXT,
             email_verified BOOLEAN DEFAULT FALSE,
+            role          VARCHAR(32) NOT NULL DEFAULT 'student',
             created_at    TIMESTAMPTZ DEFAULT now(),
             last_active   TIMESTAMPTZ DEFAULT now()
         );
@@ -284,6 +285,7 @@ class DatabaseManager:
             async with self.pool.acquire() as conn:
                 await conn.execute(query_pgcrypto)
                 await conn.execute(query_users_table)
+                await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(32) NOT NULL DEFAULT 'student';")
                 await conn.execute(query_session_stats_table)
                 await conn.execute(query_table)
                 # Alter table migration to support existing/prior database setups
