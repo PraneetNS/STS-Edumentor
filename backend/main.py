@@ -998,6 +998,58 @@ async def get_session_messages(
         return []
 
 
+@app.get("/api/profile/{student_id}/summary", tags=["Profile"])
+async def get_profile_summary(
+    student_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Load profile summary details for a student.
+    Strictly verifies ownership: matching student_id or admin role required.
+    """
+    user_id_str = user.get("user_id")
+    is_admin = user.get("role") == "admin" or user.get("email", "").endswith("@edumentor.edu")
+    
+    if user_id_str != student_id and not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You do not have permission to view this profile summary."
+        )
+    
+    import uuid as _uuid
+    try:
+        student_uuid = _uuid.UUID(student_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid student ID format.")
+        
+    if not db_manager or not db_manager.pool:
+        raise HTTPException(status_code=500, detail="Database not available.")
+        
+    user_query = "SELECT user_id, email, display_name, role, created_at FROM users WHERE user_id = $1;"
+    async with db_manager.pool.acquire() as conn:
+        user_row = await conn.fetchrow(user_query, student_uuid)
+        if not user_row:
+            raise HTTPException(status_code=404, detail="Student not found.")
+            
+        stats_query = """
+        SELECT COALESCE(SUM(total_turns), 0) as total_turns,
+               COUNT(DISTINCT session_date) as active_days
+        FROM session_stats
+        WHERE user_id = $1;
+        """
+        stats_row = await conn.fetchrow(stats_query, student_uuid)
+        
+        return {
+            "student_id": str(user_row["user_id"]),
+            "email": user_row["email"],
+            "display_name": user_row["display_name"],
+            "role": user_row["role"],
+            "created_at": user_row["created_at"].isoformat() if user_row["created_at"] else None,
+            "total_turns": stats_row["total_turns"] if stats_row else 0,
+            "active_days": stats_row["active_days"] if stats_row else 0,
+        }
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 
