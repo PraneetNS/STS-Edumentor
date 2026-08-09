@@ -2417,6 +2417,7 @@ async def _run_pipeline(
                             target=run_synthesis_thread,
                             args=(loop, q),
                             daemon=True
+                        ).start()
                         while True:
                             item = await q.get()
                             if item is None:
