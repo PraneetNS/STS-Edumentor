@@ -597,7 +597,12 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
         )
 
 @app.post("/auth/register", tags=["Auth"])
-async def register_user(req: UserRegisterRequest):
+async def register_user(req: UserRegisterRequest, request: Request):
+    from agent.rate_limiter import rate_limiter
+    client_ip = request.client.host if request.client else "unknown"
+    if not rate_limiter.check_http_rate_limit(client_ip, "register", max_per_minute=5):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many registration attempts. Please try again later.")
+
     if not db_manager or not db_manager.pool:
         raise HTTPException(status_code=500, detail="Database not initialized")
         
@@ -638,7 +643,11 @@ async def verify_email(token: str):
     return RedirectResponse(url="http://localhost:5173/login?verified=true")
 
 @app.post("/auth/login", tags=["Auth"])
-async def login_user(req: UserLoginRequest, response: Response):
+async def login_user(req: UserLoginRequest, response: Response, request: Request):
+    from agent.rate_limiter import rate_limiter
+    client_ip = request.client.host if request.client else "unknown"
+    if not rate_limiter.check_http_rate_limit(client_ip, "login", max_per_minute=5):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many login attempts. Please try again later.")
     user = await db_manager.get_user_by_email(req.email)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -652,8 +661,9 @@ async def login_user(req: UserLoginRequest, response: Response):
     user_id = user["user_id"]
     email = user["email"]
     
-    access_token = auth_utils.generate_access_token(user_id, email)
-    refresh_token = auth_utils.generate_refresh_token(user_id, email)
+    role = user.get("role", "student")
+    access_token = auth_utils.generate_access_token(user_id, email, role=role)
+    refresh_token = auth_utils.generate_refresh_token(user_id, email, role=role)
     
     is_production = Config.ENVIRONMENT == "production"
     response.set_cookie(
@@ -672,12 +682,18 @@ async def login_user(req: UserLoginRequest, response: Response):
             "user_id": str(user_id),
             "email": email,
             "display_name": user.get("display_name"),
-            "avatar_url": user.get("avatar_url")
+            "avatar_url": user.get("avatar_url"),
+            "role": role
         }
     }
 
 @app.post("/auth/refresh", tags=["Auth"])
-async def refresh_tokens(response: Response, refresh_token: Optional[str] = Cookie(None)):
+async def refresh_tokens(response: Response, request: Request, refresh_token: Optional[str] = Cookie(None)):
+    from agent.rate_limiter import rate_limiter
+    client_ip = request.client.host if request.client else "unknown"
+    if not rate_limiter.check_http_rate_limit(client_ip, "refresh", max_per_minute=5):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many token refresh attempts. Please try again later.")
+
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh token missing")
         
@@ -687,11 +703,12 @@ async def refresh_tokens(response: Response, refresh_token: Optional[str] = Cook
             raise HTTPException(status_code=410, detail="Invalid token type")
         user_id_str = payload.get("user_id")
         email = payload.get("email")
+        role = payload.get("role", "student")
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Invalid or expired refresh token: {e}")
         
     import uuid
-    new_access_token = auth_utils.generate_access_token(uuid.UUID(user_id_str), email)
+    new_access_token = auth_utils.generate_access_token(uuid.UUID(user_id_str), email, role=role)
     return {"access_token": new_access_token}
 
 @app.post("/auth/logout", tags=["Auth"])
