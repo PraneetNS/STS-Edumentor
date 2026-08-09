@@ -211,6 +211,11 @@ async def lifespan(app: FastAPI):
     # Set up agent file logger
     _setup_agent_file_logger()
 
+    # ── Security check: reject insecure secret in production ──
+    if Config.ENVIRONMENT == "production" and Config.JWT_SECRET == "edumentor-super-secret-development-key":
+        logger.critical("Insecure JWT_SECRET detected in production environment! Aborting startup.")
+        raise SystemExit(1)
+
     # ── GAP 4 (LLM03/LLM04): Supply chain & model integrity checks ──────────
     # Run BEFORE loading any model into memory. A hash mismatch aborts startup.
     logger.info("Running supply chain and model integrity checks...")
