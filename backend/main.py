@@ -1017,10 +1017,17 @@ class ClientErrorReport(PydanticBaseModel):
 
 
 @app.post("/api/reset-circuit", tags=["System"])
-async def reset_circuit_breaker():
+async def reset_circuit_breaker(user: dict = Depends(get_current_user)):
     """Manually reset the LLM circuit breaker to closed state.
     Use this when the LLM server comes back online after an outage
     and you don't want to wait for the recovery_timeout."""
+    user_email = user.get("email", "")
+    is_admin = user.get("role") == "admin" or user_email.endswith("@edumentor.edu")
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Admin privileges required."
+        )
     from llm.circuit_breaker import llm_circuit
     llm_circuit.reset()
     logger.info("[CIRCUIT BREAKER] Manually reset via API.")
@@ -1028,8 +1035,15 @@ async def reset_circuit_breaker():
 
 
 @app.get("/api/circuit-status", tags=["System"])
-async def circuit_status():
+async def circuit_status(user: dict = Depends(get_current_user)):
     """Check current circuit breaker state."""
+    user_email = user.get("email", "")
+    is_admin = user.get("role") == "admin" or user_email.endswith("@edumentor.edu")
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Admin privileges required."
+        )
     from llm.circuit_breaker import llm_circuit
     return {
         "state": llm_circuit.state,
