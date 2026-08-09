@@ -26,21 +26,23 @@ def check_password(password: str, password_hash: str) -> bool:
         logger.error("Password verification error: %s", e)
         return False
 
-def generate_access_token(user_id: uuid.UUID, email: str) -> str:
+def generate_access_token(user_id: uuid.UUID, email: str, role: str = "student") -> str:
     """Generate a short-lived access JWT (30 minutes)."""
     payload = {
         "user_id": str(user_id),
         "email": email,
+        "role": role,
         "type": "access",
         "exp": time.time() + 1800 # 30 minutes (short-lived for security)
     }
     return jwt.encode(payload, Config.JWT_SECRET, algorithm=Config.JWT_ALGORITHM)
 
-def generate_refresh_token(user_id: uuid.UUID, email: str) -> str:
+def generate_refresh_token(user_id: uuid.UUID, email: str, role: str = "student") -> str:
     """Generate a long-lived refresh JWT (7 days)."""
     payload = {
         "user_id": str(user_id),
         "email": email,
+        "role": role,
         "type": "refresh",
         "exp": time.time() + (7 * 86400) # 7 days
     }
