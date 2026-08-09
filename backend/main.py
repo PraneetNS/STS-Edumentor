@@ -1557,12 +1557,39 @@ async def voice_endpoint(websocket: WebSocket):
                     continue
 
                 msg_type = data.get("type", "")
+                
+                # Strict control frame schema validation using Pydantic models (resolves crash / bad type injection risk)
+                try:
+                    if msg_type == "ping":
+                        WSPingMessage(**data)
+                    elif msg_type == "text_query":
+                        parsed_msg = WSTextQueryMessage(**data)
+                        query_text = parsed_msg.text
+                    elif msg_type == "start_recording":
+                        WSStartRecordingMessage(**data)
+                    elif msg_type == "end_of_speech":
+                        WSEndOfSpeechMessage(**data)
+                    elif msg_type == "interrupt":
+                        WSInterruptMessage(**data)
+                    elif msg_type == "persona_changed":
+                        parsed_msg = WSPersonaChangedMessage(**data)
+                    elif msg_type == "settings_update":
+                        parsed_msg = WSSettingsUpdateMessage(**data)
+                        settings = parsed_msg.settings
+                    else:
+                        logger.warning("Unknown WebSocket message type: %s", msg_type)
+                        await websocket.send_json({"type": "error", "text": f"Unsupported frame type: {msg_type}"})
+                        continue
+                except Exception as val_err:
+                    logger.warning("WebSocket control frame schema validation failed: %s", val_err)
+                    await websocket.send_json({"type": "error", "text": "Invalid control frame payload schema."})
+                    continue
 
+                # Process validated message
                 if msg_type == "ping":
                     await websocket.send_json({"type": "pong"})
 
                 elif msg_type == "text_query":
-                    query_text = data.get("text", "")
                     if query_text:
                         if pipeline_task and not pipeline_task.done():
                             pipeline_task.cancel()
@@ -1646,7 +1673,6 @@ async def voice_endpoint(websocket: WebSocket):
                     stabilizer.reset()
 
                 elif msg_type == "settings_update":
-                    settings = data.get("settings", {})
                     logger.info("Settings updated for session %s: %s", session_id, settings)
                     if "voice_style" in settings:
                         session_voice_style = settings["voice_style"]
