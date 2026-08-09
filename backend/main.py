@@ -948,6 +948,23 @@ async def get_session_messages(
     if not db_manager or not db_manager.pool:
         return []
 
+    # Verify session ownership to prevent IDOR
+    exists_query = "SELECT user_id FROM conversation_logs WHERE session_id = $1 LIMIT 1;"
+    try:
+        async with db_manager.pool.acquire() as conn:
+            owner_row = await conn.fetchrow(exists_query, session_uuid)
+            if owner_row:
+                owner_id = owner_row["user_id"]
+                if owner_id != user_id and user.get("role") != "admin":
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Access denied: You do not own this session."
+                    )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error verifying session ownership: %s", e)
+
     query = """
     SELECT id, query_text, response_text, created_at, intent_category
     FROM conversation_logs
