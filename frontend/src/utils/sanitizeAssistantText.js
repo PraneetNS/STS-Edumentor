@@ -167,6 +167,38 @@ export function sanitizeAssistantText(text) {
     cleaned = stripJsonLeaks(cleaned);
   }
 
+  // Tokenize <show ...> and </show> tags to avoid escaping them
+  const showTokens = [];
+  
+  // Replace <show ...> tags
+  cleaned = cleaned.replace(/<show\b([^>]*)>/gi, (match, attrs) => {
+    const token = `__SHOW_OPEN_${showTokens.length}__`;
+    showTokens.push({ token, type: 'open', attrs });
+    return token;
+  });
+  
+  // Replace </show> tags
+  cleaned = cleaned.replace(/<\/show>/gi, () => {
+    const token = `__SHOW_CLOSE_${showTokens.length}__`;
+    showTokens.push({ token, type: 'close' });
+    return token;
+  });
+
+  // Escaping all other HTML tags/entities for XSS defense-in-depth
+  cleaned = cleaned
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // Restore the <show> tags back
+  for (const item of showTokens) {
+    if (item.type === 'open') {
+      cleaned = cleaned.replace(item.token, `<show ${item.attrs}>`);
+    } else {
+      cleaned = cleaned.replace(item.token, '</show>');
+    }
+  }
+
   // Convert <show type="code"> → ``` fences BEFORE generic tag stripping.
   // This preserves newlines and indentation inside the code content.
   cleaned = convertShowCodeBlocks(cleaned);
