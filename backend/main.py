@@ -83,6 +83,7 @@ from agent.idempotency import idempotency_guard
 
 silero_vad_model = None
 utterance_count = 0
+purge_housekeeping_task = None
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Logging — main console logger + agent file logger
@@ -269,7 +270,7 @@ async def lifespan(app: FastAPI):
     logger.info("[OK] Silero VAD ready.")
 
     # ── Initialize Redis (optional) ───────────────────────────────────────────
-    global redis_client, llm_request_queue, redis_rate_limiter, queue_housekeeping_task
+    global redis_client, llm_request_queue, redis_rate_limiter, queue_housekeeping_task, purge_housekeeping_task
     if Config.REDIS_ENABLED:
         logger.info("REDIS_ENABLED=true — connecting to Redis at %s ...", Config.REDIS_URL)
         try:
@@ -308,6 +309,24 @@ async def lifespan(app: FastAPI):
             queue_housekeeping_task = None
     else:
         logger.info("REDIS_ENABLED=false — using in-memory backends.")
+
+    # Start periodic purging task for expired unverified users and old conversation logs
+    async def run_log_and_user_purging():
+        while True:
+            try:
+                if db_manager and db_manager.enabled:
+                    plogs = await db_manager.purge_old_conversation_logs(retention_days=30)
+                    if plogs > 0:
+                        logger.info("[HOUSEKEEPING] Purged %d old conversation logs.", plogs)
+                    pusers = await db_manager.purge_unverified_expired_registrations(age_hours=24)
+                    if pusers > 0:
+                        logger.info("[HOUSEKEEPING] Purged %d expired unverified registrations.", pusers)
+            except Exception as ex:
+                logger.error("[HOUSEKEEPING] Periodic purge failed: %s", ex)
+            await asyncio.sleep(12 * 3600)  # Run every 12 hours
+
+    purge_housekeeping_task = asyncio.create_task(run_log_and_user_purging())
+    logger.info("[OK] Housekeeping purge task started.")
 
     # ── Initialize Agent Layer ────────────────────────────────────────────────
     if Config.AGENT_ENABLED:
@@ -418,6 +437,12 @@ async def lifespan(app: FastAPI):
         queue_housekeeping_task.cancel()
         try:
             await queue_housekeeping_task
+        except asyncio.CancelledError:
+            pass
+    if purge_housekeeping_task is not None:
+        purge_housekeeping_task.cancel()
+        try:
+            await purge_housekeeping_task
         except asyncio.CancelledError:
             pass
     if llm_engine:
