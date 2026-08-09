@@ -39,6 +39,10 @@ class RateLimiter:
         self.violations: dict[str, list[float]] = defaultdict(list)
         self.strict_mode_until: dict[str, float] = {}
 
+        # New security hardening rate limiting trackers
+        self.connection_attempts_per_ip: dict[str, list[float]] = defaultdict(list)
+        self.http_attempts: dict[tuple[str, str], list[float]] = defaultdict(list)
+
     def check_connection_limit(self, ip: str, max_per_ip: int = None) -> bool:
         if max_per_ip is None:
             max_per_ip = Config.MAX_CONNECTIONS_PER_IP
@@ -113,5 +117,25 @@ class RateLimiter:
 
     def apply_strict_limit(self, student_id: str, duration_seconds: int):
         self.strict_mode_until[student_id] = time.time() + duration_seconds
+
+    def check_connection_attempt_rate(self, ip: str, max_attempts_per_minute: int = 20) -> bool:
+        """Rate limit the frequency of WebSocket connection attempts per IP."""
+        now = time.time()
+        attempts = self.connection_attempts_per_ip[ip]
+        attempts[:] = [t for t in attempts if now - t < 60]
+        if len(attempts) >= max_attempts_per_minute:
+            return False
+        attempts.append(now)
+        return True
+
+    def check_http_rate_limit(self, ip: str, endpoint: str, max_per_minute: int = 5) -> bool:
+        """Rate limit HTTP endpoints (like login/register) per IP to protect against brute-force attacks."""
+        now = time.time()
+        attempts = self.http_attempts[(ip, endpoint)]
+        attempts[:] = [t for t in attempts if now - t < 60]
+        if len(attempts) >= max_per_minute:
+            return False
+        attempts.append(now)
+        return True
 
 rate_limiter = RateLimiter()
