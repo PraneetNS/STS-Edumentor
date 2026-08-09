@@ -735,7 +735,12 @@ async def google_auth():
     return RedirectResponse(url=url)
 
 @app.get("/auth/google/callback", tags=["Auth"])
-async def google_auth_callback(code: str, response: Response):
+async def google_auth_callback(code: str, response: Response, request: Request):
+    from agent.rate_limiter import rate_limiter
+    client_ip = request.client.host if request.client else "unknown"
+    if not rate_limiter.check_http_rate_limit(client_ip, "google_callback", max_per_minute=5):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many login attempts. Please try again later.")
+
     if code == "mock_google_code_123":
         email = "mock_student@gmail.com"
         display_name = "Mock Student"
@@ -793,8 +798,9 @@ async def google_auth_callback(code: str, response: Response):
         raise HTTPException(status_code=500, detail="Failed to upsert user record")
         
     user_id = user["user_id"]
-    access_token = auth_utils.generate_access_token(user_id, email)
-    refresh_token = auth_utils.generate_refresh_token(user_id, email)
+    role = user.get("role", "student")
+    access_token = auth_utils.generate_access_token(user_id, email, role=role)
+    refresh_token = auth_utils.generate_refresh_token(user_id, email, role=role)
     
     is_production = Config.ENVIRONMENT == "production"
     response.set_cookie(
