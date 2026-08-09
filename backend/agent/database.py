@@ -656,7 +656,7 @@ class DatabaseManager:
         query = """
         INSERT INTO users (email, display_name, password_hash, provider, email_verified)
         VALUES ($1, $2, $3, 'email', FALSE)
-        RETURNING user_id, email, display_name, provider, email_verified, created_at;
+        RETURNING user_id, email, display_name, provider, email_verified, role, created_at;
         """
         try:
             async with self.pool.acquire() as conn:
@@ -711,7 +711,7 @@ class DatabaseManager:
             provider = 'google',
             email_verified = TRUE,
             last_active = now()
-        RETURNING user_id, email, display_name, avatar_url, provider, created_at;
+        RETURNING user_id, email, display_name, avatar_url, provider, role, created_at;
         """
         try:
             async with self.pool.acquire() as conn:
