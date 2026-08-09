@@ -1131,9 +1131,32 @@ async def log_client_error(report: ClientErrorReport):
 import base64
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# WebSocket Pipeline
-# ─────────────────────────────────────────────────────────────────────────────
+from pydantic import BaseModel as WSBaseModel, Field as WSField
+
+class WSPingMessage(WSBaseModel):
+    type: str = WSField(..., pattern="^ping$")
+
+class WSStartRecordingMessage(WSBaseModel):
+    type: str = WSField(..., pattern="^start_recording$")
+
+class WSEndOfSpeechMessage(WSBaseModel):
+    type: str = WSField(..., pattern="^end_of_speech$")
+
+class WSInterruptMessage(WSBaseModel):
+    type: str = WSField(..., pattern="^interrupt$")
+
+class WSTextQueryMessage(WSBaseModel):
+    type: str = WSField(..., pattern="^text_query$")
+    text: str
+
+class WSPersonaChangedMessage(WSBaseModel):
+    type: str = WSField(..., pattern="^persona_changed$")
+    previous: Optional[str] = None
+    current: Optional[str] = None
+
+class WSSettingsUpdateMessage(WSBaseModel):
+    type: str = WSField(..., pattern="^settings_update$")
+    settings: dict
 
 @app.websocket("/ws/voice")
 async def voice_endpoint(websocket: WebSocket):
