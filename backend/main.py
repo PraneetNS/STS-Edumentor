@@ -1415,14 +1415,41 @@ async def voice_endpoint(websocket: WebSocket):
         finally:
             is_pipeline_running = False
 
+    connection_bytes_received: list[tuple[float, int]] = []
+    
     try:
         while True:
-            message = await websocket.receive()
+            # Idle/zombie connection timeout (180 seconds)
+            try:
+                message = await asyncio.wait_for(websocket.receive(), timeout=180.0)
+            except asyncio.TimeoutError:
+                logger.info("Closing idle WebSocket connection due to 3-minute inactivity timeout (user_id=%s)", user_id)
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Inactivity timeout")
+                return
 
             # ── Binary audio frame ──────────────────────────────────────────
             if "bytes" in message and message["bytes"]:
                 chunk = message["bytes"]
                 
+                # Audio chunk frame size check (max 32KB)
+                if len(chunk) > 32768:
+                    logger.warning("Dropped audio chunk exceeding frame size limit (%d bytes)", len(chunk))
+                    from agent.security_logger import log_security_event
+                    asyncio.create_task(log_security_event(user_id, client_ip, "payload_too_large", f"Audio frame exceeding 32KB size limit ({len(chunk)} bytes)"))
+                    continue
+
+                # Bandwidth data rate check (max 320KB per rolling 5 seconds)
+                now_time = time.time()
+                connection_bytes_received[:] = [(t, b) for t, b in connection_bytes_received if now_time - t < 5.0]
+                total_recent_bytes = sum(b for t, b in connection_bytes_received)
+                if total_recent_bytes + len(chunk) > 327680: # 320KB
+                    logger.warning("Terminating connection: client %s exceeded voice data rate limit (%d bytes in 5s)", user_id, total_recent_bytes + len(chunk))
+                    from agent.security_logger import log_security_event
+                    await log_security_event(user_id, client_ip, "rate_limit_hit", "WebSocket aggregate data rate limit exceeded")
+                    await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Aggregate data rate limit exceeded")
+                    return
+                connection_bytes_received.append((now_time, len(chunk)))
+
                 # Audio chunk size check (Part 2)
                 if not validate_audio_chunk(chunk):
                     logger.warning("Dropped audio chunk exceeding size limit (%d bytes)", len(chunk))
