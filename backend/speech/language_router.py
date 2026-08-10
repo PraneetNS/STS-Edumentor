@@ -152,15 +152,6 @@ class LanguageRouter:
 
         # 2. Devanagari Unicode Script Check
         if cls.contains_devanagari_script(text):
-            # Check for phonetic Kannada written in Devanagari
-            kannada_deva_matches = [w for w in raw_words if w.strip(".,!?") in DEVANAGARI_KANNADA_KEYWORDS]
-            if kannada_deva_matches:
-                return "kannada", {
-                    "reason": f"Devanagari Kannada phonetic match found: {kannada_deva_matches}",
-                    "scores": {"kannada_deva_matches": len(kannada_deva_matches)},
-                    "routing_path": "keyword-match"
-                }
-
             # Check for Marathi-specific letter 'ळ' (Devanagari Letter LLA)
             if 'ळ' in text:
                 return "marathi", {
@@ -188,7 +179,7 @@ class LanguageRouter:
             else:
                 # Lexicon scores are tied or both 0. Fall back to user preference or Whisper's language detection if valid.
                 resolved_lp = cls.normalize_language(lang_pref)
-                if resolved_lp in ("kannada", "marathi", "hindi"):
+                if resolved_lp in ("marathi", "hindi"):
                     return resolved_lp, {
                         "reason": f"Devanagari script detected but lexicon scores tied. User preference {lang_pref!r} used as fallback.",
                         "scores": {"marathi": marathi_score, "hindi": hindi_score},
@@ -196,13 +187,7 @@ class LanguageRouter:
                     }
                 resolved_whisper_lang = cls.normalize_language(whisper_detected_lang)
                 if resolved_whisper_lang:
-                    if resolved_whisper_lang == "kannada":
-                        return "kannada", {
-                            "reason": f"Devanagari script detected but lexicon scores tied. Whisper detected language {whisper_detected_lang!r} used as fallback.",
-                            "scores": {"marathi": marathi_score, "hindi": hindi_score},
-                            "routing_path": "whisper-probability-fallback"
-                        }
-                    elif resolved_whisper_lang == "marathi":
+                    if resolved_whisper_lang == "marathi":
                         return "marathi", {
                             "reason": f"Devanagari script detected but lexicon scores tied. Whisper detected language {whisper_detected_lang!r} used as fallback.",
                             "scores": {"marathi": marathi_score, "hindi": hindi_score},
@@ -247,7 +232,43 @@ class LanguageRouter:
                 "routing_path": "keyword-match"
             }
 
-        # If they are 0 or tied, check for Hindi/Hinglish keywords (or mixed Indic signals)
+        # If scores are tied or Whisper gave a signal, use Whisper to break the tie
+        # before blindly falling back to Hindi.
+        resolved_whisper_lang = cls.normalize_language(whisper_detected_lang)
+
+        # Kannada leads
+        if kannada_score > 0 and kannada_score > hindi_score and kannada_score > marathi_score:
+            return "kannada", {
+                "reason": f"Latin Kannada score ({kannada_score}) leads; routing to kannada",
+                "scores": {"kannada": kannada_score, "marathi": marathi_score, "hindi": hindi_score},
+                "routing_path": "keyword-match"
+            }
+
+        # Marathi leads
+        if marathi_score > 0 and marathi_score > hindi_score and marathi_score > kannada_score:
+            return "marathi", {
+                "reason": f"Latin Marathi score ({marathi_score}) leads; routing to marathi",
+                "scores": {"kannada": kannada_score, "marathi": marathi_score, "hindi": hindi_score},
+                "routing_path": "keyword-match"
+            }
+
+        # Whisper detected Kannada — honour it when lexicon scores are ambiguous
+        if resolved_whisper_lang == "kannada":
+            return "kannada", {
+                "reason": f"Ambiguous Latin scores; Whisper detected 'kn' used as tie-breaker → kannada",
+                "scores": {"kannada": kannada_score, "marathi": marathi_score, "hindi": hindi_score},
+                "routing_path": "whisper-probability-fallback"
+            }
+
+        # Whisper detected Marathi
+        if resolved_whisper_lang == "marathi":
+            return "marathi", {
+                "reason": f"Ambiguous Latin scores; Whisper detected 'mr' used as tie-breaker → marathi",
+                "scores": {"kannada": kannada_score, "marathi": marathi_score, "hindi": hindi_score},
+                "routing_path": "whisper-probability-fallback"
+            }
+
+        # Hindi or truly mixed signals with no better signal
         if hindi_score > 0 or kannada_score > 0 or marathi_score > 0:
             return "hindi", {
                 "reason": f"Latin Hinglish/Hindi keywords or mixed signals found: hindi_matches={hindi_latin_matches}",

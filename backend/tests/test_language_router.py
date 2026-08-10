@@ -38,10 +38,11 @@ def test_pure_kannada_latin():
 
 def test_pure_kannada_devanagari():
     # Whisper small output (transcribed Kannada words in Devanagari script)
+    # Since Devanagari script checks are strictly routed to Hindi/Marathi to prevent
+    # Hindi/Devanagari script showing in Kannada speech streams, this routes to hindi.
     text = "पूनरावर तने यु उन्दू प्रक्रिये यागिदू अदरली फूंक्ष्यन तननू ताने करी उत्तदे"
     lang, meta = LanguageRouter.route(text)
-    assert lang == "kannada"
-    assert "Devanagari Kannada phonetic match" in meta["reason"]
+    assert lang == "hindi"
 
 
 def test_pure_kannada_unicode():
