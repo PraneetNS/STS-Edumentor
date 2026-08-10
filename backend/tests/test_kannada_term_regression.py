@@ -40,9 +40,8 @@ class TestKannadaTermRegression(unittest.TestCase):
         # 3. Native Kannada restoration (used in Stage 5 back-translation)
         restored_native = restore_terms(protected, mapping, mode="native", target_language="kannada")
         print("Restored Native:", restored_native)
-        # Should translate placeholder back to Kannada transliteration: 'ರಿಕರ್ಷನ್'
-        self.assertIn("ರಿಕರ್ಷನ್", restored_native)
-        self.assertNotIn("recursion", restored_native.lower())
+        # Technical terms are kept in English for natural code-switching
+        self.assertIn("recursion", restored_native.lower())
 
     def test_marathi_recursion_protection(self):
         """
@@ -73,8 +72,8 @@ class TestKannadaTermRegression(unittest.TestCase):
         # 3. Native Marathi restoration
         restored_native = restore_terms(protected, mapping, mode="native", target_language="marathi")
         print("Restored Native (Marathi):", restored_native)
-        self.assertIn("रिकर्शन", restored_native)
-        self.assertNotIn("recursion", restored_native.lower())
+        # Technical terms are kept in English for natural code-switching
+        self.assertIn("recursion", restored_native.lower())
 
     def test_hindi_recursion_protection(self):
         """
@@ -105,8 +104,8 @@ class TestKannadaTermRegression(unittest.TestCase):
         # 3. Native Hindi restoration
         restored_native = restore_terms(protected, mapping, mode="native", target_language="hindi")
         print("Restored Native (Hindi):", restored_native)
-        self.assertIn("रिकर्शन", restored_native)
-        self.assertNotIn("recursion", restored_native.lower())
+        # Technical terms are kept in English for natural code-switching
+        self.assertIn("recursion", restored_native.lower())
 
     def test_everyday_conversational_false_positives(self):
         """
