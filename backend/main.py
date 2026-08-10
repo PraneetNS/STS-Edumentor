@@ -24,6 +24,7 @@ os.environ["BLIS_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["HF_HUB_OFFLINE"] = "1"
 import sys
 
 # Dynamically add NVIDIA cuDNN and cuBLAS bin paths to Windows DLL search directory and PATH
@@ -193,6 +194,7 @@ llm_request_queue  = None   # request_queue.llm_queue.LLMRequestQueue
 
 # Multilingual pipeline — only active when MULTILINGUAL_ENABLED=true
 multilingual_pipeline = None
+SESSION_LANGUAGES = {}
 
 hesitation_detector = None
 hesitation_composer = None
@@ -402,6 +404,7 @@ async def lifespan(app: FastAPI):
                 whisper_engine=whisper_engine,
                 agent_controller=agent_controller,
                 llm_engine=llm_engine,
+                kokoro_engine=kokoro_engine,
             )
             logger.info("[OK] Multilingual pipeline ready.")
         except Exception as ml_exc:
@@ -1731,6 +1734,7 @@ async def voice_endpoint(websocket: WebSocket):
             agent_controller.remove_session(session_id)
         if memory_manager:
             memory_manager.clear_session(session_id)
+        SESSION_LANGUAGES.pop(session_id, None)
 
         if pipeline_task and not pipeline_task.done():
             pipeline_task.cancel()
@@ -1940,22 +1944,70 @@ async def _run_pipeline(
             and live_transcribed_len is not None
             and (total_samples - live_transcribed_len) <= 4800
         )
+        # Retrieve profile preferences first to bias routing decisions and STT language
+        lang_pref = "auto"
+        glossary_mode = "english"
+        if agent_controller is not None:
+            profile_fut = agent_controller._profile_manager.get_profile(session_id)
+            if asyncio.iscoroutine(profile_fut) or hasattr(profile_fut, "__await__"):
+                profile = await profile_fut
+            else:
+                profile = profile_fut
+
+            if profile:
+                lang_pref = getattr(profile, "output_language_preference", "auto")
+                glossary_mode = getattr(profile, "glossary_mode", "english")
+
+        # Older profiles and manual edits may use codes (``hi``) or title case.
+        # Keep downstream translation and TTS routing on canonical names.
+        lang_pref = multilingual_pipeline.router.normalize_language(lang_pref) or "auto"
+
+        # Retrieve session-cached language if preference is auto.
+        # IMPORTANT: We only use the cached language as a Whisper hint for NON-Hindi Indic
+        # languages where Whisper's auto-detect is unreliable (e.g. Kannada). We never
+        # hard-lock Whisper to 'hi' from the cache because a prior misdetection would then
+        # permanently prevent Kannada from being recognised.
+        resolved_pref = lang_pref
+        if lang_pref == "auto" and session_id in SESSION_LANGUAGES:
+            cached_lang = SESSION_LANGUAGES[session_id]
+            # Only use cached hint for Kannada/Marathi — not for Hindi, which is already
+            # Whisper's default fallback and doesn't need forcing.
+            if cached_lang in ("kannada", "marathi"):
+                resolved_pref = cached_lang
+                logger.info("[ML-STT] Biasing STT to session-cached Indic language: %s", resolved_pref)
+            else:
+                logger.info("[ML-STT] Session-cached language=%r — not forcing Whisper (let auto-detect run)", cached_lang)
+
+        whisper_lang_hint = None
+        if resolved_pref == "kannada":
+            whisper_lang_hint = "kn"
+        elif resolved_pref == "marathi":
+            whisper_lang_hint = "mr"
+        elif resolved_pref == "english" and lang_pref != "auto":
+            # Only force English when user has explicitly set their preference to English
+            whisper_lang_hint = "en"
+        # Note: no 'hi' hint — let Whisper auto-detect and let the Kannada
+        # verification pass in transcribe_multilingual() handle any kn/hi ambiguity.
+
         if can_bypass_stt:
             logger.info(
                 "[ML-STAGE-1-BYPASS] Bypassing final STT: reusing live transcript %r (audio length delta: %.3fs)",
                 pre_transcribed_text, (total_samples - live_transcribed_len) / 16000
             )
             transcript = pre_transcribed_text
-            whisper_lang = None
+            # Provide the session-cached language as a whisper_lang signal so the
+            # router can use it as a tiebreaker even when full STT is skipped.
+            whisper_lang = whisper_lang_hint  # e.g. 'kn' if session cached as Kannada
             stt_latency = 0.0
         else:
             t_stt = time.time()
-            logger.info("[ML-STAGE-1] STT: calling multilingual transcribe (no forced language) ...")
+            logger.info("[ML-STAGE-1] STT: calling multilingual transcribe (forced language: %s) ...", whisper_lang_hint)
 
             def _transcribe_runner():
                 return multilingual_pipeline.transcribe_multilingual(
                     audio_array_ml,
-                    initial_prompt=Config.MULTILINGUAL_WHISPER_PROMPT
+                    initial_prompt=Config.MULTILINGUAL_WHISPER_PROMPT,
+                    language=whisper_lang_hint
                 )
 
             transcript, whisper_lang, stt_latency = await loop.run_in_executor(None, _transcribe_runner)
@@ -1985,24 +2037,6 @@ async def _run_pipeline(
             await websocket.send_json({"type": "assistant_finished"})
             return
 
-        # Retrieve profile preferences first to bias routing decisions
-        lang_pref = "auto"
-        glossary_mode = "english"
-        if agent_controller is not None:
-            profile_fut = agent_controller._profile_manager.get_profile(session_id)
-            if asyncio.iscoroutine(profile_fut) or hasattr(profile_fut, "__await__"):
-                profile = await profile_fut
-            else:
-                profile = profile_fut
-
-            if profile:
-                lang_pref = getattr(profile, "output_language_preference", "auto")
-                glossary_mode = getattr(profile, "glossary_mode", "english")
-
-        # Older profiles and manual edits may use codes (``hi``) or title case.
-        # Keep downstream translation and TTS routing on canonical names.
-        lang_pref = multilingual_pipeline.router.normalize_language(lang_pref) or "auto"
-
         stt_text = transcript
 
         # 2. Language Router
@@ -2012,6 +2046,18 @@ async def _run_pipeline(
             "[ML-STAGE-2] Router output: route_lang=%r | reason=%r | routing_path=%r",
             route_lang, route_meta.get("reason"), route_meta.get("routing_path")
         )
+
+        # Update session language cache
+        if route_lang in ("kannada", "hindi", "marathi", "english"):
+            SESSION_LANGUAGES[session_id] = route_lang
+
+        # Apply fuzzy term correction post-STT
+        from i18n.term_corrector import correct_technical_terms
+        corrected_transcript = correct_technical_terms(transcript, route_lang)
+        if corrected_transcript != transcript:
+            logger.info("[ML-STAGE-2-CORRECTED] Fuzzy-corrected technical terms: %r -> %r", transcript, corrected_transcript)
+            transcript = corrected_transcript
+            stt_text = transcript
 
         # Increment Prometheus metric
         routing_path = route_meta.get("routing_path", "hindi-default")
@@ -2059,7 +2105,10 @@ async def _run_pipeline(
         # Note: if the user spoke English but requested an Indic output, the input is still
         # English — we pass it directly to the LLM and only translate the *output*.
         llm_input = transcript
-        needs_input_translation = route_lang in ("hindi", "kannada", "marathi")
+        # Hindi is NOT translated — it goes directly to the LLM (which understands
+        # Hindi via its multilingual training and our Hinglish system prompt).
+        # Only Kannada and Marathi need the EN translation bridge.
+        needs_input_translation = route_lang in ("kannada", "marathi")
         logger.info(
             "[ML-STAGE-3] Translation check: needs_input_translation=%s | route_lang=%r | response_lang=%r",
             needs_input_translation, route_lang, response_lang
@@ -2081,14 +2130,7 @@ async def _run_pipeline(
         # Determine TTS engine selection
         use_mms_for_hindi = False
         if response_lang == "hindi":
-            has_devanagari = multilingual_pipeline.router.contains_devanagari_script(transcript)
-            # Use MMS-TTS for Hindi when: user explicitly requested Hindi, profile preference is Hindi,
-            # or auto-routed as Hindi with Devanagari script present.
-            use_mms_for_hindi = (
-                requested_output_lang == "hindi"
-                or lang_pref == "hindi"
-                or (lang_pref == "auto" and route_lang == "hindi" and has_devanagari)
-            )
+            use_mms_for_hindi = True
 
         tts_engine = "mms" if (response_lang in ("kannada", "marathi") or use_mms_for_hindi) else "kokoro"
         logger.info("[ML-STAGE-4] TTS engine selected: %r | use_mms_for_hindi=%s", tts_engine, use_mms_for_hindi)
@@ -2458,7 +2500,7 @@ async def _run_pipeline(
                     else:
                         logger.info("[ML-TTS-WORKER] Synthesizing[%d] with mms_lang=%r: %r ...", tts_idx, mms_lang, text)
                         wav_bytes = await loop.run_in_executor(
-                            None, lambda: multilingual_pipeline.mms_tts.synthesize(text, mms_lang)
+                            None, lambda: multilingual_pipeline.mixed_synthesizer.synthesize_mixed(text, response_lang, mms_lang)
                         )
                         tts_latency = time.time() - t_tts
                         logger.info(
@@ -2610,7 +2652,7 @@ async def _run_pipeline(
                     else:
                         mms_lang = MMS_TTS_LANG_MAP.get(response_lang, "hin")
                         wav_bytes = await loop.run_in_executor(
-                            None, lambda: multilingual_pipeline.mms_tts.synthesize(filler_text, mms_lang)
+                            None, lambda: multilingual_pipeline.mixed_synthesizer.synthesize_mixed(filler_text, response_lang, mms_lang)
                         )
                     
                     if real_content_started["flag"]:
