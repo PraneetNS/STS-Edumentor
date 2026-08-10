@@ -229,113 +229,21 @@ def normalize_lang(lang: str) -> str:
 
 def protect_terms(text: str, lang: str = "english") -> tuple[str, dict]:
     """
-    Scans the text for glossary matches (case-insensitive, word-boundary aware
-    for both English and regional Unicode scripts) and replaces each with a unique
-    placeholder token (e.g. __TERM_0__, __TERM_1__), returning the modified text
-    and a mapping of placeholder -> original English term.
+    Scans the text for glossary matches and replaces each with a unique placeholder token.
+    Uses the new protected terms glossary and protector logic.
     """
-    if not text:
-        return "", {}
-    
-    mapping = {}
-    modified_text = text
-    placeholder_idx = 0
-    
-    normalized_lang = normalize_lang(lang)
-    targets = []
-    
-    # 1. English terms from GLOSSARY_TERMS (always look for English terms as students mix languages)
-    for term in GLOSSARY_TERMS:
-        t = term.strip()
-        if t:
-            targets.append((t, t)) # (text_to_match, english_term)
-            
-    # 2. Add transliterated terms ONLY for the active query language (or skip if english)
-    if normalized_lang != "english":
-        for eng_term, lang_map in TRANSLITERATIONS.items():
-            native_term = lang_map.get(normalized_lang)
-            if native_term:
-                if isinstance(native_term, list):
-                    for nt in native_term:
-                        nt_s = nt.strip()
-                        if nt_s:
-                            targets.append((nt_s, eng_term))
-                else:
-                    nt_s = native_term.strip()
-                    if nt_s:
-                        targets.append((nt_s, eng_term))
-                
-    # Dedup match targets to avoid duplicate replacements on same word
-    seen_match_texts = set()
-    deduped_targets = []
-    for match_text, eng_term in targets:
-        match_text_lower = match_text.lower()
-        if match_text_lower not in seen_match_texts:
-            seen_match_texts.add(match_text_lower)
-            deduped_targets.append((match_text, eng_term))
-            
-    # Sort targets by length descending to match longer phrases first
-    deduped_targets.sort(key=lambda x: len(x[0]), reverse=True)
-    
-    for match_text, eng_term in deduped_targets:
-        if not match_text.strip():
-            continue
-            
-        # For very common conversational exclamations like 'अरे' and 'ಅರೇ',
-        # we only match if they are not followed by exclamation/comma.
-        if match_text in ("अरे", "ಅರೇ"):
-            pattern = re.compile(
-                rf"(?<![a-zA-Z0-9_\u0900-\u097f\u0c80-\u0cff]){re.escape(match_text)}(?![a-zA-Z0-9_\u0900-\u097f\u0c80-\u0cff])(?![!,])",
-                re.IGNORECASE
-            )
-        else:
-            pattern = re.compile(
-                rf"(?<![a-zA-Z0-9_\u0900-\u097f\u0c80-\u0cff]){re.escape(match_text)}(?![a-zA-Z0-9_\u0900-\u097f\u0c80-\u0cff])",
-                re.IGNORECASE
-            )
-        
-        def replace_fn(match_obj):
-            nonlocal placeholder_idx
-            placeholder = f"__TERM_{placeholder_idx}__"
-            mapping[placeholder] = eng_term
-            placeholder_idx += 1
-            return placeholder
-            
-        modified_text = pattern.sub(replace_fn, modified_text)
-        
-    return modified_text, mapping
+    from i18n.term_protector import mask_protected_terms
+    return mask_protected_terms(text, lang)
+
 
 def restore_terms(text: str, mapping: dict, mode: str = "english", target_language: str = "english") -> str:
     """
     Replaces each placeholder back.
-    In 'english' mode, reinsert the original English term unchanged.
-    In 'native' mode, look up a transliteration for that term+language pair.
+    In both 'english' and 'native' modes, we keep technical terms in English (code-switched)
+    to support high-quality segment-and-stitch TTS.
     """
-    if not text or not mapping:
-        return text
-        
-    normalized_lang = normalize_lang(target_language)
-    restored_text = text
-    
-    import re
-    for placeholder, orig_term in mapping.items():
-        match_idx = re.search(r"\d+", placeholder)
-        if match_idx:
-            idx = match_idx.group(0)
-            pattern = re.compile(rf"_*TERM_*{idx}_*(?![0-9])", re.IGNORECASE)
-            
-            replacement = orig_term
-            if mode == "native" and normalized_lang in ("hindi", "kannada", "marathi"):
-                key = orig_term.lower().strip()
-                trans_val = TRANSLITERATIONS.get(key, {}).get(normalized_lang)
-                if trans_val:
-                    if isinstance(trans_val, list):
-                        replacement = trans_val[0]
-                    else:
-                        replacement = trans_val
-            restored_text = pattern.sub(replacement, restored_text)
-            
-    return restored_text
+    from i18n.term_protector import restore_protected_terms
+    return restore_protected_terms(text, mapping)
 
 
 def rule_based_transliterate(word: str, lang: str) -> str:
@@ -369,7 +277,7 @@ def rule_based_transliterate(word: str, lang: str) -> str:
     }
     knda_consonants = {
         "b": "ಬ", "c": "ಕ", "d": "ಡ", "f": "ಫ", "g": "ಗ", "h": "ಹ", "j": "ಜ", "k": "ಕ", "l": "ಲ",
-        "m": "म", "n": "ನ", "p": "ಪ", "q": "ಕ", "r": "ರ", "s": "ಸ", "t": "ಟ", "v": "ವ", "w": "ವ",
+        "m": "ಮ", "n": "ನ", "p": "ಪ", "q": "ಕ", "r": "ರ", "s": "ಸ", "t": "ಟ", "v": "ವ", "w": "ವ",
         "x": "ಕ್ಸ್", "y": "ಯ", "z": "ಜ"
     }
     knda_vowels = {
