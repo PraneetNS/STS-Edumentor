@@ -121,20 +121,20 @@ function convertShowCodeBlocks(text) {
 function stripMarkupTags(text) {
   let cleaned = text;
 
-  cleaned = cleaned.replace(/<(?:item|step|entry|li)>/gi, '\n- ');
+  cleaned = cleaned.replace(/(?:<|&lt;)(?:item|step|entry|li)(?:>|&gt;)/gi, '\n- ');
   cleaned = cleaned.replace(/\{\s*(?:item|step|entry|li)\s*\}/gi, '\n- ');
-  cleaned = cleaned.replace(/<\/(?:item|step|entry|li)>/gi, '');
+  cleaned = cleaned.replace(/(?:<|&lt;)\/(?:item|step|entry|li)(?:>|&gt;)/gi, '');
   cleaned = cleaned.replace(/\{\/\s*(?:item|step|entry|li)\s*\}/gi, '');
 
-  cleaned = cleaned.replace(/<\/?(?:checklist|speak|followup|show|ul|ol)(?:\s+[^>]*)?>/gi, '');
+  cleaned = cleaned.replace(/(?:<|&lt;)\/?(?:checklist|speak|followup|show|ul|ol)(?:\s+(?:(?!>|&gt;)[\s\S])*)?(?:>|&gt;)/gi, '');
   cleaned = cleaned.replace(/\{\/?(?:checklist|speak|followup|show|ul|ol)(?:\s+[^}]*)?\}/gi, '');
 
-  cleaned = cleaned.replace(/<(?:speak|show|followup|checklist|item|step|entry|li)\b[^>]*>?/gi, '');
-  cleaned = cleaned.replace(/<(?:spe|sho|fol|che|ite|ste|ent)\b[^>]*>?/gi, '');
+  cleaned = cleaned.replace(/(?:<|&lt;)(?:speak|show|followup|checklist|item|step|entry|li)\b(?:(?!>|&gt;)[\s\S])*(?:>|&gt;)?/gi, '');
+  cleaned = cleaned.replace(/(?:<|&lt;)(?:spe|sho|fol|che|ite|ste|ent)\b(?:(?!>|&gt;)[\s\S])*(?:>|&gt;)?/gi, '');
   cleaned = cleaned.replace(/\{(?:speak|show|followup|checklist|item|step|entry|li)\b[^}]*\}?/gi, '');
   cleaned = cleaned.replace(/\{(?:spe|sho|fol|che|ite|ste|ent)\b[^}]*\}?/gi, '');
 
-  cleaned = cleaned.replace(/<\/?[a-zA-Z][^>]*>/g, '');
+  cleaned = cleaned.replace(/(?:<|&lt;)\/?[a-zA-Z]+(?:(?!>|&gt;)[\s\S])*(?:>|&gt;)/g, '');
 
   return cleaned;
 }
