@@ -3,7 +3,20 @@ import { isJailbreakAttempt } from '../utils/isJailbreakAttempt';
 import { authStore } from './authStore';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
-const STORAGE_KEY = 'edumentor_v3_conversations';
+const BASE_STORAGE_KEY = 'edumentor_v3_conversations';
+
+// Return a per-user storage key, falling back to the base key for
+// unauthenticated / guest sessions so we never mix two users' caches.
+function storageKey() {
+  try {
+    const raw = localStorage.getItem('edumentor_user');
+    if (raw) {
+      const user = JSON.parse(raw);
+      if (user?.user_id) return `${BASE_STORAGE_KEY}:${user.user_id}`;
+    }
+  } catch (_) {}
+  return BASE_STORAGE_KEY;
+}
 
 function generateId() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -13,9 +26,32 @@ function generateId() {
   });
 }
 
+// One-time migration: if the user-scoped key is empty but the legacy
+// generic key has data, move that data to the scoped key and wipe the old one.
+function migrateFromLegacyKey() {
+  const scoped = storageKey();
+  if (scoped === BASE_STORAGE_KEY) return null; // already on legacy / guest path
+  try {
+    const alreadyMigrated = localStorage.getItem(scoped);
+    if (alreadyMigrated) return null; // scoped key exists, nothing to migrate
+    const legacy = localStorage.getItem(BASE_STORAGE_KEY);
+    if (!legacy) return null;
+    const parsed = JSON.parse(legacy);
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    // Write into scoped key and remove the old generic one.
+    localStorage.setItem(scoped, legacy);
+    localStorage.removeItem(BASE_STORAGE_KEY);
+    console.info('[Store] Migrated legacy conversations to scoped key:', scoped);
+    return parsed;
+  } catch (e) {
+    console.warn('[Store] Migration failed:', e);
+  }
+  return null;
+}
+
 function loadFromStorage() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey());
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -23,12 +59,13 @@ function loadFromStorage() {
   } catch (e) {
     console.warn('[Store] Failed to load conversations:', e);
   }
-  return null;
+  // Attempt legacy migration before giving up.
+  return migrateFromLegacyKey();
 }
 
 function saveToStorage(convs) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(convs));
+    localStorage.setItem(storageKey(), JSON.stringify(convs));
   } catch (e) {
     console.warn('[Store] Failed to save conversations:', e);
   }
@@ -326,5 +363,46 @@ export const chatStore = createStore((set, get) => ({
     set((state) => ({
       pausedThreads: state.pausedThreads.filter(t => t.thread_id !== threadId)
     }));
+  },
+
+  // ── Called on LOGOUT ──────────────────────────────────────────────────────
+  // Blanks the in-memory store so the UI shows nothing after sign-out,
+  // but intentionally does NOT touch localStorage so the user's scoped key
+  // survives — meaning the same account's history is restored on next login.
+  resetInMemory: () => {
+    const fresh = createNewConversation();
+    set({
+      conversations: [fresh],
+      activeId: fresh.id,
+      pausedThreads: []
+    });
+  },
+
+  // ── Called when we genuinely want to erase a user's history ───────────────
+  clearConversations: () => {
+    localStorage.removeItem(storageKey());
+    const fresh = createNewConversation();
+    set({
+      conversations: [fresh],
+      activeId: fresh.id,
+      pausedThreads: []
+    });
+  },
+
+  // ── Called right after login ───────────────────────────────────────────────
+  // 1. Immediately restore from localStorage (instant, no network).
+  // 2. Then fetch fresh sessions from the DB and merge on top so the user
+  //    always sees their full, authoritative history — even if localStorage
+  //    was stale or the account was used on another device.
+  reloadFromStorage: () => {
+    const saved = loadFromStorage();
+    if (saved && saved.length > 0) {
+      set({ conversations: saved, activeId: saved[0].id });
+    } else {
+      const fresh = createNewConversation();
+      set({ conversations: [fresh], activeId: fresh.id });
+    }
+    // Fire DB sync in the background (non-blocking).
+    get().fetchSessionsFromDb().catch(() => {});
   },
 }));
