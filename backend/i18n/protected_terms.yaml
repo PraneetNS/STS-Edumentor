@@ -1,0 +1,384 @@
+- canonical: recursion
+  domain: cs_dsa
+  hindi_variants:
+  - रिकर्शन
+  - रिकर्तन
+  - रिकर्सन
+  - रिकशिन
+  - रिकशन
+  - रीकर्षण
+  - रीकशन
+  kannada_variants:
+  - ರಿಕರ್ಷನ್
+  - ರಿಕರ್ಶನ್
+  - ರಿಕಶನ್
+  - ರಿಕಷನ್
+  marathi_variants:
+  - रिकर्शन
+  - रिकर्तन
+  - रिकर्सन
+  - रिकशिन
+  - रिकशन
+  - रीकर्षण
+  - रीकशन
+- canonical: encapsulation
+  domain: cs_oop
+  hindi_variants:
+  - एन्कैप्सुलेशन
+  - इन्कैप्सुलेशन
+  kannada_variants:
+  - ಎನ್ಕ್ಯಾಪ್ಸುಲೇಷನ್
+  - ಇನ್ಕ್ಯಾಪ್ಸುಲೇಷನ್
+  marathi_variants:
+  - एनकॅप्सुलेशन
+  - एनकॅप्शन
+- canonical: inheritance
+  domain: cs_oop
+  hindi_variants:
+  - इन्हेरिटेंस
+  - इन्हेरिटन्स
+  kannada_variants:
+  - ಇನ್ಹೆರಿಟೆನ್ಸ್
+  - ಇನ್ಹೆರಿಟೆನ್ಸ್
+  marathi_variants:
+  - इन्हेरीटन्स
+  - इन्हेरिटन्स
+- canonical: polymorphism
+  domain: cs_oop
+  hindi_variants:
+  - पॉलीमॉर्फिज्म
+  - पॉलिमॉर्फिज्म
+  kannada_variants:
+  - ಪಾಲಿಮಾರ್ಫಿಸಮ್
+  - ಪಾಲಿಮಾರ್ಫಿಸಂ
+  marathi_variants:
+  - पॉलीमॉर्फिझम
+  - पॉलिमॉर्फिझम
+- canonical: abstraction
+  domain: cs_oop
+  hindi_variants:
+  - एब्स्ट्रक्शन
+  - अब्स्ट्रक्शन
+  kannada_variants:
+  - ಅಬ್ಸ್ಟ್ರ್ಯಾಕ್ಷನ್
+  - ಅಬ್ಸ್ಟ್ರಾಕ್ಷನ್
+  marathi_variants:
+  - अब्स्ट्रॅक्शन
+  - अब्स्ट्रक्शन
+- canonical: linked list
+  domain: cs_dsa
+  hindi_variants:
+  - लिंक्ड लिस्ट
+  - लिंक लिस्ट
+  kannada_variants:
+  - ಲಿಂಕ್ಡ್ ಲಿಸ್ಟ್
+  - ಲಿಂಕ್ ಲಿಸ್ಟ್
+  marathi_variants:
+  - लिंक्ड लिस्ट
+  - लिंक लिस्ट
+- canonical: binary search
+  domain: cs_dsa
+  hindi_variants:
+  - बायनरी सर्च
+  - बायनरी सर्च
+  kannada_variants:
+  - ಬೈನರಿ ಸರ್ಚ್
+  - ಬೈನರಿ ಸರ್ಚ
+  marathi_variants:
+  - बायनरी सर्च
+  - बायनरी सर्च
+- canonical: pointer
+  domain: cs_dsa
+  hindi_variants:
+  - पॉइंटर
+  - पॉइन्टर
+  kannada_variants:
+  - ಪಾಯಿಂಟರ್
+  - ಪಾಯಿಂಟ್ರ್
+  marathi_variants:
+  - पॉइंटर
+  - पॉइंटर्
+- canonical: array
+  domain: cs_dsa
+  hindi_variants:
+  - ऐरे
+  - एरे
+  - अरे
+  kannada_variants:
+  - ಅರೇ
+  - ಅರೆ
+  marathi_variants:
+  - अरे
+  - अ‍ॅरे
+- canonical: function
+  domain: cs_programming
+  hindi_variants:
+  - फंक्शन
+  - फ़ंक्शन
+  - फंक्शन्स
+  kannada_variants:
+  - ಫಂಕ್ಷನ್
+  - ಫಂಕ್ಷನ್ಗಳು
+  marathi_variants:
+  - फंक्शन
+  - फंक्शन्स
+- canonical: ai
+  domain: cs_ai_ml
+  hindi_variants:
+  - एआई
+  kannada_variants:
+  - ಎಐ
+  marathi_variants:
+  - एआय
+- canonical: computer
+  domain: general_cs
+  hindi_variants:
+  - कंप्यूटर
+  kannada_variants:
+  - ಕಂಪ್ಯೂಟರ್
+  marathi_variants:
+  - कॉम्प्युटर
+- canonical: engineering
+  domain: general_eng
+  hindi_variants:
+  - इंजीनियरिंग
+  kannada_variants:
+  - ಎಂಜಿನಿಯರಿಂಗ್
+  marathi_variants:
+  - इंजिनीअरिंग
+- canonical: technology
+  domain: general_eng
+  hindi_variants:
+  - टेक्नोलॉजी
+  kannada_variants:
+  - ಟೆಕ್ನಾಲಜಿ
+  marathi_variants:
+  - टेक्नॉलॉजी
+- canonical: science
+  domain: general_sci
+  hindi_variants:
+  - साइंस
+  kannada_variants:
+  - ಸೈನ್ಸ್
+  marathi_variants:
+  - सायन्स
+- canonical: algorithm
+  domain: cs_dsa
+  hindi_variants:
+  - एल्गोरिदम
+  - एल्गोरिद्म
+  - अल्गोरिदम
+  kannada_variants:
+  - ಅಲ್ಗಾರಿದಮ್
+  - ಅಲ್ಗೊರಿದಮ್
+  marathi_variants:
+  - अल्गोरिदम
+  - अल्गोरीदम
+- canonical: algorithms
+  domain: cs_dsa
+  hindi_variants:
+  - एल्गोरिदम
+  - एल्गोरिद्म
+  - अल्गोरिदम
+  kannada_variants:
+  - ಅಲ್ಗಾರಿದಮ್ಗಳು
+  - ಅಲ್ಗೊರಿದಮ್ಗಳು
+  marathi_variants:
+  - अल्गोरिदम
+  - अल्गोरीदम
+- canonical: compiler
+  domain: cs_systems
+  hindi_variants:
+  - कंपाइलर
+  kannada_variants:
+  - ಕಂಪೈಲರ್
+  marathi_variants:
+  - कंपायलिर
+- canonical: compilers
+  domain: cs_systems
+  hindi_variants:
+  - कंपाइलर्स
+  kannada_variants:
+  - ಕಂಪೈಲರ್ಗಳು
+  marathi_variants:
+  - कंपायलर्स
+- canonical: thread
+  domain: cs_systems
+  hindi_variants:
+  - थ्रेड
+  kannada_variants:
+  - ಥ್ರೆಡ್
+  marathi_variants:
+  - थ्रेड
+- canonical: threads
+  domain: cs_systems
+  hindi_variants:
+  - थ्रेड्स
+  kannada_variants:
+  - ಥ್ರೆಡ್ಗಳು
+  marathi_variants:
+  - थ्रेड्स
+- canonical: process
+  domain: cs_systems
+  hindi_variants:
+  - प्रोसेस
+  kannada_variants:
+  - ಪ್ರೊಸೆಸ್
+  marathi_variants:
+  - प्रोसेस
+- canonical: processes
+  domain: cs_systems
+  hindi_variants:
+  - प्रोसेसेस
+  kannada_variants:
+  - ಪ್ರೊಸೆಸ್ಗಳು
+  marathi_variants:
+  - प्रोसेसेस
+- canonical: database
+  domain: cs_databases
+  hindi_variants:
+  - डेटाबेस
+  kannada_variants:
+  - ಡೇಟาಬೇಸ್
+  marathi_variants:
+  - डेटाबेस
+- canonical: databases
+  domain: cs_databases
+  hindi_variants:
+  - डेटाबेस
+  kannada_variants:
+  - ಡೇಟಾಬೇಸ್ಗಳು
+  marathi_variants:
+  - डेटाबेस
+- canonical: cache
+  domain: cs_systems
+  hindi_variants:
+  - कैश
+  kannada_variants:
+  - ಕ್ಯಾಶ್
+  marathi_variants:
+  - कॅश
+- canonical: caches
+  domain: cs_systems
+  hindi_variants:
+  - कैश
+  kannada_variants:
+  - ಕ್ಯಾಶ್ಗಳು
+  marathi_variants:
+  - कॅश
+- canonical: variable
+  domain: cs_programming
+  hindi_variants:
+  - वेरिएबल
+  kannada_variants:
+  - ವೇರಿಯಬಲ್
+  marathi_variants:
+  - व्हेरिएबल
+- canonical: variables
+  domain: cs_programming
+  hindi_variants:
+  - वेरिएबल्स
+  kannada_variants:
+  - ವೇರಿಯಬಲ್ಗಳು
+  marathi_variants:
+  - व्हेरिएबल्स
+- canonical: loop
+  domain: cs_programming
+  hindi_variants:
+  - लूप
+  kannada_variants:
+  - ಲೂಪ್
+  marathi_variants:
+  - लूप
+- canonical: loops
+  domain: cs_programming
+  hindi_variants:
+  - लूप्स
+  kannada_variants:
+  - ಲೂಪ್ಗಳು
+  marathi_variants:
+  - लूप्स
+- canonical: code
+  domain: cs_programming
+  hindi_variants:
+  - कोड
+  kannada_variants:
+  - ಕೋಡ್
+  marathi_variants:
+  - कोड
+- canonical: codes
+  domain: cs_programming
+  hindi_variants:
+  - कोड्स
+  kannada_variants:
+  - ಕೋಡ್ಗಳು
+  marathi_variants:
+  - कोड्स
+- canonical: coding
+  domain: cs_programming
+  hindi_variants:
+  - कोडिंग
+  kannada_variants:
+  - ಕೋಡಿಂಗ್
+  marathi_variants:
+  - कोडिंग
+- canonical: program
+  domain: cs_programming
+  hindi_variants:
+  - प्रोग्राम
+  kannada_variants:
+  - ಪ್ರೋಗ್ರಾಂ
+  marathi_variants:
+  - प्रोग्राम
+- canonical: programs
+  domain: cs_programming
+  hindi_variants:
+  - प्रोग्राम्स
+  kannada_variants:
+  - ಪ್ರೋಗ್ರಾಂಗಳು
+  marathi_variants:
+  - प्रोग्राम्स
+- canonical: programming
+  domain: cs_programming
+  hindi_variants:
+  - प्रोग्रामिंग
+  kannada_variants:
+  - ಪ್ರೋಗ್ರಾಮಿಂಗ್
+  marathi_variants:
+  - प्रोग्रामिंग
+- canonical: machine learning
+  domain: cs_ai_ml
+  hindi_variants:
+  - मशीन लर्निंग
+  - मशीन लरनिंग
+  - मशीन लर्नींग
+  kannada_variants:
+  - ಮಷಿನ್ ಲರ್ನಿಂಗ್
+  - ಮಶೀನ್ ಲರ್ನಿಂಗ್
+  marathi_variants:
+  - मशीन लर्निंग
+- canonical: torque
+  domain: mechanical
+  hindi_variants:
+  - टॉर्क
+  - टार्क
+  kannada_variants:
+  - ಟಾರ್ಕ್
+  marathi_variants:
+  - टॉर्क
+- canonical: voltage
+  domain: electrical
+  hindi_variants:
+  - वोल्टेज
+  kannada_variants:
+  - ವೋಲ್ಟೇಜ್
+  marathi_variants:
+  - व्होल्टेज
+- canonical: current
+  domain: electrical
+  hindi_variants:
+  - करंट
+  kannada_variants:
+  - ಕರೆಂಟ್
+  marathi_variants:
+  - करंट
