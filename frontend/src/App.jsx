@@ -115,6 +115,10 @@ export default function App() {
           isAuthenticated: true,
           isLoading: false
         });
+        // Load this Google user's conversation cache (scoped by user_id).
+        import('./stores/chatStore').then(({ chatStore: cs }) => {
+          cs.getState().reloadFromStorage();
+        }).catch(() => {});
         window.history.replaceState({}, document.title, '/');
       } catch (e) {
         console.error("Failed to decode SSO callback token:", e);

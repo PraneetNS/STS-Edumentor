@@ -65,10 +65,26 @@ export const authStore = createStore((set, get) => ({
       token: data.access_token,
       isAuthenticated: true
     });
+    // Load this user's conversation cache (scoped by their user_id).
+    try {
+      const { chatStore } = await import('./chatStore');
+      chatStore.getState().reloadFromStorage();
+    } catch (e) {
+      console.warn('Failed to reload chat store for user:', e);
+    }
     return data.user;
   },
 
   logout: async () => {
+    // Reset in-memory chat state BEFORE wiping the auth token so storageKey()
+    // can still resolve the user_id — but DON'T touch localStorage so the
+    // user's scoped conversation cache survives for their next login.
+    try {
+      const { chatStore } = await import('./chatStore');
+      chatStore.getState().resetInMemory();
+    } catch (e) {
+      console.warn('Failed to reset chat store:', e);
+    }
     try {
       await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' });
     } catch (e) {
