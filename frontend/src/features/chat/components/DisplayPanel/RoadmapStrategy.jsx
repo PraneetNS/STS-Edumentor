@@ -19,6 +19,29 @@ export default function RoadmapStrategy({ block }) {
       const trimmed = line.trim();
       if (!trimmed) return;
 
+      // Check for <step label="...">... (or escaped versions)
+      const tagMatch = trimmed.match(/^(?:<|&lt;)(?:step|item)\b[^>]*label=["']([^"']*)["'][^>]*>(?:>|&gt;)?([\s\S]*?)(?:(?:<|&lt;)\/(?:step|item)(?:>|&gt;))?/i)
+        || trimmed.match(/^(?:<|&lt;)(?:step|item)\b[^>]*label=&quot;([^&]*)&quot;[^>]*>(?:>|&gt;)?([\s\S]*?)(?:(?:<|&lt;)\/(?:step|item)(?:>|&gt;))?/i);
+
+      if (tagMatch) {
+        const titleText = tagMatch[1].trim();
+        const detailsText = tagMatch[2].replace(/(?:<|&lt;)\/?(?:step|item)(?:>|&gt;)/gi, '').trim();
+        
+        // Parse step number (e.g., "Step 1: Title" -> "1")
+        const numMatch = titleText.match(/^(?:Step\s+)?(\d+)[:.]?\s*(.*)$/i);
+        const number = numMatch ? numMatch[1] : (parsedSteps.length + 1).toString();
+        const cleanTitle = numMatch ? numMatch[2] : titleText;
+        
+        if (currentStep) parsedSteps.push(currentStep);
+        currentStep = {
+          number,
+          title: cleanTitle,
+          completed: false,
+          details: detailsText ? [detailsText] : []
+        };
+        return;
+      }
+
       // Extract step numbers or bullet points
       const checklistMatch = trimmed.match(/^[-*]\s+\[([ xX])\]\s+(?:(\d+)\.\s+)?(.*)/);
       const stepMatch = trimmed.match(/^(?:(\d+)\.\s+)?(.*)/);

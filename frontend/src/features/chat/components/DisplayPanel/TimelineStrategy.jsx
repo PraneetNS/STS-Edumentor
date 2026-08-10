@@ -7,7 +7,19 @@ export function TimelineStrategy({ block }) {
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !line.startsWith('#'))
-    .map((line) => line.replace(/^[-*+]\s*/, '').replace(/^\d+\.\s*/, ''));
+    .map((line) => {
+      // Check for <step label="...">... (or escaped versions)
+      const tagMatch = line.match(/(?:<|&lt;)(?:step|item)\b[^>]*label=["']([^"']*)["'][^>]*>(?:>|&gt;)?([\s\S]*?)(?:(?:<|&lt;)\/(?:step|item)(?:>|&gt;))?/i)
+        || line.match(/(?:<|&lt;)(?:step|item)\b[^>]*label=&quot;([^&]*)&quot;[^>]*>(?:>|&gt;)?([\s\S]*?)(?:(?:<|&lt;)\/(?:step|item)(?:>|&gt;))?/i);
+      
+      if (tagMatch) {
+        const titleText = tagMatch[1].trim();
+        const detailsText = tagMatch[2].replace(/(?:<|&lt;)\/?(?:step|item)(?:>|&gt;)/gi, '').trim();
+        return detailsText ? `${titleText}: ${detailsText}` : titleText;
+      }
+      
+      return line.replace(/^[-*+]\s*/, '').replace(/^\d+\.\s*/, '');
+    });
 
   return (
     <div className="flex flex-col gap-6 p-6 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-sm">

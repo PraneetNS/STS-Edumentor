@@ -16,17 +16,28 @@ export function ChecklistStrategy({ block }) {
       const trimmed = line.trim();
       if (!trimmed) return;
 
-      const checkboxMatch = trimmed.match(/^[-*]\s+\[([ xX])\]\s+(.*)/);
-      const bulletMatch = trimmed.match(/^[-*]\s+(.*)/);
+      // Check for <item label="..."> or <item>Text</item> or escaped versions
+      const tagMatch = trimmed.match(/^(?:<|&lt;)(?:item|step|li)\b[^>]*label=["']([^"']*)["'][^>]*>(?:>|&gt;)?([\s\S]*?)(?:(?:<|&lt;)\/(?:item|step|li)(?:>|&gt;))?/i)
+        || trimmed.match(/^(?:<|&lt;)(?:item|step|li)\b[^>]*label=&quot;([^&]*)&quot;[^>]*>(?:>|&gt;)?([\s\S]*?)(?:(?:<|&lt;)\/(?:item|step|li)(?:>|&gt;))?/i)
+        || trimmed.match(/^(?:<|&lt;)(?:item|step|li)(?:>|&gt;)?([\s\S]*?)(?:(?:<|&lt;)\/(?:item|step|li)(?:>|&gt;))/i);
 
       let itemText = trimmed;
       let completed = false;
 
-      if (checkboxMatch) {
-        itemText = checkboxMatch[2].trim();
-        completed = checkboxMatch[1].toLowerCase() === 'x';
-      } else if (bulletMatch) {
-        itemText = bulletMatch[1].trim();
+      if (tagMatch) {
+        const labelText = tagMatch[1] ? tagMatch[1].trim() : '';
+        const bodyText = tagMatch[2] ? tagMatch[2].replace(/(?:<|&lt;)\/?(?:item|step|li)(?:>|&gt;)/gi, '').trim() : tagMatch[0].replace(/(?:<|&lt;)\/?(?:item|step|li)(?:>|&gt;)/gi, '').trim();
+        itemText = labelText ? `${labelText}: ${bodyText}` : bodyText;
+      } else {
+        const checkboxMatch = trimmed.match(/^[-*]\s+\[([ xX])\]\s+(.*)/);
+        const bulletMatch = trimmed.match(/^[-*]\s+(.*)/);
+
+        if (checkboxMatch) {
+          itemText = checkboxMatch[2].trim();
+          completed = checkboxMatch[1].toLowerCase() === 'x';
+        } else if (bulletMatch) {
+          itemText = bulletMatch[1].trim();
+        }
       }
 
       // If the text starts with '#', it's a heading/subheading
