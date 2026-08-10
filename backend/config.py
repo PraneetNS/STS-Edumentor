@@ -23,7 +23,7 @@ class Config:
     # ─────────────────────────────────────────────
     # Whisper (STT) settings
     # ─────────────────────────────────────────────
-    WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "small" if MULTILINGUAL_ENABLED else "small.en")
+    WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "medium" if MULTILINGUAL_ENABLED else "medium.en")
     WHISPER_BEAM_SIZE: int = int(os.getenv("WHISPER_BEAM_SIZE", "1"))
     WHISPER_CORRECTION_THRESHOLD: float = float(os.getenv("WHISPER_CORRECTION_THRESHOLD", "-0.5"))
     WHISPER_CORRECTION_TIMEOUT: float = float(os.getenv("WHISPER_CORRECTION_TIMEOUT", "0.4"))

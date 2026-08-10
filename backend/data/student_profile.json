@@ -24,11 +24,11 @@
     "Python"
   ],
   "preferred_style": "examples",
-  "session_count": 102,
+  "session_count": 128,
   "discipline": "civil",
   "active_topics": [
     "Civil Engineering"
   ],
-  "output_language_preference": "english",
+  "output_language_preference": "auto",
   "glossary_mode": "english"
 }
