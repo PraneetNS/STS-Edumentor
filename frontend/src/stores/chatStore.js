@@ -33,7 +33,23 @@ function migrateFromLegacyKey() {
   if (scoped === BASE_STORAGE_KEY) return null; // already on legacy / guest path
   try {
     const alreadyMigrated = localStorage.getItem(scoped);
-    if (alreadyMigrated) return null; // scoped key exists, nothing to migrate
+    let isNewOrEmpty = false;
+    if (alreadyMigrated) {
+      try {
+        const parsedScoped = JSON.parse(alreadyMigrated);
+        if (
+          !Array.isArray(parsedScoped) ||
+          parsedScoped.length === 0 ||
+          (parsedScoped.length === 1 && (!parsedScoped[0].messages || parsedScoped[0].messages.length === 0))
+        ) {
+          isNewOrEmpty = true;
+        }
+      } catch (_) {}
+    } else {
+      isNewOrEmpty = true;
+    }
+
+    if (!isNewOrEmpty) return null; // scoped key has actual user conversations, don't overwrite
 
     const legacy = localStorage.getItem(BASE_STORAGE_KEY);
     if (!legacy) return null;
