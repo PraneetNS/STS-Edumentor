@@ -230,6 +230,15 @@ class AccessControl:
             return True
 
         if existing_owner != claimed_student_id:
+            # Allow taking ownership if the session was previously a guest session (owned by its session_id)
+            if existing_owner == session_id:
+                _session_owner_map[session_id] = claimed_student_id
+                logger.info(
+                    "[ACCESS_CONTROL] Student %r took ownership of guest session %r in memory",
+                    claimed_student_id, session_id
+                )
+                return True
+
             logger.warning(
                 "[ACCESS_CONTROL] Session ownership violation (in-memory). "
                 "session_id=%r registered_owner=%r claimed=%r",
