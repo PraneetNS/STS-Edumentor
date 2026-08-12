@@ -109,16 +109,24 @@ export default function App() {
         } catch (e) {
           console.warn("Failed to save SSO token to localStorage:", e);
         }
-        authStore.setState({
-          token: urlToken,
-          user: userObj,
-          isAuthenticated: true,
-          isLoading: false
-        });
-        // Load this Google user's conversation cache (scoped by user_id).
+        // Load this Google user's conversation cache (scoped by user_id) first.
         import('./stores/chatStore').then(({ chatStore: cs }) => {
-          cs.getState().reloadFromStorage();
-        }).catch(() => {});
+          cs.getState().reloadFromStorage(urlToken);
+          authStore.setState({
+            token: urlToken,
+            user: userObj,
+            isAuthenticated: true,
+            isLoading: false
+          });
+        }).catch((err) => {
+          console.error("Failed to load chatStore during SSO:", err);
+          authStore.setState({
+            token: urlToken,
+            user: userObj,
+            isAuthenticated: true,
+            isLoading: false
+          });
+        });
         window.history.replaceState({}, document.title, '/');
       } catch (e) {
         console.error("Failed to decode SSO callback token:", e);
