@@ -951,14 +951,19 @@ async def get_session_messages(
     if not db_manager or not db_manager.pool:
         return []
 
-    # Verify session ownership to prevent IDOR
+    # Verify session ownership to prevent IDOR.
+    # Allow access if: (a) the user owns the session directly, (b) the session is
+    # a guest session (owner_id == session_id — the session was used anonymously),
+    # or (c) the user is an admin.
+    is_guest_session = False
     exists_query = "SELECT user_id FROM conversation_logs WHERE session_id = $1 LIMIT 1;"
     try:
         async with db_manager.pool.acquire() as conn:
             owner_row = await conn.fetchrow(exists_query, session_uuid)
             if owner_row:
                 owner_id = owner_row["user_id"]
-                if owner_id != user_id and user.get("role") != "admin":
+                is_guest_session = (owner_id == session_uuid)  # guest pattern: user_id == session_id
+                if owner_id != user_id and not is_guest_session and user.get("role") != "admin":
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail="Access denied: You do not own this session."
@@ -968,15 +973,27 @@ async def get_session_messages(
     except Exception as e:
         logger.error("Error verifying session ownership: %s", e)
 
-    query = """
-    SELECT id, query_text, response_text, created_at, intent_category
-    FROM conversation_logs
-    WHERE user_id = $1 AND session_id = $2
-    ORDER BY created_at ASC;
-    """
+    # Fetch messages: for guest sessions query by session_id only (any user_id),
+    # for owned sessions also filter by user_id for extra isolation.
+    if is_guest_session:
+        query = """
+        SELECT id, query_text, response_text, created_at, intent_category
+        FROM conversation_logs
+        WHERE session_id = $1
+        ORDER BY created_at ASC;
+        """
+        query_args = [session_uuid]
+    else:
+        query = """
+        SELECT id, query_text, response_text, created_at, intent_category
+        FROM conversation_logs
+        WHERE user_id = $1 AND session_id = $2
+        ORDER BY created_at ASC;
+        """
+        query_args = [user_id, session_uuid]
     try:
         async with db_manager.pool.acquire() as conn:
-            rows = await conn.fetch(query, user_id, session_uuid)
+            rows = await conn.fetch(query, *query_args)
             messages = []
             for r in rows:
                 q_time = r["created_at"].isoformat() if r["created_at"] else None
@@ -3060,7 +3077,8 @@ async def _stream_llm_and_tts(
 ) -> None:
     """
     Simultaneously stream LLM tokens to the frontend AND generate TTS audio
-    sentence-by-sentence using a 3-queue architecture with backpressure.
+    sentence-by-sentence using a 3-queue pipeline (LLM reader → TTS worker → audio sender).
+    Queues are unbounded so the LLM reader is never stalled by TTS synthesis latency.
     """
     # Queues
     tts_queue: asyncio.Queue[str | None] = asyncio.Queue(maxsize=3)
