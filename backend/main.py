@@ -2116,14 +2116,27 @@ async def _run_pipeline(
                     transcript[:80], requested_output_lang,
                 )
 
-        # Determine target output language
-        # Priority: explicit request > user profile preference > route_lang
+        # Determine target output language.
+        # Priority (highest → lowest):
+        #   1. Explicit in-utterance request (e.g. "explain in Kannada") — only when speaking English
+        #   2. route_lang: the language the user is CURRENTLY speaking — always beats stored preferences
+        #      because the user's current speech is the strongest signal of intended language.
+        #   3. lang_pref from profile — only used when route detection is genuinely ambiguous
+        #      (pure English transcript with no Indic keywords and no explicit override).
+        #
+        # NOTE: lang_pref intentionally does NOT override route_lang. If a user who previously
+        # selected Kannada now speaks Hindi, the system must respond in Hindi — not Kannada.
         if requested_output_lang:
+            # English speaker explicitly requesting a specific output language
             response_lang = requested_output_lang
+        elif route_lang != "english":
+            # User is speaking an Indic language → always respond in that same language
+            response_lang = route_lang
         elif lang_pref != "auto":
+            # Pure English utterance + stored preference → honour the preference
             response_lang = lang_pref
         else:
-            response_lang = route_lang
+            response_lang = route_lang  # "english"
 
         logger.info("[ML-STAGE-2] response_lang=%r (requested=%r, lang_pref=%r, route_lang=%r)",
                     response_lang, requested_output_lang, lang_pref, route_lang)
