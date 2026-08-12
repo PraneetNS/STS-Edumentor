@@ -411,11 +411,33 @@ export function useVoicePipeline({
         return;
       }
 
-      // 1008 = policy violation — backend rejected the token as expired/invalid
-      // Don't retry; force a full re-login instead.
+      // 1008 = policy violation — differentiate between auth failures and session
+      // ownership violations so we don't log the user out when they simply click
+      // on an old chat session that was created under a different session ID.
       if (event.code === 1008) {
-        console.warn('[Auth] WebSocket rejected with 1008. Forcing logout...');
-        authStore.getState().logout();
+        const reason = (event.reason || '').toLowerCase();
+        const isAuthFailure = reason.includes('invalid auth token') ||
+                              reason.includes('missing auth token') ||
+                              reason.includes('expired');
+        if (isAuthFailure) {
+          // Token is dead — force full re-login
+          console.warn('[Auth] WebSocket rejected with 1008 (auth failure). Forcing logout...', reason);
+          authStore.getState().logout();
+          setConnectionState('disconnected');
+          setStatus('disconnected');
+          return;
+        }
+        // Session ownership violation or other policy reason: the user's token is
+        // still valid, but the selected session belongs to a different user/guest.
+        // Create a fresh session and reconnect instead of logging out.
+        console.warn('[Auth] WebSocket rejected with 1008 (session policy). Creating fresh session and reconnecting...', reason);
+        try {
+          const freshId = chatStore.getState().createConversation();
+          // Switching the active session triggers the connectWS useEffect via conversationId change
+          // Just mark as disconnected here — the effect will reconnect with the new ID
+        } catch (e) {
+          console.warn('[Auth] Failed to create fresh session after ownership violation:', e);
+        }
         setConnectionState('disconnected');
         setStatus('disconnected');
         return;
