@@ -2102,16 +2102,19 @@ async def _run_pipeline(
             })
 
         # ── Explicit output-language request detection ────────────────────────
-        # The user may speak English but explicitly ask for a response in Hindi,
-        # Marathi, or Kannada (e.g. "explain in Hindi", "give me a roadmap in Marathi").
-        # detect_requested_output_language() scans the transcript for such phrases
-        # and, if found, overrides the response language regardless of route_lang.
-        requested_output_lang = multilingual_pipeline.router.detect_requested_output_language(transcript)
-        if requested_output_lang:
-            logger.info(
-                "[ML-STAGE-2] Explicit output-language request detected in English utterance: %r → override response_lang=%r",
-                transcript[:80], requested_output_lang,
-            )
+        # Only scan for an explicit language override when the user is speaking
+        # English (route_lang == "english"). An English speaker can say things like
+        # "explain in Hindi" or "machine learning in Kannada" to switch the output
+        # language. This check must NOT fire for Indic-language utterances — a Hindi
+        # speaker's transcript will not contain English phrases like "in kannada".
+        requested_output_lang = None
+        if route_lang == "english":
+            requested_output_lang = multilingual_pipeline.router.detect_requested_output_language(transcript)
+            if requested_output_lang:
+                logger.info(
+                    "[ML-STAGE-2] Explicit output-language override from English utterance: %r → response_lang=%r",
+                    transcript[:80], requested_output_lang,
+                )
 
         # Determine target output language
         # Priority: explicit request > user profile preference > route_lang
