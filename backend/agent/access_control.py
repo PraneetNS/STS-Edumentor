@@ -179,6 +179,7 @@ class AccessControl:
                 FROM conversation_logs
                 WHERE session_id = $1
                   AND user_id    != $2
+                  AND user_id    != session_id
                 LIMIT 1;
             """
             async with db_pool.acquire() as conn:
