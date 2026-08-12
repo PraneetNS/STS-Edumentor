@@ -3103,9 +3103,10 @@ async def _stream_llm_and_tts(
     sentence-by-sentence using a 3-queue pipeline (LLM reader → TTS worker → audio sender).
     Queues are unbounded so the LLM reader is never stalled by TTS synthesis latency.
     """
-    # Queues
-    tts_queue: asyncio.Queue[str | None] = asyncio.Queue(maxsize=3)
-    audio_queue: asyncio.Queue[dict | None] = asyncio.Queue(maxsize=3)
+    # Queues — unbounded so llm_token_reader is never blocked by TTS backpressure.
+    # LLM responses are bounded (250-512 tokens max) so memory is not a concern.
+    tts_queue: asyncio.Queue[str | None] = asyncio.Queue()
+    audio_queue: asyncio.Queue[dict | None] = asyncio.Queue()
     sentence_buffer = ""
     tts_and_llm_start = time.time()
     real_content_started = {"flag": False}   # set True the instant tts_worker dequeues its first real sentence
