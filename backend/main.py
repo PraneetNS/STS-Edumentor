@@ -1987,13 +1987,20 @@ async def _run_pipeline(
         resolved_pref = lang_pref
         if lang_pref == "auto" and session_id in SESSION_LANGUAGES:
             cached_lang = SESSION_LANGUAGES[session_id]
-            # Only use cached hint for Kannada/Marathi — not for Hindi, which is already
-            # Whisper's default fallback and doesn't need forcing.
+            # Only use the session-cached language as a Whisper hint for Kannada/Marathi
+            # AND only when the profile has no explicit preference. Crucially: if the
+            # profile preference is "auto" we honour the cache only for the very next
+            # turn so Whisper stays accurate on Kannada/Marathi audio. We do NOT cache-
+            # force Hindi because a prior Kannada mis-detection would then lock Whisper
+            # to 'kn' and garble Hindi speech on the following turn.
             if cached_lang in ("kannada", "marathi"):
                 resolved_pref = cached_lang
                 logger.info("[ML-STT] Biasing STT to session-cached Indic language: %s", resolved_pref)
             else:
                 logger.info("[ML-STT] Session-cached language=%r — not forcing Whisper (let auto-detect run)", cached_lang)
+        elif lang_pref != "auto":
+            # Explicit profile preference: honour it directly for Whisper hint.
+            resolved_pref = lang_pref
 
         whisper_lang_hint = None
         if resolved_pref == "kannada":
