@@ -34,6 +34,7 @@ function migrateFromLegacyKey() {
   try {
     const alreadyMigrated = localStorage.getItem(scoped);
     if (alreadyMigrated) return null; // scoped key exists, nothing to migrate
+
     const legacy = localStorage.getItem(BASE_STORAGE_KEY);
     if (!legacy) return null;
     const parsed = JSON.parse(legacy);
@@ -132,8 +133,8 @@ export const chatStore = createStore((set, get) => ({
     }
   },
 
-  fetchSessionsFromDb: async () => {
-    const token = authStore.getState().token;
+  fetchSessionsFromDb: async (explicitToken) => {
+    const token = explicitToken || authStore.getState().token;
     if (!token) return;
     try {
       const res = await fetch(`${API_BASE}/api/sessions?limit=50`, {
@@ -394,7 +395,7 @@ export const chatStore = createStore((set, get) => ({
   // 2. Then fetch fresh sessions from the DB and merge on top so the user
   //    always sees their full, authoritative history — even if localStorage
   //    was stale or the account was used on another device.
-  reloadFromStorage: () => {
+  reloadFromStorage: (explicitToken) => {
     const saved = loadFromStorage();
     if (saved && saved.length > 0) {
       set({ conversations: saved, activeId: saved[0].id });
@@ -403,6 +404,6 @@ export const chatStore = createStore((set, get) => ({
       set({ conversations: [fresh], activeId: fresh.id });
     }
     // Fire DB sync in the background (non-blocking).
-    get().fetchSessionsFromDb().catch(() => {});
+    get().fetchSessionsFromDb(explicitToken).catch(() => {});
   },
 }));
