@@ -60,18 +60,18 @@ export const authStore = createStore((set, get) => ({
     } catch (e) {
       console.warn('Failed to save credentials to localStorage:', e);
     }
+    // Load this user's conversation cache (scoped by their user_id) first.
+    try {
+      const { chatStore } = await import('./chatStore');
+      chatStore.getState().reloadFromStorage(data.access_token);
+    } catch (e) {
+      console.warn('Failed to reload chat store for user:', e);
+    }
     set({
       user: data.user,
       token: data.access_token,
       isAuthenticated: true
     });
-    // Load this user's conversation cache (scoped by their user_id).
-    try {
-      const { chatStore } = await import('./chatStore');
-      chatStore.getState().reloadFromStorage();
-    } catch (e) {
-      console.warn('Failed to reload chat store for user:', e);
-    }
     return data.user;
   },
 
