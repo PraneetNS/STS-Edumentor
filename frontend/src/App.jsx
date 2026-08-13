@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { PanelLeft, Home, X, BookOpen, ExternalLink, FileText, Terminal, Download } from 'lucide-react';
+import { PanelLeft, Home, X, BookOpen, ExternalLink, FileText, Terminal, Download, Send } from 'lucide-react';
 
 import { useVoicePipeline } from './hooks/useVoicePipeline';
 import { useConversationStore } from './hooks/useConversationStore';
@@ -248,6 +248,11 @@ export default function App() {
   // Active message ID ref to update the streaming assistant bubble in real-time
   const activeMsgIdRef = useRef(null);
 
+  // Dedup guard: prevents React StrictMode double-invoke (and any other rapid
+  // re-fire) from adding the same user transcript twice. Stores the last text
+  // that was added and a timestamp; ignores an identical call within 2 seconds.
+  const lastTranscriptRef = useRef({ text: '', ts: 0 });
+
   // FIX 1 — Reset callback passed to the MessageList ErrorBoundary.
   // Finalises any stuck streaming bubble so state is clean after recovery.
   const resetMessageListRef = useRef(null);
@@ -261,6 +266,7 @@ export default function App() {
 
   // Default static snapshot captured from the live mentor character
   const [defaultAvatarUrl, setDefaultAvatarUrl] = useState(null);
+  const [textQuery, setTextQuery] = useState('');
 
   // ── Voice pipeline ──────────────────────────────────────────────────────
   const {
@@ -290,6 +296,17 @@ export default function App() {
       // produces nothing (silence, noise, too short). The backend
       // will handle the "didn't hear you" response separately.
       if (!text || !text.trim()) return;
+
+      // Dedup: StrictMode double-invokes effects which can fire onTranscript
+      // twice for the same utterance. Drop the duplicate if the same text
+      // arrives within 2 seconds of the previous one.
+      const now = Date.now();
+      if (
+        text.trim() === lastTranscriptRef.current.text &&
+        now - lastTranscriptRef.current.ts < 2000
+      ) return;
+      lastTranscriptRef.current = { text: text.trim(), ts: now };
+
       addMessage('user', text);
     },
     onThinking: () => {
@@ -326,6 +343,18 @@ export default function App() {
       }
     }
   });
+
+  const handleSendText = useCallback(() => {
+    if (!textQuery.trim()) return;
+    if (isRecording) {
+      toggleRecording();
+    }
+    sendWebSocketMessage({
+      type: 'text_query',
+      text: textQuery.trim()
+    });
+    setTextQuery('');
+  }, [textQuery, isRecording, toggleRecording, sendWebSocketMessage]);
 
   const handleResumeThread = useCallback((topic) => {
     sendWebSocketMessage({
@@ -826,7 +855,7 @@ export default function App() {
                           letterSpacing: '-0.01em',
                           margin: 0,
                         }}>
-                          Hey, I'm <span style={{ color: '#5457E5' }}>EDI</span>.
+                          👋 Hey, I'm <span style={{ color: '#5457E5' }}>EDI</span>.
                         </p>
                         <p style={{
                           fontSize: '14px',
@@ -834,7 +863,7 @@ export default function App() {
                           color: 'var(--text-secondary)',
                           margin: 0,
                         }}>
-                          Your Engineering Mentor
+                          🎓 Your Engineering Mentor
                         </p>
                         <p style={{
                           fontSize: '13px',
@@ -843,7 +872,7 @@ export default function App() {
                           lineHeight: '1.4',
                           maxWidth: '280px',
                         }}>
-                          Press the mic below to start our session.
+                          🎙️ Press the mic below to start our session.
                         </p>
                       </div>
                     </motion.div>
@@ -894,6 +923,43 @@ export default function App() {
                       liveWords={liveWords}
                       isRecording={isRecording}
                     />
+
+                    {/* Text Query Input bar */}
+                    <div className="live-bar w-full max-w-2xl mx-auto focus-within:ring-2 focus-within:ring-indigo-500/30 transition-all">
+                      <span className="text-base select-none" title="Type your question">💬</span>
+                      <input
+                        type="text"
+                        placeholder="Ask Edi anything..."
+                        style={{
+                          flex: 1,
+                          background: 'transparent',
+                          border: 'none',
+                          outline: 'none',
+                          fontSize: '13.5px',
+                          color: 'var(--text-primary)',
+                        }}
+                        value={textQuery}
+                        onChange={(e) => setTextQuery(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleSendText();
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={handleSendText}
+                        className="p-1.5 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white transition-all disabled:opacity-50 flex items-center justify-center"
+                        disabled={!textQuery.trim()}
+                        title="Send message"
+                        style={{
+                          border: 'none',
+                          cursor: textQuery.trim() ? 'pointer' : 'default',
+                        }}
+                      >
+                        <Send size={14} />
+                      </button>
+                    </div>
+
                     <div className="flex justify-center pb-1">
                       <VoiceOrb
                         isRecording={isRecording}
