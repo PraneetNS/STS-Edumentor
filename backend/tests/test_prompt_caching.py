@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+import uuid
 from typing import List, Dict
 
 import httpx
@@ -47,9 +48,9 @@ from config import Config
 _BUILDER = PromptBuilder()
 
 
-def _make_profile(weak_areas: list[str] | None = None) -> StudentProfile:
+def _make_profile(weak_areas: list[str] | None = None, name: str = "TestStudent") -> StudentProfile:
     return StudentProfile(
-        name="TestStudent",
+        name=name,
         level="beginner",
         learning_topics=["Python"],
         weak_topics=weak_areas or [],
@@ -250,7 +251,8 @@ async def test_kv_cache_hit_on_repeated_system_prompt():
     """
     engine = LLMEngine()
     session_id = "test_cache_session_cold_warm"
-    profile = _make_profile()
+    unique_name = f"TestStudent-{uuid.uuid4().hex[:6]}"
+    profile = _make_profile(name=unique_name)
 
     # ── Turn 1: cold prefill ─────────────────────────────────────────────────
     msgs_turn1 = build_messages(session_id, "what is dynamic programming", profile)

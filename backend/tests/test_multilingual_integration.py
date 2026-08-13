@@ -37,6 +37,10 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from config import Config
+if not Config.MULTILINGUAL_ENABLED:
+    pytest.skip("Skipping multilingual integration tests because MULTILINGUAL_ENABLED=false", allow_module_level=True)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers — TTS audio generation for test input clips
 # ─────────────────────────────────────────────────────────────────────────────

@@ -142,8 +142,9 @@ async def test_profile_stats_computation_logic():
             )
             
             import json
+            db_today = await conn.fetchval("SELECT CURRENT_DATE;")
             for i in range(3):
-                date = datetime.date.today() - datetime.timedelta(days=i)
+                date = db_today - datetime.timedelta(days=i)
                 intent_dist = {
                     "CONCEPT_EXPLANATION": 3,
                     "CODE_HELP": 2,
