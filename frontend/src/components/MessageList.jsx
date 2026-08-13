@@ -36,7 +36,7 @@ const Message = memo(function Message({
   const isUser = msg.role === 'user';
   const isStreaming = msg.isStreaming;
   const blocks = !isUser ? extractVisualBlocks(msg.text) : [];
-  const labelText = isUser ? 'You' : 'EDI';
+  const labelText = isUser ? '🧑 You' : '🤖 Edi';
 
   return (
     <motion.div
@@ -66,7 +66,14 @@ const Message = memo(function Message({
 
         <div className={`msg-bubble ${isUser ? 'user' : 'assistant'}`}>
           {isStreaming ? (
-            <MarkdownViewer text={msg.text || ''} isStreaming={true} />
+            <>
+              <MarkdownViewer text={msg.text || ''} isStreaming={true} />
+              {!msg.text && (
+                <span className="inline-flex items-center gap-1 text-[var(--text-muted)] text-xs animate-pulse">
+                  <span>✨</span> thinking...
+                </span>
+              )}
+            </>
           ) : (
             isUser ? <UserMessageText text={msg.text} /> : <MarkdownViewer text={msg.text} />
           )}
@@ -93,7 +100,7 @@ const Message = memo(function Message({
         {!isUser && msg.followup && (
           <div className="mt-2.5 flex flex-col items-start gap-1 select-none">
             <span className="font-sans font-semibold text-[9px] text-[var(--text-muted)] pl-0.5">
-              Suggested Followup
+              💬 Suggested Followup
             </span>
             <button
               onClick={() => onSendFollowup?.(msg.followup)}
@@ -136,9 +143,9 @@ function MessageListEmpty() {
         <MascotOwl state="listening" size="100%" />
       </div>
       <div className="bg-[var(--bg-primary)] border border-[var(--border-default)]/60 p-6 rounded-2xl max-w-sm shadow-[0_8px_30px_rgb(0,0,0,0.02)]">
-        <h3 className="font-sans font-bold text-sm text-[var(--text-primary)] mb-1">EDI is ready to talk!</h3>
+        <h3 className="font-sans font-bold text-sm text-[var(--text-primary)] mb-1">🎙️ Edi is ready to talk!</h3>
         <p className="font-sans text-xs text-[var(--text-muted)] leading-relaxed">
-          Ask me anything about engineering concepts, coding architectures, structural mechanics, or roadmap sequences.
+          Ask me anything — 💻 coding, ⚙️ engineering concepts, 🏗️ structures, or 🚀 roadmaps. Press the mic or type below!
         </p>
       </div>
     </div>
