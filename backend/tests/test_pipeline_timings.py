@@ -24,6 +24,10 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 # Make sure the backend package root is on PYTHONPATH
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from config import Config
+if not Config.MULTILINGUAL_ENABLED:
+    pytest.skip("Skipping multilingual pipeline timings tests because MULTILINGUAL_ENABLED=false", allow_module_level=True)
+
 
 def safe(text, max_len=50):
     """Safely encode text for printing -- replaces unencodable chars."""

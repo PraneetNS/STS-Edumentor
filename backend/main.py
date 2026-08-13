@@ -732,7 +732,7 @@ async def google_auth():
         "redirect_uri": Config.GOOGLE_REDIRECT_URI,
         "scope": "openid email profile",
         "access_type": "offline",
-        "prompt": "consent"
+        "prompt": "select_account"
     }
     url = f"https://accounts.google.com/o/oauth2/v2/auth?{urllib.parse.urlencode(params)}"
     return RedirectResponse(url=url)
@@ -1247,18 +1247,21 @@ async def voice_endpoint(websocket: WebSocket):
     if not re.match(r"^[a-zA-Z0-9_\-.:]+$", session_id):
         logger.warning("Rejected WebSocket connection: invalid session_id format %r", session_id)
         await websocket.accept()
+        await asyncio.sleep(0.1)
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="invalid session id format")
         return
-
+    
     # Verify session ownership to resolve IDOR security risk
     if not await AccessControl.verify_session_ownership(session_id, str(user_uuid), db_manager.pool if db_manager else None):
         logger.warning("Rejected WebSocket connection: user %s does not own session %s", user_uuid, session_id)
         await websocket.accept()
+        await asyncio.sleep(0.1)
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="session ownership violation")
         return
 
     if not rate_limiter.check_connection_limit(client_ip):
         await websocket.accept()
+        await asyncio.sleep(0.1)
         await websocket.close(code=1008, reason="too many connections")
         return
 
@@ -1804,6 +1807,7 @@ async def _run_pipeline(
         return re.sub(r"\s+", " ", text).strip()
 
 
+    text_only = (not raw_pcm or raw_pcm == b"")
     start_time = time.time()
     latency_metrics = {
         "vad_end": 0.0,
@@ -2194,7 +2198,7 @@ async def _run_pipeline(
             try:
                 await _stream_llm_and_tts(
                     websocket, llm_stream, loop, set_state,
-                    speed, voice, latency_metrics, start_time, student_id=user_id, session_id=session_id
+                    speed, voice, latency_metrics, start_time, student_id=user_id, session_id=session_id, text_only=text_only
                 )
                 if agent_controller:
                     await agent_controller.emit_turn_event(
@@ -2430,21 +2434,24 @@ async def _run_pipeline(
                                 chunks.append(text_val.strip())
                             return chunks
                             
-                        tts_chunks = _split_for_tts(translated_tts)
-                        logger.info("[ML-TRANS-WORKER] Split translated sentence[%d] into %d TTS chunks: %r", sent_idx, len(tts_chunks), tts_chunks)
-                        for chunk in tts_chunks:
-                            await tts_queue.put(chunk)
+                        if not text_only:
+                            tts_chunks = _split_for_tts(translated_tts)
+                            logger.info("[ML-TRANS-WORKER] Split translated sentence[%d] into %d TTS chunks: %r", sent_idx, len(tts_chunks), tts_chunks)
+                            for chunk in tts_chunks:
+                                await tts_queue.put(chunk)
                             
                         translation_queue.task_done()
                         sent_idx += 1
                 except Exception as exc:
                     logger.exception("[ML-TRANS-WORKER] ERROR: %s", exc)
                     # Propagate sentinel so tts_worker doesn't hang
-                    await tts_queue.put(None)
+                    if not text_only:
+                        await tts_queue.put(None)
                     raise
                 finally:
                     logger.info("[ML-TRANS-WORKER] Putting sentinel to tts_queue.")
-                    await tts_queue.put(None)
+                    if not text_only:
+                        await tts_queue.put(None)
 
 
             async def tts_worker():
@@ -2708,48 +2715,80 @@ async def _run_pipeline(
 
             await set_state(ConversationState.THINKING)
             real_content_started = {"flag": False}
-            reader_task = asyncio.create_task(llm_reader())
-            trans_task = asyncio.create_task(translator_worker())
-            tts_task = asyncio.create_task(tts_worker())
-            sender_task = asyncio.create_task(audio_sender())
-            filler_task = asyncio.create_task(filler_watchdog())
-
-            # Task supervisor wrapper to monitor workers. If any task raises an exception (crashes),
-            # we catch it, cancel sibling tasks immediately, notify client, and fail cleanly.
-            try:
+            if text_only:
+                reader_task = asyncio.create_task(llm_reader())
+                trans_task = asyncio.create_task(translator_worker())
                 try:
-                    await asyncio.gather(reader_task, trans_task, tts_task, sender_task)
-                    filler_task.cancel()
                     try:
-                        await filler_task
+                        await asyncio.gather(reader_task, trans_task)
+                        if agent_controller:
+                            await agent_controller.emit_turn_event(
+                                session_id, user_id, was_interrupted=False, start_time=start_time, response_lang=response_lang
+                            )
                     except asyncio.CancelledError:
-                        pass
-                    if agent_controller:
-                        await agent_controller.emit_turn_event(
-                            session_id, user_id, was_interrupted=False, start_time=start_time, response_lang=response_lang
-                        )
-                except asyncio.CancelledError:
-                    if agent_controller:
-                        await agent_controller.emit_turn_event(
-                            session_id, user_id, was_interrupted=True, start_time=start_time, response_lang=response_lang
-                        )
-                    raise
-            except Exception as pipeline_exc:
-                if not isinstance(pipeline_exc, asyncio.CancelledError):
-                    logger.error("[MULTILINGUAL] Supervisor detected pipeline worker crash: %s", pipeline_exc)
-                # Cancel remaining tasks
-                for t in [reader_task, trans_task, tts_task, sender_task, filler_task]:
-                    if not t.done():
-                        t.cancel()
-                await asyncio.gather(reader_task, trans_task, tts_task, sender_task, filler_task, return_exceptions=True)
-                if not isinstance(pipeline_exc, asyncio.CancelledError):
+                        if agent_controller:
+                            await agent_controller.emit_turn_event(
+                                session_id, user_id, was_interrupted=True, start_time=start_time, response_lang=response_lang
+                            )
+                        raise
+                except Exception as pipeline_exc:
+                    if not isinstance(pipeline_exc, asyncio.CancelledError):
+                        logger.error("[MULTILINGUAL] Supervisor detected pipeline worker crash: %s", pipeline_exc)
+                    for t in [reader_task, trans_task]:
+                        if not t.done():
+                            t.cancel()
+                    await asyncio.gather(reader_task, trans_task, return_exceptions=True)
+                    if not isinstance(pipeline_exc, asyncio.CancelledError):
+                        try:
+                            await websocket.send_json({
+                                "type": "error",
+                                "text": f"Pipeline failure: {str(pipeline_exc)}"
+                            })
+                        except Exception:
+                            pass
+            else:
+                reader_task = asyncio.create_task(llm_reader())
+                trans_task = asyncio.create_task(translator_worker())
+                tts_task = asyncio.create_task(tts_worker())
+                sender_task = asyncio.create_task(audio_sender())
+                filler_task = asyncio.create_task(filler_watchdog())
+
+                # Task supervisor wrapper to monitor workers. If any task raises an exception (crashes),
+                # we catch it, cancel sibling tasks immediately, notify client, and fail cleanly.
+                try:
                     try:
-                        await websocket.send_json({
-                            "type": "error",
-                            "text": f"Pipeline failure: {str(pipeline_exc)}"
-                        })
-                    except Exception:
-                        pass
+                        await asyncio.gather(reader_task, trans_task, tts_task, sender_task)
+                        filler_task.cancel()
+                        try:
+                            await filler_task
+                        except asyncio.CancelledError:
+                            pass
+                        if agent_controller:
+                            await agent_controller.emit_turn_event(
+                                session_id, user_id, was_interrupted=False, start_time=start_time, response_lang=response_lang
+                            )
+                    except asyncio.CancelledError:
+                        if agent_controller:
+                            await agent_controller.emit_turn_event(
+                                session_id, user_id, was_interrupted=True, start_time=start_time, response_lang=response_lang
+                            )
+                        raise
+                except Exception as pipeline_exc:
+                    if not isinstance(pipeline_exc, asyncio.CancelledError):
+                        logger.error("[MULTILINGUAL] Supervisor detected pipeline worker crash: %s", pipeline_exc)
+                    # Cancel remaining tasks
+                    for t in [reader_task, trans_task, tts_task, sender_task, filler_task]:
+                        if not t.done():
+                            t.cancel()
+                    await asyncio.gather(reader_task, trans_task, tts_task, sender_task, filler_task, return_exceptions=True)
+                    if not isinstance(pipeline_exc, asyncio.CancelledError):
+                        try:
+                            await websocket.send_json({
+                                "type": "error",
+                                "text": f"Pipeline failure: {str(pipeline_exc)}"
+                            })
+                        except Exception:
+                            pass
                 raise
 
             # Back-fill DB with the translated response and confirmed language
@@ -2797,86 +2836,90 @@ async def _run_pipeline(
     # ── 1. STT ───────────────────────────────────────────────────────────────
     audio_array = int16_bytes_to_float32(raw_pcm)
 
-    # Ultrasonic / adversarial audio detection (Part 3A)
-    is_safe, reason = check_audio_frequency_profile(audio_array, Config.AUDIO_SAMPLE_RATE)
-    if not is_safe:
-        logger.warning(f"[AUDIO GUARD] Frame rejected: {reason}")
-        await set_state(ConversationState.IDLE)
-        await websocket.send_json({"type": "done"})
-        return
-    
-    # Utterance duration cap and noise filter validation (Part 2)
-    duration_seconds = len(audio_array) / Config.AUDIO_SAMPLE_RATE
-    if not validate_utterance_duration(duration_seconds):
-        logger.warning("Utterance duration validation failed: %.2fs", duration_seconds)
-        if duration_seconds < Config.MIN_UTTERANCE_MS / 1000:
-            logger.info("Utterance too short (treated as noise) — responding with clarification prompt.")
-            await set_state(ConversationState.THINKING)
-            async def _short_audio_stream():
-                yield {"raw": "Can you please repeat it once again?", "planned": "Can you please repeat it once again?"}
-            await _stream_llm_and_tts(websocket, _short_audio_stream(), loop, set_state, speed, voice, latency_metrics, start_time)
+    if text_only:
+        transcript = pre_transcribed_text or ""
+        min_avg_logprob = 0.0
+        latency_metrics["whisper_done"] = 0.0
+    else:
+        # Ultrasonic / adversarial audio detection (Part 3A)
+        is_safe, reason = check_audio_frequency_profile(audio_array, Config.AUDIO_SAMPLE_RATE)
+        if not is_safe:
+            logger.warning(f"[AUDIO GUARD] Frame rejected: {reason}")
             await set_state(ConversationState.IDLE)
-            await websocket.send_json({"type": "assistant_finished"})
+            await websocket.send_json({"type": "done"})
             return
+        
+        # Utterance duration cap and noise filter validation (Part 2)
+        duration_seconds = len(audio_array) / Config.AUDIO_SAMPLE_RATE
+        if not validate_utterance_duration(duration_seconds):
+            logger.warning("Utterance duration validation failed: %.2fs", duration_seconds)
+            if duration_seconds < Config.MIN_UTTERANCE_MS / 1000:
+                logger.info("Utterance too short (treated as noise) — responding with clarification prompt.")
+                await set_state(ConversationState.THINKING)
+                async def _short_audio_stream():
+                    yield {"raw": "Can you please repeat it once again?", "planned": "Can you please repeat it once again?"}
+                await _stream_llm_and_tts(websocket, _short_audio_stream(), loop, set_state, speed, voice, latency_metrics, start_time)
+                await set_state(ConversationState.IDLE)
+                await websocket.send_json({"type": "assistant_finished"})
+                return
 
-    total_samples = len(audio_array)
-    can_bypass_stt = (
-        pre_transcribed_text
-        and live_transcribed_len is not None
-        and (total_samples - live_transcribed_len) <= 4800
-    )
-    min_avg_logprob = 0.0
-    try:
-        if can_bypass_stt:
-            logger.info(
-                "[STAGE-1-BYPASS] Bypassing final STT: reusing live transcript %r (audio length delta: %.3fs)",
-                pre_transcribed_text, (total_samples - live_transcribed_len) / 16000
-            )
-            transcript = pre_transcribed_text
-            min_avg_logprob = 0.0
-            latency_metrics["whisper_done"] = 0.0
-        else:
-            # Always run the full Whisper STT to get the accurate final transcript.
-            # pre_transcribed_text is a partial live capture and must not bypass real STT.
-            logger.info("Transcribing %.1f seconds of audio …", len(audio_array) / Config.AUDIO_SAMPLE_RATE)
-
-            discipline = "cse"
-            if profile_manager:
-                discipline = profile_manager.get_discipline()
-            initial_prompt = whisper_engine.get_prompt_for_discipline(discipline, user_corrections)
-
-            # Run blocking Whisper in a thread to keep the event loop free
-            transcript, min_avg_logprob = await loop.run_in_executor(
-                None,
-                lambda: whisper_engine.transcribe_with_confidence(
-                    audio_array, initial_prompt=initial_prompt
+        total_samples = len(audio_array)
+        can_bypass_stt = (
+            pre_transcribed_text
+            and live_transcribed_len is not None
+            and (total_samples - live_transcribed_len) <= 4800
+        )
+        min_avg_logprob = 0.0
+        try:
+            if can_bypass_stt:
+                logger.info(
+                    "[STAGE-1-BYPASS] Bypassing final STT: reusing live transcript %r (audio length delta: %.3fs)",
+                    pre_transcribed_text, (total_samples - live_transcribed_len) / 16000
                 )
-            )
-            latency_metrics["whisper_done"] = round(time.time() - start_time, 2)
-
-            # If full STT returned nothing, fall back to the live transcript as a last resort
-            if not transcript and pre_transcribed_text:
-                logger.info("Full STT empty — falling back to live transcript: %r", pre_transcribed_text)
                 transcript = pre_transcribed_text
                 min_avg_logprob = 0.0
                 latency_metrics["whisper_done"] = 0.0
+            else:
+                # Always run the full Whisper STT to get the accurate final transcript.
+                # pre_transcribed_text is a partial live capture and must not bypass real STT.
+                logger.info("Transcribing %.1f seconds of audio …", len(audio_array) / Config.AUDIO_SAMPLE_RATE)
 
-    except Exception as stt_exc:
-        logger.exception("STT Transcription failed: %s", stt_exc)
-        # Notify the frontend of the user speech transcription error and explain gracefully
-        await websocket.send_json({
-            "type": "transcript", 
-            "text": "[Speech recognition unavailable]", 
-            "words": [{"word": "[Speech recognition unavailable]", "status": "confirmed"}]
-        })
-        await set_state(ConversationState.THINKING)
-        # Yield a spoken error response using session settings
-        async def mock_error_stream():
-            yield {"raw": "I am sorry, but I failed to recognize your speech due to a local transcriber error. Please try again.", "planned": "I am sorry, but I failed to recognize your speech due to a local transcriber error. Please try again."}
-        await _stream_llm_and_tts(websocket, mock_error_stream(), loop, set_state, speed, voice, latency_metrics, start_time)
-        await set_state(ConversationState.IDLE)
-        await websocket.send_json({"type": "assistant_finished"})
-        return
+                discipline = "cse"
+                if profile_manager:
+                    discipline = profile_manager.get_discipline()
+                initial_prompt = whisper_engine.get_prompt_for_discipline(discipline, user_corrections)
+
+                # Run blocking Whisper in a thread to keep the event loop free
+                transcript, min_avg_logprob = await loop.run_in_executor(
+                    None,
+                    lambda: whisper_engine.transcribe_with_confidence(
+                        audio_array, initial_prompt=initial_prompt
+                    )
+                )
+                latency_metrics["whisper_done"] = round(time.time() - start_time, 2)
+
+                # If full STT returned nothing, fall back to the live transcript as a last resort
+                if not transcript and pre_transcribed_text:
+                    logger.info("Full STT empty — falling back to live transcript: %r", pre_transcribed_text)
+                    transcript = pre_transcribed_text
+                    min_avg_logprob = 0.0
+                    latency_metrics["whisper_done"] = 0.0
+        except Exception as stt_exc:
+            logger.exception("STT Transcription failed: %s", stt_exc)
+            # Notify the frontend of the user speech transcription error and explain gracefully
+            await websocket.send_json({
+                "type": "transcript", 
+                "text": "[Speech recognition unavailable]", 
+                "words": [{"word": "[Speech recognition unavailable]", "status": "confirmed"}]
+            })
+            await set_state(ConversationState.THINKING)
+            # Yield a spoken error response using session settings
+            async def mock_error_stream():
+                yield {"raw": "I am sorry, but I failed to recognize your speech due to a local transcriber error. Please try again.", "planned": "I am sorry, but I failed to recognize your speech due to a local transcriber error. Please try again."}
+            await _stream_llm_and_tts(websocket, mock_error_stream(), loop, set_state, speed, voice, latency_metrics, start_time)
+            await set_state(ConversationState.IDLE)
+            await websocket.send_json({"type": "assistant_finished"})
+            return
 
     if not transcript:
         logger.info("Empty transcript — responding with clarification prompt.")
@@ -2896,7 +2939,7 @@ async def _run_pipeline(
     active_topic = "general"
     if profile_manager:
         discipline = profile_manager.get_discipline()
-        active_topic = profile_manager.get_active_topic()
+        active_topic = await profile_manager.get_active_topic(session_id)
 
     corrected_transcript, changes = domain_corrector.correct_sentence(normalized, discipline)
 
@@ -2965,12 +3008,13 @@ async def _run_pipeline(
         return
 
     # VAD silence abuse prevention (Part 3B)
-    vad_speech_duration_ms = (len(audio_array) / Config.AUDIO_SAMPLE_RATE) * 1000
-    if not is_utterance_substantial(normalized_transcript, vad_speech_duration_ms):
-        logger.info(f"Ignoring unsubstantial utterance: {normalized_transcript!r} ({vad_speech_duration_ms:.1f}ms)")
-        await set_state(ConversationState.IDLE)
-        await websocket.send_json({"type": "done"})
-        return
+    if not text_only:
+        vad_speech_duration_ms = (len(audio_array) / Config.AUDIO_SAMPLE_RATE) * 1000
+        if not is_utterance_substantial(normalized_transcript, vad_speech_duration_ms):
+            logger.info(f"Ignoring unsubstantial utterance: {normalized_transcript!r} ({vad_speech_duration_ms:.1f}ms)")
+            await set_state(ConversationState.IDLE)
+            await websocket.send_json({"type": "done"})
+            return
 
     # Idempotency check — same utterance within 1 second = skip (Part 1)
     if idempotency_guard.is_duplicate(session_id, normalized_transcript):
@@ -3000,16 +3044,19 @@ async def _run_pipeline(
     })
 
     # ── 2.5 Speech Emotion Detection ──────────────────────────────────────────
-    from speech.emotion import detect_audio_emotion
-    audio_emotion = detect_audio_emotion(audio_array, normalized_transcript)
-    
-    # Send the emotion analysis to the frontend
-    await websocket.send_json({
-        "type": "emotion",
-        "features": getattr(audio_emotion, "features", {}),
-        "state": audio_emotion.emotion.value,
-        "confidence": audio_emotion.confidence
-    })
+    if text_only:
+        audio_emotion = None
+    else:
+        from speech.emotion import detect_audio_emotion
+        audio_emotion = detect_audio_emotion(audio_array, normalized_transcript)
+        
+        # Send the emotion analysis to the frontend
+        await websocket.send_json({
+            "type": "emotion",
+            "features": getattr(audio_emotion, "features", {}),
+            "state": audio_emotion.emotion.value,
+            "confidence": audio_emotion.confidence
+        })
 
     # Calculate dynamic speed based on student emotion
     emotion_adjust = 1.0
@@ -3029,7 +3076,7 @@ async def _run_pipeline(
     # ── Hesitation Detection ──────────────────────────────────────────────────
     is_hesitation = False
     hesitation_text = ""
-    if Config.HESITATION_DETECTION_ENABLED:
+    if Config.HESITATION_DETECTION_ENABLED and not text_only:
         overall_rms = float(np.sqrt(np.mean(audio_array ** 2))) if (audio_array is not None and len(audio_array) > 0) else 0.0
         signal = hesitation_detector.detect(normalized_transcript, audio_energy_signal=overall_rms)
         if signal.detected:
@@ -3061,7 +3108,7 @@ async def _run_pipeline(
     try:
         await _stream_llm_and_tts(
             websocket, token_stream, loop, set_state, speed, voice, latency_metrics, start_time,
-            student_id=user_id, emotion_state=emotion_state, session_id=session_id
+            student_id=user_id, emotion_state=emotion_state, session_id=session_id, text_only=text_only
         )
         if agent_controller and not is_hesitation:
             await agent_controller.emit_turn_event(
@@ -3096,6 +3143,7 @@ async def _stream_llm_and_tts(
     student_id: Optional[str] = None,
     emotion_state: Optional[Emotion] = None,
     session_id: Optional[str] = None,
+    text_only: bool = False,
     **kwargs
 ) -> None:
     """
@@ -3180,24 +3228,25 @@ async def _stream_llm_and_tts(
                             sentence_buffer = ""
                             is_first_chunk = False
 
-                            # Filter out diagrams, flowcharts, or roadmaps from TTS
-                            from agent.response_planner import is_diagram_or_roadmap
-                            if is_diagram_or_roadmap(sentence):
-                                logger.info("Skipping diagram/roadmap sentence for TTS: %r", sentence[:60])
-                                continue
+                            if not text_only:
+                                # Filter out diagrams, flowcharts, or roadmaps from TTS
+                                from agent.response_planner import is_diagram_or_roadmap
+                                if is_diagram_or_roadmap(sentence):
+                                    logger.info("Skipping diagram/roadmap sentence for TTS: %r", sentence[:60])
+                                    continue
 
-                            # Split multi-line content (e.g. inline code without fences)
-                            # into individual lines so TTS reads them one at a time.
-                            if "\n" in sentence:
-                                sub_lines = [l.strip() for l in sentence.split("\n") if l.strip()]
-                                for sub_line in sub_lines:
-                                    if not is_diagram_or_roadmap(sub_line):
-                                        logger.debug("Enqueuing code line for TTS: %r", sub_line[:60])
-                                        await tts_queue.put(sub_line)
-                            else:
-                                logger.debug("Enqueuing sentence for TTS: %r", sentence[:60])
-                                # This will block if tts_queue is full (size >= 3), implementing backpressure
-                                await tts_queue.put(sentence)
+                                # Split multi-line content (e.g. inline code without fences)
+                                # into individual lines so TTS reads them one at a time.
+                                if "\n" in sentence:
+                                    sub_lines = [l.strip() for l in sentence.split("\n") if l.strip()]
+                                    for sub_line in sub_lines:
+                                        if not is_diagram_or_roadmap(sub_line):
+                                            logger.debug("Enqueuing code line for TTS: %r", sub_line[:60])
+                                            await tts_queue.put(sub_line)
+                                else:
+                                    logger.debug("Enqueuing sentence for TTS: %r", sentence[:60])
+                                    # This will block if tts_queue is full (size >= 3), implementing backpressure
+                                    await tts_queue.put(sentence)
         except asyncio.CancelledError:
             logger.info("LLM token reader cancelled.")
             raise
@@ -3217,7 +3266,7 @@ async def _stream_llm_and_tts(
                         sentence_buffer += planned_token
 
             final_sentence = sentence_buffer.strip()
-            if final_sentence:
+            if final_sentence and not text_only:
                 from agent.response_planner import is_diagram_or_roadmap
                 if not is_diagram_or_roadmap(final_sentence):
                     # Split multi-line final content line-by-line for TTS
@@ -3231,7 +3280,8 @@ async def _stream_llm_and_tts(
                         logger.debug("Enqueuing final sentence for TTS: %r", final_sentence[:60])
                         await tts_queue.put(final_sentence)
             # Enqueue sentinel to signal TTS worker to stop
-            await tts_queue.put(None)
+            if not text_only:
+                await tts_queue.put(None)
 
     # ── TTS Synthesis Worker ────────────────────────────────────────────────
     async def tts_worker():
@@ -3410,27 +3460,36 @@ async def _stream_llm_and_tts(
             logger.warning("Filler watchdog failed (non-fatal): %s", exc)
 
     # Spawn tasks
-    reader_task = asyncio.create_task(llm_token_reader())
-    worker_task = asyncio.create_task(tts_worker())
-    sender_task = asyncio.create_task(audio_sender())
-    filler_task = asyncio.create_task(filler_watchdog())
-
-    try:
-        # Wait until all subtasks complete
-        await asyncio.gather(reader_task, worker_task, sender_task)
-        filler_task.cancel()
+    if text_only:
+        reader_task = asyncio.create_task(llm_token_reader())
         try:
-            await filler_task
+            await reader_task
         except asyncio.CancelledError:
-            pass
-    except asyncio.CancelledError:
-        logger.info("LLM/TTS streaming gathering cancelled. Cancelling subtasks.")
-        reader_task.cancel()
-        worker_task.cancel()
-        sender_task.cancel()
-        filler_task.cancel()
-        await asyncio.gather(reader_task, worker_task, sender_task, filler_task, return_exceptions=True)
-        raise
+            reader_task.cancel()
+            await asyncio.gather(reader_task, return_exceptions=True)
+            raise
+    else:
+        reader_task = asyncio.create_task(llm_token_reader())
+        worker_task = asyncio.create_task(tts_worker())
+        sender_task = asyncio.create_task(audio_sender())
+        filler_task = asyncio.create_task(filler_watchdog())
+
+        try:
+            # Wait until all subtasks complete
+            await asyncio.gather(reader_task, worker_task, sender_task)
+            filler_task.cancel()
+            try:
+                await filler_task
+            except asyncio.CancelledError:
+                pass
+        except asyncio.CancelledError:
+            logger.info("LLM/TTS streaming gathering cancelled. Cancelling subtasks.")
+            reader_task.cancel()
+            worker_task.cancel()
+            sender_task.cancel()
+            filler_task.cancel()
+            await asyncio.gather(reader_task, worker_task, sender_task, filler_task, return_exceptions=True)
+            raise
 
 
 # For translation routes (kannada, marathi), we want sentence-level translation to prevent fragmentation.
