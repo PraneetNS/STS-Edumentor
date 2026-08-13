@@ -186,13 +186,38 @@ class AccessControl:
                 row = await conn.fetchrow(query, session_uuid, student_uuid)
                 mismatch_count = row["mismatch_count"] if row else 0
 
-            if mismatch_count > 0:
-                logger.warning(
-                    "[ACCESS_CONTROL] Session ownership violation (postgres). "
-                    "session_id=%r claimed_student=%r mismatch_rows=%d",
-                    session_id, claimed_student_id, mismatch_count
+                if mismatch_count > 0:
+                    logger.warning(
+                        "[ACCESS_CONTROL] Session ownership violation (postgres). "
+                        "session_id=%r claimed_student=%r mismatch_rows=%d",
+                        session_id, claimed_student_id, mismatch_count
+                    )
+                    return False
+
+                # Migrate guest logs for this session to this user if they exist
+                has_guest = await conn.fetchval(
+                    "SELECT EXISTS(SELECT 1 FROM conversation_logs WHERE session_id = $1 AND user_id = session_id);",
+                    session_uuid
                 )
-                return False
+                if has_guest:
+                    logger.info(
+                        "[ACCESS_CONTROL] Migrating guest logs for session %s to registered user %s",
+                        session_uuid, student_uuid
+                    )
+                    # Migrate conversation logs & speech corrections
+                    await conn.execute(
+                        "UPDATE conversation_logs SET user_id = $1 WHERE session_id = $2 AND user_id = session_id;",
+                        student_uuid, session_uuid
+                    )
+                    await conn.execute(
+                        "UPDATE speech_corrections SET user_id = $1 WHERE session_id = $2 AND user_id = session_id;",
+                        student_uuid, session_uuid
+                    )
+                    # Delete guest stats and user account (if exists)
+                    await conn.execute("DELETE FROM session_stats WHERE user_id = $1;", session_uuid)
+                    await conn.execute("DELETE FROM users WHERE user_id = $1 AND provider = 'guest';", session_uuid)
+                    # Force rebuild of registered user's daily statistics
+                    await conn.execute("DELETE FROM session_stats WHERE user_id = $1;", student_uuid)
 
             logger.debug(
                 "[ACCESS_CONTROL] Session ownership confirmed (postgres). "

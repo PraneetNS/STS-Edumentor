@@ -281,6 +281,94 @@ class DatabaseManager:
         );
         """
 
+        query_knowledge_points_table = """
+        CREATE TABLE IF NOT EXISTS knowledge_points (
+            id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            code            TEXT UNIQUE NOT NULL,
+            name            TEXT NOT NULL,
+            description     TEXT,
+            subject         TEXT NOT NULL,
+            created_at      TIMESTAMPTZ DEFAULT now()
+        );
+        """
+
+        query_student_mastery_table = """
+        CREATE TABLE IF NOT EXISTS student_mastery (
+            student_id      UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+            kp_id           UUID NOT NULL REFERENCES knowledge_points(id) ON DELETE CASCADE,
+            p_mastery       DOUBLE PRECISION DEFAULT 0.3 CHECK (p_mastery >= 0.0 AND p_mastery <= 1.0),
+            last_reviewed_at TIMESTAMPTZ DEFAULT now(),
+            PRIMARY KEY (student_id, kp_id)
+        );
+        """
+
+        query_courses_table = """
+        CREATE TABLE IF NOT EXISTS courses (
+            id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            code            TEXT UNIQUE NOT NULL,
+            title           TEXT NOT NULL,
+            subject         TEXT NOT NULL,
+            description     TEXT,
+            created_at      TIMESTAMPTZ DEFAULT now()
+        );
+        """
+
+        query_course_modules_table = """
+        CREATE TABLE IF NOT EXISTS course_modules (
+            id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            course_id       UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+            title           TEXT NOT NULL,
+            sequence_order  INT NOT NULL,
+            created_at      TIMESTAMPTZ DEFAULT now(),
+            UNIQUE (course_id, sequence_order)
+        );
+        """
+
+        query_module_kp_table = """
+        CREATE TABLE IF NOT EXISTS module_knowledge_points (
+            module_id       UUID REFERENCES course_modules(id) ON DELETE CASCADE,
+            kp_id           UUID REFERENCES knowledge_points(id) ON DELETE CASCADE,
+            is_primary      BOOLEAN DEFAULT true,
+            PRIMARY KEY (module_id, kp_id)
+        );
+        """
+
+        query_enrollments_table = """
+        CREATE TABLE IF NOT EXISTS enrollments (
+            student_id      UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+            course_id       UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+            enrolled_at     TIMESTAMPTZ DEFAULT now(),
+            current_module_id UUID REFERENCES course_modules(id) ON DELETE SET NULL,
+            status          TEXT DEFAULT 'active' CHECK (status IN ('active','completed','paused')),
+            PRIMARY KEY (student_id, course_id)
+        );
+        """
+
+        query_view = """
+        CREATE OR REPLACE VIEW student_course_context AS
+        SELECT
+            e.student_id,
+            c.code           AS course_code,
+            c.title          AS course_title,
+            cm.title         AS current_module,
+            cm.sequence_order AS module_number,
+            kp.code          AS kp_code,
+            kp.name          AS kp_name,
+            COALESCE(sm.p_mastery, 0.3) AS p_mastery,
+            CASE
+                WHEN COALESCE(sm.p_mastery, 0.3) >= 0.85 THEN 'mastered'
+                WHEN COALESCE(sm.p_mastery, 0.3) >= 0.5  THEN 'developing'
+                ELSE 'weak'
+            END AS status
+        FROM enrollments e
+        JOIN courses c ON c.id = e.course_id
+        LEFT JOIN course_modules cm ON cm.id = e.current_module_id
+        LEFT JOIN module_knowledge_points mkp ON mkp.module_id = cm.id AND mkp.is_primary
+        LEFT JOIN knowledge_points kp ON kp.id = mkp.kp_id
+        LEFT JOIN student_mastery sm ON sm.student_id = e.student_id AND sm.kp_id = kp.id
+        WHERE e.status = 'active';
+        """
+
         try:
             async with self.pool.acquire() as conn:
                 await conn.execute(query_pgcrypto)
@@ -307,9 +395,33 @@ class DatabaseManager:
                 await conn.execute(query_topic_mastery)
                 await conn.execute(query_session_summary)
                 await conn.execute(query_daily_activity)
+                await conn.execute(query_knowledge_points_table)
+                await conn.execute(query_student_mastery_table)
+                await conn.execute(query_courses_table)
+                await conn.execute(query_course_modules_table)
+                await conn.execute(query_module_kp_table)
+                await conn.execute(query_enrollments_table)
+                await conn.execute(query_view)
                 logger.info("[OK] PostgreSQL database schema and indexes verified.")
         except Exception as e:
             logger.error("Failed to verify database schema: %s", e)
+
+    async def get_student_course_context(self, student_id: uuid.UUID) -> List[Dict[str, Any]]:
+        """Fetch the active course context for a student from student_course_context view."""
+        if not self.enabled or not self.pool:
+            return []
+        query = """
+        SELECT course_code, course_title, current_module, module_number, kp_code, kp_name, p_mastery, status
+        FROM student_course_context
+        WHERE student_id = $1;
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, student_id)
+                return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error("Failed to fetch student course context for student_id=%s: %s", student_id, e)
+            return []
 
     async def get_due_concepts(self, user_id: uuid.UUID, limit: int = 3) -> List[Dict[str, Any]]:
         """Concepts due for review right now, oldest-due first."""
@@ -1028,40 +1140,7 @@ class DatabaseManager:
         import json
         import datetime
 
-        is_guest = False
-        try:
-            async with self.pool.acquire() as conn:
-                is_guest = await conn.fetchval("SELECT EXISTS(SELECT 1 FROM users WHERE user_id = $1 AND provider = 'guest');", user_id)
-        except Exception as e:
-            logger.error("Failed to check if user is guest: %s", e)
-
-        if not is_guest:
-            try:
-                async with self.pool.acquire() as conn:
-                    # Find all guest users who have logs
-                    query_guests = """
-                    SELECT DISTINCT u.user_id 
-                    FROM users u 
-                    JOIN conversation_logs c ON u.user_id = c.user_id 
-                    WHERE u.provider = 'guest' AND u.user_id != $1;
-                    """
-                    guest_rows = await conn.fetch(query_guests, user_id)
-                    guest_uids = [r["user_id"] for r in guest_rows]
-                    
-                    if guest_uids:
-                        logger.info("Migrating logs from guest users %s to registered user %s", guest_uids, user_id)
-                        for guest_uid in guest_uids:
-                            # Migrate logs & speech corrections
-                            await conn.execute("UPDATE conversation_logs SET user_id = $1 WHERE user_id = $2;", user_id, guest_uid)
-                            await conn.execute("UPDATE speech_corrections SET user_id = $1 WHERE user_id = $2;", user_id, guest_uid)
-                            # Delete guest session stats & guest user records
-                            await conn.execute("DELETE FROM session_stats WHERE user_id = $1;", guest_uid)
-                            await conn.execute("DELETE FROM users WHERE user_id = $1;", guest_uid)
-                            
-                        # Force a rebuild of the registered user's daily statistics since they got new logs
-                        await conn.execute("DELETE FROM session_stats WHERE user_id = $1;", user_id)
-            except Exception as e:
-                logger.error("Failed to migrate guest logs to user %s: %s", user_id, e)
+        # Global guest log migration removed to prevent test pollution and security risks.
 
         # Helper function to compute readiness score components
         def calculate_readiness(rows_list):
