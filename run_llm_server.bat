@@ -6,10 +6,10 @@ REM  Run this FIRST, before starting the FastAPI backend.
 REM  Requires llama-server.exe to be on PATH or at the path below.
 REM
 REM  KEY SETTINGS:
-REM  -c 4096   Total context window. With -np 1 (single slot), each
-REM             request gets the full 4096 tokens — enough for:
-REM               system prompt (~1600t) + history (~750t) + reply (~350t)
-REM             = ~2700t per turn with ~1300t headroom.
+REM  -c 8192   Total context window. With -np 1 (single slot), each
+REM             request gets the full 8192 tokens — enough for:
+REM               system prompt (~1600t) + history (~2000t) + reply (~512t)
+REM             = ~4112t per turn with ~4080t headroom.
 REM
 REM  -np 1     Single parallel slot. In llama.cpp the total context (-c)
 REM             is divided equally across all slots. With -np 4 at c=4096
@@ -39,8 +39,8 @@ echo.
 
 "%OLLAMA_LIB%\llama-server.exe" ^
   -m %MODEL% ^
-  -c 4096 ^
-  -ngl 20 ^
+  -c 8192 ^
+  -ngl 99 ^
   --cache-type-k q8_0 ^
   --cache-type-v q8_0 ^
   --flash-attn on ^

@@ -23,7 +23,7 @@ class Config:
     # ─────────────────────────────────────────────
     # Whisper (STT) settings
     # ─────────────────────────────────────────────
-    WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "medium" if MULTILINGUAL_ENABLED else "medium.en")
+    WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "small" if MULTILINGUAL_ENABLED else "small.en")
     WHISPER_BEAM_SIZE: int = int(os.getenv("WHISPER_BEAM_SIZE", "1"))
     WHISPER_CORRECTION_THRESHOLD: float = float(os.getenv("WHISPER_CORRECTION_THRESHOLD", "-0.5"))
     WHISPER_CORRECTION_TIMEOUT: float = float(os.getenv("WHISPER_CORRECTION_TIMEOUT", "0.4"))
@@ -116,10 +116,11 @@ class Config:
         "- Pay close attention to the conversation history. When the student gives a short reply (e.g., 'go ahead', 'sure', 'yes', 'okay'), resolve what they are referring to by looking at your previous turn's explanation and your follow-up question. For example, if you asked 'Would you like to explore a real-world application of this concept next?' and the student says 'Okay, go ahead' or 'yes', you must proceed to explain the real-world application. Do NOT repeat the previous introduction or explanation.\n\n"
 
         "Identity Rules (CRITICAL):\n"
-        "- ABSOLUTE RULE: Do NOT introduce yourself, mention your name, or say you are an AI tutor when answering ANY general question, topic explanation, or subject query. Jump straight into the answer with no preamble whatsoever.\n"
-        "- Your name is Edi. You are an AI engineering mentor at EduMentor.\n"
-        "- ONLY when someone explicitly asks 'who are you', 'what is your name', or 'what are you called': give a short warm self-introduction: 'Hi, I am Edi, your AI engineering mentor at EduMentor. I am here to help you understand concepts across all fields of engineering. How can I assist you today?'\n"
-        "- When someone greets you ('hi', 'hello', 'hey', 'how are you', 'how are you doing'): respond with a short, warm, friendly greeting that includes your name Edi and a cheerful personal reply. For example: 'Hey, I am Edi! I am doing great, how about you? Ready to learn something new today?' or 'Hi there! I am Edi, doing wonderful! What would you like to explore today?' Keep it under 2 sentences. Do NOT give a long introduction or list your capabilities.\n"
+        "- ABSOLUTE RULE: Do NOT introduce yourself, mention your name, say 'I am Edi', or say you are an AI tutor when answering ANY general question, topic explanation, subject query, or follow-up. Jump straight into the answer with zero preamble. Violating this rule is strictly forbidden.\n"
+        "- Your name is Edi. You are an AI engineering mentor at EduMentor. This is background context only — do NOT state it unless directly asked.\n"
+        "- ONLY when someone explicitly asks 'who are you', 'what is your name', 'what are you called', or 'introduce yourself': give a short warm self-introduction (one sentence max): 'I am Edi, your AI engineering mentor at EduMentor!'\n"
+        "- When someone greets you ('hi', 'hello', 'hey', 'how are you', 'how are you doing'): respond with a short, warm, friendly greeting. You MAY mention your name Edi ONLY in a greeting response. Keep it under 2 sentences. Do NOT give a long introduction or list your capabilities.\n"
+        "- For ALL other messages (questions, explanations, follow-ups, concept queries, debugging, etc.): start your response DIRECTLY with the answer content. NEVER say 'I am Edi', 'As Edi', 'Hi, I am', or any variant. This applies even if the student just said 'okay' or 'go ahead'.\n"
         "- CAPABILITY QUESTIONS (e.g. 'are you multilingual?', 'can you speak other languages?', 'what languages do you support?', 'what can you do?', 'are you an AI?') MUST be answered directly and concisely WITHOUT giving a full self-introduction. Just answer the question in 1-2 sentences.\n"
         + _lang_support_line +
         "- If asked about your identity, creator, or model name, ALWAYS stay in character as Edi from EduMentor.\n"
@@ -289,7 +290,7 @@ class Config:
 
     MAX_DAILY_TOKENS: int = int(os.getenv("MAX_DAILY_TOKENS", "100000"))
     # Maximum context tokens allowed for the LLM prompt (increased to support detailed identity naming and conversation summaries)
-    MAX_CONTEXT_TOKENS: int = int(os.getenv("MAX_CONTEXT_TOKENS", "4000"))
+    MAX_CONTEXT_TOKENS: int = int(os.getenv("MAX_CONTEXT_TOKENS", "7500"))
 
     LLM_CALL_TIMEOUT_SECONDS: float = float(os.getenv("LLM_CALL_TIMEOUT_SECONDS", "8"))
     CIRCUIT_FAILURE_THRESHOLD: int = int(os.getenv("CIRCUIT_FAILURE_THRESHOLD", "3"))
