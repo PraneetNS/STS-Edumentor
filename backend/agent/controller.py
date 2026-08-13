@@ -788,6 +788,14 @@ class AgentController:
             response_lang   = response_lang,
         )
 
+        student_course_ctx = []
+        if self._db_manager:
+            try:
+                student_course_ctx = await self._db_manager.get_student_course_context(user_uuid)
+            except Exception as e:
+                logger.error("Failed to query student_course_context in stream: %s", e)
+        context_obj.student_course_ctx = student_course_ctx
+
         if due_concept:
             context_obj.safety_flags["due_recall_prompt"] = due_concept["concept_slug"]
             self._turn_state[session_id]["awaiting_recall_concept"] = due_concept["concept_slug"]

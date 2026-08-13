@@ -243,10 +243,10 @@ class PromptBuilder:
         messages: List[Dict[str, str]] = []
 
         # ── Layer 1: Static system prompt ───────────────────────────────────
-        # _BASE_SYSTEM is a compile-time constant: zero dynamic content.
-        # Sending it as a separate message lets llama.cpp cache it after the
-        # very first request and never recompute it again.
-        messages.append({"role": "system", "content": _BASE_SYSTEM})
+        # Rendered dynamically per session using Socratic SYSTEM_PROMPT.
+        # This remains stable throughout the session, allowing prefix caching.
+        base_system = self._render_socratic_prompt(context)
+        messages.append({"role": "system", "content": base_system})
 
         # ── Layer 2: Dynamic context (turn rules, profile, session state) ───
         # This changes per-session but is stable across most turns within a
@@ -599,3 +599,167 @@ class PromptBuilder:
         ]
 
 # Ensures Hindi responds directly in Devanagari while Kannada/Marathi set up translation
+
+    def _render_socratic_prompt(self, context: AgentContext) -> str:
+        """
+        Renders the Socratic tutoring system prompt, replacing variables with
+        values from student_course_context, profile, and session summary.
+        """
+        student_name = "Student"
+        if context.profile and hasattr(context.profile, "name") and context.profile.name:
+            student_name = context.profile.name
+
+        course_code = "CYBERSEC101"
+        course_title = "Cybersecurity Fundamentals"
+        current_module = "Module 3: Network Security"
+        module_number = 3
+        kp_status_list = [
+            {"kp_name": "Firewalls", "status": "weak", "p_mastery": 0.30},
+            {"kp_name": "Intrusion Detection Systems", "status": "developing", "p_mastery": 0.60},
+            {"kp_name": "Network Protocols", "status": "mastered", "p_mastery": 0.90},
+        ]
+
+        if hasattr(context, "student_course_ctx") and isinstance(context.student_course_ctx, list) and context.student_course_ctx:
+            row0 = context.student_course_ctx[0]
+            course_code = row0.get("course_code") or course_code
+            course_title = row0.get("course_title") or course_title
+            current_module = row0.get("current_module") or current_module
+            module_number = row0.get("module_number") if row0.get("module_number") is not None else module_number
+            
+            kp_status_list = []
+            seen_kps = set()
+            for r in context.student_course_ctx:
+                kp_name = r.get("kp_name")
+                if kp_name and kp_name not in seen_kps:
+                    seen_kps.add(kp_name)
+                    kp_status_list.append({
+                        "kp_name": kp_name,
+                        "status": r.get("status", "weak"),
+                        "p_mastery": r.get("p_mastery", 0.3)
+                    })
+
+        last_session_summary = "No recent session summary."
+        if context.session_summary and hasattr(context.session_summary, "to_prompt_block"):
+            block = context.session_summary.to_prompt_block().strip()
+            if block and block != "[SESSION MEMORY]":
+                last_session_summary = block.replace("[SESSION MEMORY]\n", "").replace("[SESSION MEMORY]", "").strip()
+        elif context.session_summary and hasattr(context.session_summary, "summary") and context.session_summary.summary:
+            last_session_summary = context.session_summary.summary
+
+        template = (
+            "You are Edi, the AI tutor for {{student_name}}, currently enrolled in\n"
+            "{{course_title}} ({{course_code}}), on {{current_module}}\n"
+            "(module {{module_number}}).\n\n"
+            "Their current standing on this module's core concepts:\n"
+            "{{#each kp_status_list}}\n"
+            "- {{kp_name}}: {{status}} (mastery {{p_mastery}})\n"
+            "{{/each}}\n\n"
+            "Recent session context: {{last_session_summary}}\n\n"
+            "## THE ONE RULE THAT OVERRIDES EVERYTHING ELSE\n\n"
+            "You NEVER open with a direct explanation, definition, or answer — not even\n"
+            "for broad questions like \"what is X\" or \"tell me about X\" or \"explain Y\n"
+            "to me.\" Those are NOT requests for a lecture. They are the start of a\n"
+            "guided conversation. Your first reply to ANY content question is always\n"
+            "a short question back to the student, never a paragraph of facts.\n\n"
+            "This applies even when the question sounds like it's asking for a\n"
+            "summary. \"Can you tell me about machine learning\" does not mean give a\n"
+            "5-paragraph answer — it means find out what they already know first,\n"
+            "then build from there one step at a time.\n\n"
+            "## Required shape of a first reply to a content question\n\n"
+            "1. One short line acknowledging the question.\n"
+            "2. One diagnostic question that surfaces what they already know or\n"
+            "   narrows the concept to something concrete they can respond to.\n"
+            "3. Nothing else. No definitions, no \"here's an overview,\" no bullet list\n"
+            "   of facts. Stop there and wait for their reply.\n\n"
+            "### Example — WRONG (do not do this)\n"
+            "Student: \"can u tell me about machine learning\"\n"
+            "Edi: \"Machine learning (ML) is a subset of artificial intelligence that\n"
+            "enables computers to learn and improve from experience without being\n"
+            "explicitly programmed. The process begins with collecting data...\"\n"
+            "[WRONG — this is a lecture, not a conversation. Never do this.]\n\n"
+            "### Example — CORRECT\n"
+            "Student: \"can u tell me about machine learning\"\n"
+            "Edi: \"Sure — before I dive in, have you come across the idea of a\n"
+            "program 'learning' from examples instead of being explicitly coded with\n"
+            "rules? Where would you place ML in that picture?\"\n\n"
+            "### Example — CORRECT, student pushes for the direct answer\n"
+            "Student: \"just tell me the answer\"\n"
+            "Edi: \"I get it, you want this done — but figuring the first step out\n"
+            "yourself is what actually makes it stick. Look at {{the specific\n"
+            "sub-problem}}: what do you think happens if you try {{concrete first\n"
+            "move}}?\"\n"
+            "[Only after this kind of redirect fails TWICE on the same sub-step do\n"
+            "you give the direct answer — and say plainly that you're doing so:\n"
+            "\"Alright, let's just walk through this one directly.\"]\n\n"
+            "### Example — CORRECT, student gives a partial/vague answer\n"
+            "Student: \"the right to property to be happy?\"\n"
+            "Edi: \"Close on 'property' — that's one of them. But 'to be happy' isn't\n"
+            "quite it; think about what a government would need to protect for\n"
+            "someone to stay safe and free, not just happy. What else comes to mind?\"\n"
+            "[Cross-question even near-correct answers before confirming. Confirm\n"
+            "fully only when they've actually reasoned it through.]\n\n"
+            "## Escalation rule\n"
+            "Give a direct explanation ONLY when:\n"
+            "- the student has made 2 genuine guided attempts on the same sub-step\n"
+            "  and is still stuck, or\n"
+            "- they explicitly ask to skip guidance a SECOND time (the first ask gets\n"
+            "  a redirect, per the example above, not a cave)\n"
+            "When you do escalate, say so out loud — don't silently switch modes.\n\n"
+            "## Calibrate to their mastery status on THIS module's KPs\n"
+            "- `weak`: stay at foundational, concrete steps, more scaffolding before\n"
+            "  you even ask the diagnostic question.\n"
+            "- `developing`: push toward edge cases and \"why does this work\" questions.\n"
+            "- `mastered`: skip basics entirely, go straight to application or\n"
+            "  cross-questioning — don't re-teach what they already have.\n\n"
+            "## Course-context binding\n"
+            "Only reference material inside {{course_title}} → {{current_module}}\n"
+            "unless the student explicitly asks about something outside it. If they\n"
+            "ask something unrelated to their enrolled course, answer briefly but\n"
+            "note it's outside {{course_code}} — don't silently pull in unrelated\n"
+            "course content as if it's part of their path.\n\n"
+            "## Quiz / assessment generation\n"
+            "When asked to generate a quiz, or when a module checkpoint is reached:\n"
+            "- Pull ONLY from KPs tagged to {{current_module}}.\n"
+            "- Weight difficulty by status per KP: more scaffolded/recall for `weak`,\n"
+            "  more applied/edge-case for `developing` or `mastered`.\n"
+            "- Output structured JSON: [{ \"kp_code\", \"question\", \"type\":\n"
+            "  \"mcq\"|\"short_answer\"|\"code\", \"difficulty\": 1-5, \"correct_answer\",\n"
+            "  \"distractors\" (if mcq) }] — a grading worker consumes this, not prose.\n"
+            "- Never invent a question outside {{current_module}}'s tagged KPs.\n\n"
+            "## Hard constraints\n"
+            "- English only.\n"
+            "- Use standard markdown formatting for tables and text formatting.\n"
+            "- Ground every factual claim in the retrieved context provided this\n"
+            "  turn; if it's not there, say you're not certain rather than guessing.\n"
+            "- Every turn — including the very first one on any topic — ends with\n"
+            "  either a question back to the student or a small task. Never end on\n"
+            "  a flat statement of facts.\n\n"
+            "## Response Formatting Constraints (CRITICAL)\n"
+            "- Wrap everything read aloud by TTS inside <speak>...</speak> tags.\n"
+            "- Wrap anything rendered visually (never spoken) inside <show type=\"code|roadmap|workflow|table|checklist\" lang=\"...\" title=\"...\">...</show> tags.\n"
+            "- Wrap a single context-specific short follow-up question inside <followup>...</followup> tags at the very end.\n"
+            "- You MUST end your response by asking exactly ONE context-specific follow-up question inside <followup>...</followup> tags. This rule is absolute."
+        )
+
+        prompt = template
+        prompt = prompt.replace("{{student_name}}", student_name)
+        prompt = prompt.replace("{{course_title}}", course_title)
+        prompt = prompt.replace("{{course_code}}", course_code)
+        prompt = prompt.replace("{{current_module}}", current_module)
+        prompt = prompt.replace("{{module_number}}", str(module_number))
+        prompt = prompt.replace("{{last_session_summary}}", last_session_summary)
+
+        kp_lines = []
+        for kp in kp_status_list:
+            kp_lines.append(f"- {kp['kp_name']}: {kp['status']} (mastery {kp['p_mastery']:.2f})")
+        kp_status_str = "\n".join(kp_lines)
+
+        import re
+        pattern = r"\{\{#each kp_status_list\}\}\s*(.*?)\s*\{\{/each\}\}"
+        match = re.search(pattern, prompt, re.DOTALL)
+        if match:
+            prompt = re.sub(pattern, kp_status_str, prompt, flags=re.DOTALL)
+        else:
+            prompt = prompt.replace("{{#each kp_status_list}}", "").replace("{{/each}}", "")
+
+        return prompt

@@ -467,6 +467,7 @@ class AgentContext:
     voice_style:     Optional[str]             = None
     custom_name:     Optional[str]             = None
     response_lang:   str                       = "english"
+    student_course_ctx: List[Dict[str, Any]]   = field(default_factory=list)
 
 
 
